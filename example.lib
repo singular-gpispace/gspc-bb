@@ -1,0 +1,67 @@
+LIB "buchbergergspc.lib";
+
+option("redSB"); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis
+
+configToken gc = configure_gspc();
+gc.options.tmpdir = "tempdir";
+gc.options.nodefile = "nodefile";
+gc.options.procspernode = 3;
+gc.options.loghostfile = "loghostfile";
+gc.options.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
+gc.options.logport = 9876;
+
+
+proc comp(def I, def J) // compare-function for indexed types
+{
+  string t = typeof(I);
+  int i,n;
+  if(t!=typeof(J)) {return(0);}
+  if(t=="ideal" || t=="list" || t=="intvec" || t=="module")
+  {
+    n = size(I);
+    if(n != size(J)) {return(0);}
+    else {
+      for(i=1; i<=n; i++) {if(!comp(I[i],J[i])) {return(0);}}
+      return(1);
+    }
+  }
+  else {return (I==J);}
+}
+
+
+// minimal example:
+ring R = 0,(x,y),dp;
+ideal I = x5, y7+x4, x2y-xy;
+I = I;
+
+ideal GB, F, M;
+intmat A;
+intvec indices;
+GB, A, F, M, indices = gspc_buchberger(I, gc);
+
+if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
+else {printf("%nI (%s elements): ...",size(I));}
+if(size(string(GB))<2000) {printf("%nGB (%s elements): %n%p",size(GB),GB);}
+else {printf("%nGB (%s elements): ...",size(GB));}
+if(comp(std(I), GB)) {printf("%nEQUAL to std(I) !!!",0);}
+else                 {printf("%nNOT equal to std(I) !!!",0);}
+
+printf("%nbookkeeping matrix A (%s elements): %n%p%n%n%n",nrows(A),A,0);
+
+
+
+// bigger example:
+//I = I^2;
+def I = katsura(6);
+def GB, A, F, M, indices = gspc_buchberger(I, gc);
+
+if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
+else {printf("%nI (%s elements): ...",size(I));}
+if(size(string(GB))<2000) {printf("%nGB (%s elements): %n%p",size(GB),GB);}
+else {printf("%nGB (%s elements): ...",size(GB));}
+if(comp(std(I), GB)) {printf("%nEQUAL to std(I) !!!",0);}
+else                 {printf("%nNOT equal to std(I) !!!",0);}
+
+printf("%nbookkeeping matrix A (%s elements): %n%p%n",nrows(A),A,0);
+int i,j; for(i=1;i<=nrows(A);i++) {for(j=1;j<=nrows(A);j++) { if(A[i,j]<2) {A[i,j]=0;}}} A[1,1] = 1;
+printf("%nsyzygies responsible for new GB elements (%s elements): %n%p",nrows(A),A);
