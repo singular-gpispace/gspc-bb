@@ -1,0 +1,463 @@
+///////////////////////////////////////
+version="version buchbergergp.lib 0.2 Mar 2023 ";
+category="Commutative algebra";
+info="
+LIBRARY: buchbergergp.lib  procedures for Buchbergers algorithm
+
+OVERVIEW:
+    This library contains SINGULAR procedures used in the parallel implementation
+    of Buchbergers algorithm in the Singular/GPI-Space framework.
+    The newstruct type token  must be defined.
+
+    PROCEDURES:
+    init(string,token)                                Initialize (including checking product and chain criterion)
+    list_indices(token)                               Return indices ij of A with A_ij=0 and update A_ij, also checks if BB algo is finished
+                                                      If A contains no 0 or 1, return an output token with the std basis ('out-many')
+    NF_of_spoly(string,int,token)                     Calculate NF(spoly(f_i,f_j),[f_1,...,f_r]) for the given index ij.
+                                                      Return ij and the calculated normal form iff it is non-zero ('out-many')
+    increment(string,token,token,int)                 Save the new basis element f_(r+1) (as ssi-file) and enlarge A.
+                                                      (including checking the product and chain criterion for the new entries)
+    write_finished_indices_to_A(string,token,token)   Update A_ij at the specified index and check chain cndition.
+    proc minimize_GB(string, token, int)              compute, which elements can be deleted to get a minimal Groebner Basis (GB)
+    proc reduce_GB(string,int,token,int)              reduce one element of the minimal GB by all the others to compute a reduced GB
+";
+
+
+proc mod_init()
+{
+    LIB "polylib.lib";
+    LIB "teachstd.lib"; // for spoly
+    LIB "general.lib"; // for sort
+
+    // states of entries of A (have to be <2 and !=0):
+    int NF_IS_ZERO           =  1;
+    int STARTED              = -1;
+    int DIFFERENT_COMPONENTS = -2;
+    int CHAIN_CRITERION      = -3;
+    int PRODUCT_CRITERION    = -4;
+    system("--ticks-per-sec", 1000);
+    int TTT = 0;
+    export(NF_IS_ZERO, STARTED, DIFFERENT_COMPONENTS, CHAIN_CRITERION, PRODUCT_CRITERION, TTT);
+}
+
+// argument order is ALWAYS:
+// for inputs:  read  - in  - inout
+// for outputs: inout - out - out_many
+
+proc init(string DIR, token input)
+"USAGE: init(token input)
+RETURN: token out_A, token out_r
+"
+{
+  int time = rtimer; while(rtimer-time<TTT) {}
+  def F = input.data[1];
+  int out_r = size(F);
+  list m;
+  intvec e;
+  int i,j;
+  list M;
+  if(typeof(F) == "module") { // module
+    int n = nvars(basering);
+    for(i=1; i<=out_r; i++)
+    {
+      write("ssi:w "+DIR+"f"+string(i), F[i]);
+
+      e = leadexp(F[i]);
+      m[1] = monomial(intvec(e[1..n])); //lead_monomial_as_poly
+      m[2] = e[n+1];                    //lead_monomial_component_as_int (0 in case of polynomials & ideals)
+      //m[3] = ecart(F[i]);               // for the local case
+      write("ssi:w "+DIR+"m"+string(i), m);
+      M[i] = m;
+    }
+  }
+  else { // ideal
+    for(i=1; i<=out_r; i++)
+    {
+      write("ssi:w "+DIR+"f"+string(i), F[i]);
+
+      m[1] = leadmonom(F[i]);       //lead_monomial_as_poly
+      m[2] = 0;                     //lead_monomial_component_as_int (0 in case of polynomials & ideals)
+      //m[3] = ecart(F[i]);           // for the local case
+      write("ssi:w "+DIR+"m"+string(i), m);
+      M[i] = m;
+    }
+  }
+
+  list kill_indices;
+  intmat A[out_r][out_r];
+  matrix B[out_r][out_r];
+  intmat D[out_r][out_r];
+  int current_degree = deg(lcm(M[1][1],M[2][1]));
+  export(A, kill_indices, M);
+  for(i=1; i<=out_r; i++)
+  {
+    A[i,i]=i;
+    product_criterion(i); // initialize A using product (and chain) criterion
+
+    for(j=i+1; j<=out_r; j++)
+    {
+      B[i,j] = lcm(M[i][1],M[j][1]);
+      B[j,i] = B[i,j];
+      D[i,j] = deg(B[i,j]);
+      D[j,i] = D[i,j];
+      current_degree = min(current_degree, D[i,j]);
+    }
+  }
+
+  token out_A;
+  out_A.fieldnames[1] = "matrix_A";
+  out_A.data[1] = A;
+  out_A.fieldnames[2] = "matrix_B";
+  out_A.data[2] = B;
+  out_A.fieldnames[3] = "matrix_D";
+  out_A.data[3] = D;
+  out_A.fieldnames[4] = "current_degree";
+  out_A.data[4] = current_degree;
+  return(out_A, out_r);
+}
+
+proc list_indices(token inout_A)
+"USAGE: list_indices(token inout_A)
+RETURN: token inout_A, list out_many_started_indices, list out_many_BB_finished
+"
+{
+  int time = rtimer; while(rtimer-time<TTT) {}
+  intmat A = inout_A.data[1];
+
+  int r = nrows(A);
+  list out_many_started_indices;
+  token out_started_indices;
+  out_started_indices.fieldnames[1] = "started_indices";
+  int finished = 1;
+  int i,j,k;
+  k=1;
+  for(i=1; i<=r; i++)
+  {
+    for(j=i+1; j<=r; j++) // only consider the upper triangular part of A
+    {
+      if(A[i,j]==0)
+      {
+        A[i,j] = STARTED;
+        A[j,i] = STARTED;
+        out_started_indices.data[1] = intvec(i,j);
+        out_many_started_indices[k] = out_started_indices;
+        k++;
+        finished = 0;
+      }
+      else { if(A[i,j]==STARTED || A[i,j]>r)
+      {
+        finished = 0;
+      }}
+    }
+  }
+
+
+  list out_many_BB_finished;
+  if(finished)
+  {
+    // if finished: put a token on the "BB_finished" place
+    // this will trigger the start of the computation of a (unique) reduced GB
+    int out_BB_finished=1;
+    out_many_BB_finished[1] = out_BB_finished;
+  }
+
+  inout_A.data[1] = A;
+  return(inout_A, out_many_started_indices, out_many_BB_finished);
+}
+
+
+proc NF_of_spoly(string DIR, int read_r, token in_started_indices)
+"USAGE: NF_of_spoly(token read_r, token in_started_indices)
+RETURN: list out_many_finished_indices, list out_many_NF
+"
+{
+  int time = rtimer; while(rtimer-time<TTT) {}
+  int i,j = in_started_indices.data[1];
+  list m1 = read("ssi:r "+DIR+"m1");
+  int k;
+  if(m1[2]==0) {ideal F;}
+  else              {module F;}
+  for(k=1; k<=read_r; k++)   {F[k] = read("ssi:r "+DIR+"f"+string(k));}
+
+  def p = NF(spoly(F[i],F[j]),F);
+
+  list out_many_NF, out_many_finished_indices;
+  if(p!=0)
+  {
+    token out_NF;
+    out_NF.fieldnames[1] = "normal_form";
+    out_NF.data[1] = p;
+    out_NF.fieldnames[2] = "indices";
+    out_NF.data[2] = intvec(i,j);
+    out_many_NF[1] = out_NF;
+  }
+  else
+  {
+    token out_finished_indices;
+    out_finished_indices.fieldnames[1] = "finished_indices";
+    out_finished_indices.data[1] = intvec(i,j);
+    out_finished_indices.fieldnames[2] = "new_state_for_A";
+    out_finished_indices.data[2] = NF_IS_ZERO;
+    out_many_finished_indices[1] = out_finished_indices;
+  }
+  return(out_many_finished_indices, out_many_NF);
+}
+
+proc increment(string DIR, token in_NF, token inout_A, int inout_r)
+"USAGE: increment(token in_NF, token inout_A, token inout_r)
+RETURN: token inout_A, token inout_r, token out_finished_indices
+"
+{
+  int time = rtimer; while(rtimer-time<TTT) {}
+  def R = in_NF.r_data;
+  setring R;
+  def p = in_NF.data[1];
+  intvec indices = in_NF.data[2];
+  intmat old_A = inout_A.data[1];
+
+  list m;
+  if(typeof(p)=="vector") // p vector
+  {
+    int n = nvars(basering);
+    intvec e = leadexp(p);
+    m[1] = monomial(intvec(e[1..n]));
+    m[2] = e[n+1];
+    //m.fieldnames[3] = "ecart_as_int"; // for the local case
+  }
+  else // p polynomial
+  {
+    m[1] = leadmonom(p);
+    m[2] = 0;
+  }
+  //m.data[3] = ecart(p);
+
+  write("ssi:w "+DIR+"m"+string(inout_r+1), m);
+  write("ssi:w "+DIR+"f"+string(inout_r+1), p); // TO DO: dont read in f_{r+1} into SINGULAR but just change the filename in C++ !
+
+  intmat A[inout_r+1][inout_r+1];
+  A[1..inout_r,1..inout_r] = old_A[1..inout_r,1..inout_r];
+
+
+  list M;
+  for(int i=1; i<=inout_r; i++) {M[i] = read("ssi:r "+DIR+"m"+string(i));}
+  M[inout_r+1] = m;
+  list kill_indices;
+  export(A, kill_indices, M);
+  product_criterion(inout_r+1);
+  // TO DO: use kill_indices to kill unnecessary NF(...)-processes --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+  inout_A.data[1] = A;
+  token out_finished_indices;
+  out_finished_indices.fieldnames[1] = "finished_indices";
+  out_finished_indices.data[1] = indices;
+  out_finished_indices.fieldnames[2] = "new_state_for_A";
+  out_finished_indices.data[2] = inout_r+1;
+  inout_r++;
+  return(inout_A, inout_r, out_finished_indices);
+}
+
+proc write_finished_indices_to_A(string DIR, token in_finished_indices, token inout_A)
+"USAGE: write_finished_indices_to_A(token in_finished_indices, token inout_A)
+RETURN: token inout_A
+"
+{
+  int time = rtimer; while(rtimer-time<TTT) {}
+  intmat A = inout_A.data[1];
+  int i,j = in_finished_indices.data[1];
+  int new_state = in_finished_indices.data[2];
+
+  int r = nrows(A); // need this r, not the (potentially bigger) r from place_r!
+
+  A[i,j] = new_state; // if A[i,j] was PORDUCT_CRITERION or CHAIN_CRITERION: we now know that we created an unnecessary GB element, could we delete it somehow?
+  A[j,i] = new_state;
+
+  list M;
+  for(int k=1; k<=r; k++) {M[k] = read("ssi:r "+DIR+"m"+string(k));}
+  list kill_indices;
+  export(A, kill_indices, M);
+  chain_criterion(i, j);
+  // TO DO: use kill_indices to kill unnecessary NF(...)-processes --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+  inout_A.data[1] = A;
+  return(inout_A);
+}
+
+proc minimize_GB(string DIR, token in_A, int in_r)
+"USAGE: minimize_GB(token in_A, token in_r)
+RETURN: token needed_indices_list, token result, int out_reduced_indices_counter, list out_many_needed_indices
+"
+{
+  int time = rtimer; while(rtimer-time<TTT) {}
+  list M;
+  int k;
+  for(k=1; k<=in_r; k++) {M[k] = read("ssi:r "+DIR+"m"+string(k));}
+
+  intvec indices;
+  int i,j,needed;
+  k=1;
+  for(i=1; i<=in_r; i++)
+  {
+    needed = 1;
+    for(j=1; j<=in_r; j++) { if(j!=i) {
+      if(M[i][2]==M[j][2] && NF(M[i][1],M[j][1])==0) {
+        if(M[i][1]!=M[j][1] || i<j) {
+          needed = 0; break;
+    }}}}
+    if(needed) {indices[k] = i; k++;}
+  }
+  int final_r = size(indices);
+
+  if(M[1][2]==0) { // ideals
+    ideal L;
+    for(i=1; i<=final_r; i++) {L[i] = M[indices[i]][1];}
+  }
+  else { // modules
+    module L;
+    for(i=1; i<=final_r; i++) {L[i] = M[indices[i]][1]*gen(M[indices[i]][2]);}
+  }
+  indices = indices[sort(L)[2]]; // sort indices w.r.t. the monomial ordering on the lead monomials (same as SINGULARs 'std')
+
+  token needed_indices_list, result;
+  needed_indices_list.fieldnames[1] = "needed_indices";
+  needed_indices_list.data[1] = indices;
+  result.fieldnames[1] = "final_r";
+  result.data[1] = final_r;
+
+  // This output is just for debugging and analysing the algorithm:
+    result.fieldnames[2] = "bookkeeping_matrix_A";
+    result.data[2] = in_A.data[1];
+    result.fieldnames[3] = "needed_indices";
+    result.data[3] = indices;
+
+  list out_many_needed_indices = indices[1..final_r];
+  return(needed_indices_list, result, out_many_needed_indices);
+}
+
+proc reduce_GB(string DIR, int read_redSB, token read_needed_indices_list, int in_needed_indices)
+"USAGE: reduce_GB(token read_needed_indices_list, token in_needed_indices)
+RETURN: nothing (GB will be written in files called g1, g2, g3, ...)
+"
+{
+  int time = rtimer; while(rtimer-time<TTT) {}
+  intvec indices = read_needed_indices_list.data[1];
+  int r = size(indices);
+
+  int k;
+  int n=1;
+  if(read_redSB) { // calculate a reduced GB
+    def f = read("ssi:r "+DIR+"f"+string(in_needed_indices)); // element to reduce
+    if(typeof(f)=="poly") {ideal F;}
+    else                  {module F;}
+
+    for(k=1; k<=r; k++)
+    {
+      if(indices[k]==in_needed_indices) {n = k;}
+      else {F[size(F)+1] = read("ssi:r "+DIR+"f"+string(indices[k]));}
+    }
+
+    def g = NF(f,F);
+  }
+  else {
+    for(k=1; k<=r; k++) { if(indices[k]==in_needed_indices) {n = k;} }
+    def g = read("ssi:r "+DIR+"f"+string(in_needed_indices));
+  }
+
+  write("ssi:w "+DIR+"g"+string(n), g/leadcoef(g));
+  return();
+}
+
+
+static proc chain_criterion(int i, int j)
+"USAGE: chain_criterion(intmat A, int i, int j, list M)
+RETURN: A after applying the chain criterion under the assumption that only the
+        entry A_ij has changed (to a 'finished' state); assumes i != j.
+"
+{
+  int r = nrows(A);
+  int entry;
+  for(int k=1; k<=r; k++)
+  {
+    if(k!=i && k!=j && M[i][2]==M[j][2] && M[j][2]==M[k][2])
+    {
+      entry = A[i,k];
+      if(entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
+      {
+        if(NF(lcm(M[j][1],M[k][1]), M[i][1])==0)  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
+        {
+          if(A[k,j] == STARTED)
+          {
+            if(k<j) {kill_indices[size(kill_indices)+1] = intvec(k,j);}
+            else    {kill_indices[size(kill_indices)+1] = intvec(j,k);}
+          }
+          if(A[k,j] == STARTED || A[k,j] == 0) // if A[k,j]>0: we now know that we created an unnecessary GB element, could we delete it somehow?
+          {
+            A[k,j] = CHAIN_CRITERION; A[j,k] = CHAIN_CRITERION;
+            chain_criterion(k,j);
+          }
+        }
+      }
+
+      entry = A[k,j];
+      if(entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
+      {
+        if(NF(lcm(M[i][1],M[k][1]), M[j][1])==0)  // chain-criterion
+        {
+          if(A[i,k] == STARTED)
+          {
+            if(i<k) {kill_indices[size(kill_indices)+1] = intvec(i,k);}
+            else    {kill_indices[size(kill_indices)+1] = intvec(k,i);}
+          }
+          if(A[i,k] == STARTED || A[i,k] == 0) // if A[i,k]>0: ...
+          {
+            A[i,k] = CHAIN_CRITERION; A[k,i] = CHAIN_CRITERION;
+            chain_criterion(i,k);
+          }
+        }
+      }
+    }
+  }
+
+  for(int k=1; k<=r; k++)
+  {
+    if(k!=i && k!=j && M[i][2]==M[j][2] && M[j][2]==M[k][2])
+    {
+
+    }
+  }
+}
+
+static proc product_criterion(int i)
+"USAGE: product_criterion(intmat A, intvec is, intvec js, list M)
+RETURN: A after applying the product criterion (in the case of ideals) but only
+        testing the entries A_ij (and A_ji) for the given integer i and all j<i.
+        Also applies chain criterion if possible (due to the changed A_ij's).
+        In the module case, test if L(f_i) and L(f_j) are in different components.
+"
+{
+  int r = nrows(A);
+  for(int j=1; j<i; j++)
+  {
+    if(M[1][2]!=0) // module case: check if f_i, f_j have leads in different components
+    {
+      if(M[i][2]!=M[j][2])
+        {A[i,j] = DIFFERENT_COMPONENTS; A[j,i] = DIFFERENT_COMPONENTS;}
+    }
+    else // ideal case: check product criterion
+    {
+      if(lcm(M[i][1],M[j][1])==M[i][1]*M[j][1])
+      {
+        A[i,j] = PRODUCT_CRITERION; A[j,i] = PRODUCT_CRITERION;
+        chain_criterion(i, j);
+      }
+    }
+  }
+}
+
+
+// for debugging as error messages wont be pushed to gspc-monitor:
+static proc debug(string DIR, def object, def filename, list #)
+{
+  if(size(#)==0) {#[1]="";}
+  if(#[1]!="") {link l=   ":w "+DIR+string(filename); write(l, typeof(object)+": "+sprintf(#[1], object)); close(l);}
+  else         {link l="ssi:w "+DIR+string(filename); write(l, object);                                   close(l);}
+}

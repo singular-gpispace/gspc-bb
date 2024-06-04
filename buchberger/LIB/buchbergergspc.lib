@@ -1,0 +1,199 @@
+///////////////////////////////////////
+version="version buchbergergspc.lib 0.2 May_2024 ";
+category="Algebraic geometry";
+info="
+LIBRARY: buchbergergspc.lib  buchberger library for  GPI-Space interface on Singular
+
+OVERVIEW:
+This library contains SINGULAR procedures for starting up a
+a Singular/GPI-Space implementation of Buchbergers algorithm.
+
+TYPES:
+configToken            general configuration token type
+gspcConfigToken        configuration token for GPI-Space
+buchbergerConfigToken  configuration token for the transition procedure
+
+PROCEDURES:
+configure_gspc()                               generates standard config token for GPI-Space
+configure_buchberger()                         generates standard config token for the transition procedure
+generateIOTokenTypes(configToken)              register the user-defined types for input and output
+gspc_buchberger(list,configToken,configToken)  interface of the buchberger framework in Singular
+";
+
+proc mod_init()
+{
+    //Singular does not support fieldname containing underscore
+    LIB "libSINGULAR-buchberger-module.so";
+    LIB "polylib.lib";
+    LIB "teachstd.lib"; // for spoly
+    LIB "buchbergergp.lib";
+    newstruct("configToken", "string tokentype, def options");
+    newstruct("gspcConfigToken", "string tmpdir, string nodefile, int procspernode, string rifstrategy, string rifstrategyparameters, string loghost, int logport, string loghostfile, int deleteoutputfiles");
+    newstruct("buchbergerConfigToken", " string neededLibrary, string functionName, int redSB");
+    newstruct("token", "list fieldnames, list data");
+}
+
+proc configure_gspc()
+"USAGE: configure_gspc()
+RETURN: a configToken containing a gspcConfigToken with the standard configuration for GPI-Space
+"
+{
+    gspcConfigToken gc;
+    gc.rifstrategy = "ssh";
+    configToken ct;
+    ct.tokentype = "gspcConfigToken";
+    ct.options = gc;
+    return(ct);
+}
+
+proc configure_buchberger()
+"USAGE: configure_buchberger()
+RETURN: a configToken containing a buchbergerConfigToken with the standard
+           configuration for the buchberger pattern.
+"
+{
+    buchbergerConfigToken tc;
+    configToken ct;
+    ct.tokentype = "buchbergerConfigToken";
+    ct.options = tc;
+    return(ct);
+}
+
+static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc)
+{
+    //Parse driver options
+    string driver_opts;
+    if ((typeof(gc.options) != "gspcConfigToken") || (typeof(pc.options) != "buchbergerConfigToken"))
+    {
+        ERROR("wrong config token types");
+    }
+
+    //Parse rifstrategy and rifstrategy-parameters
+    driver_opts = driver_opts + "--rif-strategy " + gc.options.rifstrategy;
+    if ( gc.options.rifstrategyparameters != "")
+    {
+        driver_opts = driver_opts + " --rif-strategy-parameters " + gc.options.rifstrategyparameters;
+    }
+
+    //Parse worker topology
+    driver_opts = driver_opts + " --topology " + "worker:" + string(gc.options.procspernode);
+
+    //Parse nodefile
+    driver_opts = driver_opts + " --nodefile " + gc.options.nodefile;
+
+    //Parser loghost and logport
+    if (gc.options.logport != 0) // logging requested
+    {
+        if (gc.options.loghost == "") // no hostname given, so read from file
+        {
+            if (gc.options.loghostfile == "")
+            {
+                ERROR("logging requested, no loghost and no loghostfile given");
+            }
+            string loghost = read(gc.options.loghostfile);
+            if ((loghost == "") || (loghost == newline))
+            {
+                ERROR("no hostname in loghostfile");
+            }
+            if (loghost[size(loghost)] == newline) // delete trailing LF
+            {
+                loghost = loghost[1..(size(loghost)-1)];
+            }
+            gc.options.loghost = loghost;
+        }
+        driver_opts = driver_opts + " --log-host " + gc.options.loghost, " --log-port ", string(gc.options.logport);
+    }
+
+    if (system("getenv", "LD_LIBRARY_PATH") != "")
+    {
+        driver_opts = driver_opts + " --worker-env-copy-variable " + "LD_LIBRARY_PATH";
+    }
+
+    //Starting to parse workflow options
+    string workflow_opts;
+
+    //Parse N
+    workflow_opts = "--N " + string(N);
+
+    //Parse basefilename
+    string tmpdir;
+    if (gc.options.tmpdir[1] == "/")
+    {
+        tmpdir = gc.options.tmpdir;
+    }
+    else
+    {
+        tmpdir = system("getenv", "PWD") + "/" + gc.options.tmpdir;
+    }
+    string basefilename = tmpdir + "/";
+    workflow_opts =  workflow_opts + " --basefilename " + basefilename;
+
+    //Parse input
+    link lin;
+    for(int i = 1; i<=N; i++)
+    {
+        lin = "ssi:w " + basefilename + "input" + string(i);
+        write(lin, l[i]);
+        close(lin);
+    }
+    workflow_opts = workflow_opts + " --input " + "input";
+
+    //Parse libraryname
+    string loadlib;
+    if (pc.options.neededLibrary[1] == "/")
+    {
+        loadlib = pc.options.neededLibrary;
+    }
+    else
+    {
+        loadlib = system("getenv", "PWD") + "/" + pc.options.neededLibrary;
+    }
+    workflow_opts = workflow_opts + " --libraryname " + loadlib;
+
+    // parse delete-output-files option (boolean)
+    workflow_opts = workflow_opts + " --deleteoutputfiles " + string(gc.options.deleteoutputfiles);
+
+    // parse redSB option (boolean)
+    workflow_opts = workflow_opts + " --redSB " + string(pc.options.redSB);
+
+    string all_opts = driver_opts + " " + workflow_opts;
+    def sm_result = sggspc_buchberger(all_opts);
+    return(sm_result);
+}
+
+proc gspc_buchberger(ideal I, configToken gc)
+{
+    configToken ct = configure_buchberger();
+    ct.options.neededLibrary = "buchbergergp.lib";
+    ct.options.redSB = (option(get)[1]%4) div 2; // true iff option(redSB) is set
+    token t;
+    t.fieldnames[1] = "ideal_generators";
+    t.data[1] = I;
+    list inputlists;
+    inputlists[1] = t;
+    def output = gspc_buchberger_static(inputlists, 1, gc, ct);
+    int r = output[1].data[1];
+    intmat A = output[1].data[2];
+    intvec indices = output[1].data[3];
+    int r_all = nrows(A);
+
+    string DIR = gc.options.tmpdir + "/";
+
+    def m1 = read("ssi:r "+DIR+"m1");
+    int mode = m1[2];
+
+    if(mode==0) {ideal  GB,F,M; list m;}
+    else        {module GB,F,M; list m;}
+    for(int i=1; i<=r; i++)
+    {
+      GB[i] = read("ssi:r "+DIR+"g"+string(i));
+    }
+    for(int i=1; i<=r_all; i++)
+    {
+      F[i] = read("ssi:r tempdir/f"+string(i));
+      m = read("ssi:r tempdir/m"+string(i));
+      if(mode==0) {M[i] = m[1];}
+      else        {M[i] = m[1]*gen(m[2]);}
+    }
+    return(GB, A, F, M, indices);
+}

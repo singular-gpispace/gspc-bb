@@ -1,0 +1,5 @@
+<structs>
+  <struct name="ssi">
+		<field name="filename" type="string"/>
+	</struct>
+</structs>
