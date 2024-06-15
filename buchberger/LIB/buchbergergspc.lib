@@ -29,7 +29,7 @@ proc mod_init()
     LIB "buchbergergp.lib";
     newstruct("configToken", "string tokentype, def options");
     newstruct("gspcConfigToken", "string tmpdir, string nodefile, int procspernode, string rifstrategy, string rifstrategyparameters, string loghost, int logport, string loghostfile, int deleteoutputfiles");
-    newstruct("buchbergerConfigToken", " string neededLibrary, string functionName, int redSB");
+    newstruct("buchbergerConfigToken", " string neededLibrary, string functionName, int nworkers, int redSB");
     newstruct("token", "list fieldnames, list data");
 }
 
@@ -153,6 +153,9 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
     // parse delete-output-files option (boolean)
     workflow_opts = workflow_opts + " --deleteoutputfiles " + string(gc.options.deleteoutputfiles);
 
+    // parse number of workers for "NF(spoly(...),...)"
+    workflow_opts = workflow_opts + " --nworkers " + string(pc.options.nworkers);
+
     // parse redSB option (boolean)
     workflow_opts = workflow_opts + " --redSB " + string(pc.options.redSB);
 
@@ -161,11 +164,13 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
     return(sm_result);
 }
 
-proc gspc_buchberger(ideal I, configToken gc)
+proc gspc_buchberger(def I, configToken gc, list #)
 {
     configToken ct = configure_buchberger();
     ct.options.neededLibrary = "buchbergergp.lib";
-    ct.options.redSB = (option(get)[1]%4) div 2; // true iff option(redSB) is set
+    if(size(#)==0) {#[1] = 1;} // by default: just one worker (i.e. nothing runs in parallel!)
+    ct.options.nworkers = #[1];
+    ct.options.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
     token t;
     t.fieldnames[1] = "ideal_generators";
     t.data[1] = I;
@@ -174,7 +179,9 @@ proc gspc_buchberger(ideal I, configToken gc)
     def output = gspc_buchberger_static(inputlists, 1, gc, ct);
     int r = output[1].data[1];
     intmat A = output[1].data[2];
-    intvec indices = output[1].data[3];
+    intmat D = output[1].data[3];
+    int cd = output[1].data[4]; // current degree
+    intvec indices = output[1].data[5];
     int r_all = nrows(A);
 
     string DIR = gc.options.tmpdir + "/";
@@ -195,5 +202,5 @@ proc gspc_buchberger(ideal I, configToken gc)
       if(mode==0) {M[i] = m[1];}
       else        {M[i] = m[1]*gen(m[2]);}
     }
-    return(GB, A, F, M, indices);
+    return(GB, A, D, cd, F, M, indices);
 }

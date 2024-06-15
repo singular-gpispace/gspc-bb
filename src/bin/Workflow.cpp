@@ -14,6 +14,7 @@ namespace buchberger_module
     workflow_opts.add_options()("input", po::value<std::string>()->required());
     workflow_opts.add_options()("libraryname", po::value<std::string>()->required());
     workflow_opts.add_options()("deleteoutputfiles", po::value<bool>()->required());
+    workflow_opts.add_options()("nworkers", po::value<long>()->required());
     workflow_opts.add_options()("redSB", po::value<long>()->required());
 
     return workflow_opts;
@@ -24,6 +25,7 @@ namespace buchberger_module
     , _input (args.at ("input").as<std::string>())
     , _basefilename (args.at ("basefilename").as<std::string>())
     , _libraryname (args.at ("libraryname").as<std::string>())
+    , _nworkers (args.at ("nworkers").as<long>())
     , _redSB (args.at ("redSB").as<long>())
     {}
 
@@ -36,6 +38,7 @@ namespace buchberger_module
     }
     values_on_ports.emplace("library_name", _libraryname);
     values_on_ports.emplace("base_filename", _basefilename);
+    values_on_ports.emplace("nworkers", _nworkers);
     values_on_ports.emplace("redSB", _redSB);
 
     return values_on_ports;

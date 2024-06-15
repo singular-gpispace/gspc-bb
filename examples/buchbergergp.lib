@@ -35,21 +35,31 @@ proc mod_init()
     int DIFFERENT_COMPONENTS = -2;
     int CHAIN_CRITERION      = -3;
     int PRODUCT_CRITERION    = -4;
-    system("--ticks-per-sec", 1000);
+    int UNNECESSARY_ELEMENT  = -5;
+    system("--ticks-per-sec", 1000000);
     int TTT = 0;
-    export(NF_IS_ZERO, STARTED, DIFFERENT_COMPONENTS, CHAIN_CRITERION, PRODUCT_CRITERION, TTT);
+    export(NF_IS_ZERO, STARTED, DIFFERENT_COMPONENTS, CHAIN_CRITERION, PRODUCT_CRITERION, UNNECESSARY_ELEMENT, TTT);
 }
 
 // argument order is ALWAYS:
 // for inputs:  read  - in  - inout
 // for outputs: inout - out - out_many
 
-proc init(string DIR, token input)
+proc init(string DIR, token input, string test_str)
 "USAGE: init(token input)
 RETURN: token out_A, token out_r
 "
 {
-  int time = rtimer; while(rtimer-time<TTT) {}
+//  if(test_str != "1_2") {ERROR("42!");}
+//  debug(DIR, test_str, "wtf", "%s");
+//  int index_ij = find(test_str,"_");
+//  debug(DIR, index_ij, "wtf2", "%s");
+//  int ii = int(test_str[1,index_ij-1]);
+//  int jj = int(test_str[index_ij+1,size(test_str)]);
+//  test_str = string(jj)+"_"+string(ii);
+
+
+  int time = rtimer;
   def F = input.data[1];
   int out_r = size(F);
   list m;
@@ -63,9 +73,11 @@ RETURN: token out_A, token out_r
       write("ssi:w "+DIR+"f"+string(i), F[i]);
 
       e = leadexp(F[i]);
-      m[1] = monomial(intvec(e[1..n])); //lead_monomial_as_poly
-      m[2] = e[n+1];                    //lead_monomial_component_as_int (0 in case of polynomials & ideals)
-      //m[3] = ecart(F[i]);               // for the local case
+      m[1] = monomial(intvec(e[1..n])); // lead monomial as poly
+      m[2] = e[n+1];                    // the lead monomials component as int (0 in case of polynomials & ideals)
+      m[3] = deg(F[i]);                 // degree
+      m[4] = size(F[i]);                // number of terms
+      m[5] = ecart(F[i]);               // ecart
       write("ssi:w "+DIR+"m"+string(i), m);
       M[i] = m;
     }
@@ -75,9 +87,11 @@ RETURN: token out_A, token out_r
     {
       write("ssi:w "+DIR+"f"+string(i), F[i]);
 
-      m[1] = leadmonom(F[i]);       //lead_monomial_as_poly
-      m[2] = 0;                     //lead_monomial_component_as_int (0 in case of polynomials & ideals)
-      //m[3] = ecart(F[i]);           // for the local case
+      m[1] = leadmonom(F[i]);           // lead monomial as poly
+      m[2] = 0;                         // the lead monomials component as int (0 in case of polynomials & ideals)
+      m[3] = deg(F[i]);                 // degree
+      m[4] = size(F[i]);                // number of terms
+      m[5] = ecart(F[i]);               // ecart
       write("ssi:w "+DIR+"m"+string(i), m);
       M[i] = m;
     }
@@ -87,20 +101,25 @@ RETURN: token out_A, token out_r
   intmat A[out_r][out_r];
   matrix B[out_r][out_r];
   intmat D[out_r][out_r];
-  int current_degree = deg(lcm(M[1][1],M[2][1]));
-  export(A, kill_indices, M);
-  for(i=1; i<=out_r; i++)
-  {
+  for(i=1; i<=out_r; i++) {
     A[i,i]=i;
-    product_criterion(i); // initialize A using product (and chain) criterion
-
-    for(j=i+1; j<=out_r; j++)
-    {
+    for(j=i; j<=out_r; j++) {
       B[i,j] = lcm(M[i][1],M[j][1]);
       B[j,i] = B[i,j];
       D[i,j] = deg(B[i,j]);
       D[j,i] = D[i,j];
-      current_degree = min(current_degree, D[i,j]);
+    }
+  }
+  export(A, B, kill_indices, M);
+  for(i=1; i<=out_r; i++) {product_criterion(i);}  // initialize A using product (and chain) criterion
+  // kill_indices can be discarded (and will in fact be empty), as no NF processes have started yet
+
+  int current_degree = -2;
+  for(i=1; i<=out_r; i++) {
+    for(j=1; j<i; j++) {
+      if(A[i,j]==0) {
+        if(current_degree==-2 || current_degree > D[i,j]) {current_degree = D[i,j];}
+      }
     }
   }
 
@@ -113,43 +132,66 @@ RETURN: token out_A, token out_r
   out_A.data[3] = D;
   out_A.fieldnames[4] = "current_degree";
   out_A.data[4] = current_degree;
-  return(out_A, out_r);
+  //debug(DIR,out_A,"A_after_init");
+  return(rtimer-time, current_degree, out_A, out_r, test_str);
 }
 
-proc list_indices(token inout_A)
+proc list_indices(int read_nworkers, token inout_A) // nworkers = number of workers that will be dedicated to the NF_of_spoly transition (assuming no lagging in the book-keeping)
 "USAGE: list_indices(token inout_A)
 RETURN: token inout_A, list out_many_started_indices, list out_many_BB_finished
 "
 {
-  int time = rtimer; while(rtimer-time<TTT) {}
+  int time = rtimer;
   intmat A = inout_A.data[1];
+  intmat D = inout_A.data[3];
+  int current_degree = inout_A.data[4];
 
   int r = nrows(A);
   list out_many_started_indices;
   token out_started_indices;
   out_started_indices.fieldnames[1] = "started_indices";
   int finished = 1;
-  int i,j,k;
-  k=1;
+  int new_degree = -2;
+  int nrunning = 0;
+  int i,j,d,a;
+  int k=1;
   for(i=1; i<=r; i++)
   {
-    for(j=i+1; j<=r; j++) // only consider the upper triangular part of A
+    for(j=i+1; j<=r; j++)
     {
-      if(A[i,j]==0)
+      if(A[i,j]==STARTED) {nrunning++;} // more efficient: add nrunning to the token of A and update dynamically
+    }
+  }
+  for(i=1; i<=r; i++)
+  {
+    for(j=i+1; j<=r; j++)
+    {
+      a = A[i,j];
+      d = D[i,j];
+
+      if(a==0) {
+        if(new_degree==-2 || new_degree>d) {new_degree = d;}
+      }
+
+      if(read_nworkers-nrunning>0 && A[i,j]==0 && D[i,j] == current_degree)
       {
         A[i,j] = STARTED;
         A[j,i] = STARTED;
+
         out_started_indices.data[1] = intvec(i,j);
+
         out_many_started_indices[k] = out_started_indices;
+        //out_many_started_indices[k] = string(i)+","+string(j);
+
         k++;
-        finished = 0;
+        nrunning++;
       }
-      else { if(A[i,j]==STARTED || A[i,j]>r)
-      {
-        finished = 0;
-      }}
+
+      if(a==0 || a==STARTED || a>r) {finished = 0;}
     }
   }
+  if(nrunning==0 && k==1 && new_degree!=-2) // if no index is running and no index of current degree can be found:
+    {current_degree = new_degree;}          // increase the degree for next call of the procedure
 
 
   list out_many_BB_finished;
@@ -162,24 +204,160 @@ RETURN: token inout_A, list out_many_started_indices, list out_many_BB_finished
   }
 
   inout_A.data[1] = A;
-  return(inout_A, out_many_started_indices, out_many_BB_finished);
+  inout_A.data[4] = current_degree;
+  return(inout_A, rtimer-time, current_degree, out_many_started_indices, out_many_BB_finished);
 }
 
+
+
+proc NF_init(string DIR, int read_r, token in_started_indices)
+{
+  int time = rtimer;
+  int i,j = in_started_indices.data[1];
+
+  list m1 = read("ssi:r "+DIR+"m1");
+  if(m1[2]==0) {poly   fi,fj;}
+  else         {vector fi,fj;}
+  fi = read("ssi:r "+DIR+"f"+string(i));
+  fj = read("ssi:r "+DIR+"f"+string(j));
+
+//  int k;
+//  if(m1[2]==0) {ideal F;}
+//  else         {module F;}
+//  for(k=1; k<=read_r; k++)   {F[k] = read("ssi:r "+DIR+"f"+string(k));}
+
+  token out_remainder;
+  out_remainder.fieldnames[1] = "current_remainder";
+  out_remainder.data[1] = spoly(fi,fj); //NF(spoly(fi,fj),F);
+  out_remainder.fieldnames[2] = "indices";
+  out_remainder.data[2] = intvec(i,j);
+  out_remainder.fieldnames[3] = "runtime";
+  out_remainder.data[3] = 0;
+  return(rtimer-time, out_remainder);
+}
+
+proc NF_step(string DIR, int read_r, token in_remainder)
+{
+  int time = rtimer;
+  //int ddd = 1;
+  //debug(DIR,ddd,string(ddd)); ddd++;
+
+
+  def R = in_remainder.r_data;
+  setring R;
+
+  //debug(DIR,ddd,string(ddd)); ddd++;
+
+  def rem = in_remainder.data[1];
+
+  //debug(DIR,ddd,string(ddd)); ddd++;
+
+  poly q;
+  list out_many_remainder, out_many_finished_indices, out_many_NF;
+
+  if(rem!=0) {
+    poly rem_lmon;
+    int rem_lcomp;
+    if(typeof(rem)=="poly") {
+      rem_lmon = leadmonom(rem);
+      rem_lcomp = 0;
+    }
+    else {
+      int n = nvars(basering);
+      intvec e = leadexp(rem);
+      rem_lmon = monomial(intvec(e[1..n]));
+      rem_lcomp = e[n+1];
+    }
+
+    int k;
+    list m;
+//    list leads, comps, degrees, nterms, ecarts;
+    for(k=1; k<=read_r; k++)
+    {
+      m = read("ssi:r "+DIR+"m"+string(k));
+//      leads[k]   = m[1]; // lead monomial (as poly)
+//      comps[k]   = m[2]; // lead component (int)
+//      degrees[k] = m[3]; // degree
+//      nterms[k]  = m[4]; // nterms
+//      ecarts[k]  = m[5]; // ecart
+
+//    }
+
+//    //intvec indices = sort(ecarts)[2];
+//    //indices = intvec(indices[sort(list(nterms[indices]))[2]]);
+//    //indices = intvec(indices[sort(list(degrees[indices]))[2]]);
+//
+//    for(int kk=1; kk<=read_r; kk++)
+//    {
+//      k = indices[kk]; // go through the f_k in order from smallest to highest degree (with nterms and ecarts as tie-break)
+//      k = kk;
+
+      q = rem_lmon/m[1];   //leads[k]; // quotient if divisible, 0 else (as poly)
+      if(q!=0 && rem_lcomp==m[2])   //comps[k]) // use f_k to reduce
+      {
+        def f = read("ssi:r "+DIR+"f"+string(k));
+        if((option(get) % 2^27) >= 2^26) // if option(intStrategy) is activated: dont divide the lead coefficients:
+        {
+          number f_LC = leadcoef(f);
+          number rem_LC = leadcoef(rem);
+          number d = gcd(f_LC, rem_LC);
+          in_remainder.data[1] = f_LC/d * rem - rem_LC/d * q * f;
+          in_remainder.data[1] = in_remainder.data[1] / content(in_remainder.data[1]);
+        }
+        else
+        {
+          in_remainder.data[1] = rem - (leadcoef(rem)/leadcoef(f)) * q * f;
+        }
+        in_remainder.data[3] = in_remainder.data[3] + (rtimer-time);
+        out_many_remainder[1] = in_remainder;
+        if(rem!=0) {return(rtimer-time, out_many_remainder, out_many_finished_indices, out_many_NF);} // division algorithm not finished ==> put new remainder back to the place "remainder"
+      }
+    }
+  }
+
+  //debug(DIR,ddd,string(ddd)); ddd++;
+
+  if(rem!=0) // non-zero remainder ==> add to the place "NF"
+  {
+    out_many_NF[1] = in_remainder;
+  }
+  else // reduced the spoly to 0 ==> add to place "finished_indices"
+  {
+    token out_finished_indices;
+    out_finished_indices.fieldnames[1] = "finished_indices";
+    out_finished_indices.data[1] = in_remainder.data[2];
+    out_finished_indices.fieldnames[2] = "new_state_for_A";
+    out_finished_indices.data[2] = NF_IS_ZERO;
+    out_many_finished_indices[1] = out_finished_indices;
+  }
+  //debug(DIR,ddd,string(ddd)); ddd++;
+  time = in_remainder.data[3] + (rtimer-time);
+  return(time, out_many_remainder, out_many_finished_indices, out_many_NF); // exactly one list will contain exactly one element, the others will be empty
+}
 
 proc NF_of_spoly(string DIR, int read_r, token in_started_indices)
 "USAGE: NF_of_spoly(token read_r, token in_started_indices)
 RETURN: list out_many_finished_indices, list out_many_NF
 "
 {
-  int time = rtimer; while(rtimer-time<TTT) {}
+  int time = rtimer;
+
   int i,j = in_started_indices.data[1];
+
+//  debug(DIR, in_started_indices, "o"+in_started_indices+"o", "%s");
+//  int ind = find(in_started_indices,",");
+//  int i = int(in_started_indices[1,ind-1]);
+//  debug(DIR, i, "o"+in_started_indices+"o_i", "%s");
+//  int j = int(in_started_indices[ind+1,size(in_started_indices)]);
+//  debug(DIR, j, "o"+in_started_indices+"o_j", "%s");
+
   list m1 = read("ssi:r "+DIR+"m1");
   int k;
   if(m1[2]==0) {ideal F;}
-  else              {module F;}
+  else         {module F;}
   for(k=1; k<=read_r; k++)   {F[k] = read("ssi:r "+DIR+"f"+string(k));}
 
-  def p = NF(spoly(F[i],F[j]),F);
+  def p = NF(spoly(F[i],F[j]),F,1);
 
   list out_many_NF, out_many_finished_indices;
   if(p!=0)
@@ -200,7 +378,7 @@ RETURN: list out_many_finished_indices, list out_many_NF
     out_finished_indices.data[2] = NF_IS_ZERO;
     out_many_finished_indices[1] = out_finished_indices;
   }
-  return(out_many_finished_indices, out_many_NF);
+  return(rtimer-time, out_many_finished_indices, out_many_NF);
 }
 
 proc increment(string DIR, token in_NF, token inout_A, int inout_r)
@@ -208,12 +386,15 @@ proc increment(string DIR, token in_NF, token inout_A, int inout_r)
 RETURN: token inout_A, token inout_r, token out_finished_indices
 "
 {
-  int time = rtimer; while(rtimer-time<TTT) {}
+  int time = rtimer;
   def R = in_NF.r_data;
   setring R;
   def p = in_NF.data[1];
   intvec indices = in_NF.data[2];
   intmat old_A = inout_A.data[1];
+  matrix old_B = inout_A.data[2];
+  intmat old_D = inout_A.data[3];
+  int current_degree = inout_A.data[4];
 
   list m;
   if(typeof(p)=="vector") // p vector
@@ -222,38 +403,64 @@ RETURN: token inout_A, token inout_r, token out_finished_indices
     intvec e = leadexp(p);
     m[1] = monomial(intvec(e[1..n]));
     m[2] = e[n+1];
-    //m.fieldnames[3] = "ecart_as_int"; // for the local case
   }
   else // p polynomial
   {
     m[1] = leadmonom(p);
     m[2] = 0;
   }
-  //m.data[3] = ecart(p);
+  m[3] = deg(p);
+  m[4] = size(p);
+  m[5] = ecart(p);
 
   write("ssi:w "+DIR+"m"+string(inout_r+1), m);
   write("ssi:w "+DIR+"f"+string(inout_r+1), p); // TO DO: dont read in f_{r+1} into SINGULAR but just change the filename in C++ !
 
   intmat A[inout_r+1][inout_r+1];
+  matrix B[inout_r+1][inout_r+1];
+  intmat D[inout_r+1][inout_r+1];
   A[1..inout_r,1..inout_r] = old_A[1..inout_r,1..inout_r];
-
+  B[1..inout_r,1..inout_r] = old_B[1..inout_r,1..inout_r];
+  D[1..inout_r,1..inout_r] = old_D[1..inout_r,1..inout_r];
 
   list M;
-  for(int i=1; i<=inout_r; i++) {M[i] = read("ssi:r "+DIR+"m"+string(i));}
+  int i;
+  for(i=1; i<=inout_r; i++) {M[i] = read("ssi:r "+DIR+"m"+string(i));}
   M[inout_r+1] = m;
+
+
+  //update B,D
+  for(i=1; i<=inout_r+1; i++)
+  {
+    B[i,inout_r+1] = lcm(M[i][1],m[1]);
+    B[inout_r+1,i] = B[i,inout_r+1];
+    D[i,inout_r+1] = deg(B[i,inout_r+1]);
+    D[inout_r+1,i] = D[i,inout_r+1];
+  }
+
+  // update A using product (+ chain) criterion
   list kill_indices;
-  export(A, kill_indices, M);
+  export(A, B, kill_indices, M);
+  int cctime = rtimer;
   product_criterion(inout_r+1);
-  // TO DO: use kill_indices to kill unnecessary NF(...)-processes --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  cctime = rtimer - cctime;
+
+  for(i=1; i<=inout_r; i++)
+  {
+    if(A[i,inout_r+1]==0) {current_degree = min(current_degree, D[i,inout_r+1]);}
+  }
 
   inout_A.data[1] = A;
+  inout_A.data[2] = B;
+  inout_A.data[3] = D;
+  inout_A.data[4] = current_degree;
   token out_finished_indices;
   out_finished_indices.fieldnames[1] = "finished_indices";
   out_finished_indices.data[1] = indices;
   out_finished_indices.fieldnames[2] = "new_state_for_A";
   out_finished_indices.data[2] = inout_r+1;
   inout_r++;
-  return(inout_A, inout_r, out_finished_indices);
+  return(inout_A, inout_r, rtimer-time, cctime, current_degree, out_finished_indices, kill_indices);
 }
 
 proc write_finished_indices_to_A(string DIR, token in_finished_indices, token inout_A)
@@ -261,25 +468,31 @@ proc write_finished_indices_to_A(string DIR, token in_finished_indices, token in
 RETURN: token inout_A
 "
 {
-  int time = rtimer; while(rtimer-time<TTT) {}
+  int time = rtimer;
   intmat A = inout_A.data[1];
+  matrix B = inout_A.data[2];
   int i,j = in_finished_indices.data[1];
   int new_state = in_finished_indices.data[2];
 
   int r = nrows(A); // need this r, not the (potentially bigger) r from place_r!
-
-  A[i,j] = new_state; // if A[i,j] was PORDUCT_CRITERION or CHAIN_CRITERION: we now know that we created an unnecessary GB element, could we delete it somehow?
-  A[j,i] = new_state;
-
   list M;
   for(int k=1; k<=r; k++) {M[k] = read("ssi:r "+DIR+"m"+string(k));}
   list kill_indices;
-  export(A, kill_indices, M);
-  chain_criterion(i, j);
-  // TO DO: use kill_indices to kill unnecessary NF(...)-processes --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  export(A, B, kill_indices, M);
+
+  int cctime = rtimer;
+  //if(A[i,j] == CHAIN_CRITERION && new_state>=2) { // if A[i,j] was CHAIN_CRITERION and a new GB element was created: we now know that we created an unnecessary GB element, so we delete it:
+  //  delete_element(new_state);
+  //}
+  //else {
+    A[i,j] = new_state;
+    A[j,i] = new_state;
+    chain_criterion(i, j);
+  //}
+  cctime = rtimer-cctime;
 
   inout_A.data[1] = A;
-  return(inout_A);
+  return(inout_A, rtimer-time, cctime, kill_indices);
 }
 
 proc minimize_GB(string DIR, token in_A, int in_r)
@@ -287,7 +500,7 @@ proc minimize_GB(string DIR, token in_A, int in_r)
 RETURN: token needed_indices_list, token result, int out_reduced_indices_counter, list out_many_needed_indices
 "
 {
-  int time = rtimer; while(rtimer-time<TTT) {}
+  int time = rtimer;
   list M;
   int k;
   for(k=1; k<=in_r; k++) {M[k] = read("ssi:r "+DIR+"m"+string(k));}
@@ -317,20 +530,24 @@ RETURN: token needed_indices_list, token result, int out_reduced_indices_counter
   }
   indices = indices[sort(L)[2]]; // sort indices w.r.t. the monomial ordering on the lead monomials (same as SINGULARs 'std')
 
-  token needed_indices_list, result;
-  needed_indices_list.fieldnames[1] = "needed_indices";
-  needed_indices_list.data[1] = indices;
+  token out_needed_indices_list, result;
+  out_needed_indices_list.fieldnames[1] = "needed_indices";
+  out_needed_indices_list.data[1] = indices;
   result.fieldnames[1] = "final_r";
   result.data[1] = final_r;
 
   // This output is just for debugging and analysing the algorithm:
     result.fieldnames[2] = "bookkeeping_matrix_A";
     result.data[2] = in_A.data[1];
-    result.fieldnames[3] = "needed_indices";
-    result.data[3] = indices;
+    result.fieldnames[3] = "bookkeeping_matrix_D";
+    result.data[3] = in_A.data[3];
+    result.fieldnames[4] = "current_degree";
+    result.data[4] = in_A.data[4];
+    result.fieldnames[5] = "needed_indices";
+    result.data[5] = indices;
 
   list out_many_needed_indices = indices[1..final_r];
-  return(needed_indices_list, result, out_many_needed_indices);
+  return(rtimer-time, out_needed_indices_list, result, out_many_needed_indices);
 }
 
 proc reduce_GB(string DIR, int read_redSB, token read_needed_indices_list, int in_needed_indices)
@@ -338,7 +555,7 @@ proc reduce_GB(string DIR, int read_redSB, token read_needed_indices_list, int i
 RETURN: nothing (GB will be written in files called g1, g2, g3, ...)
 "
 {
-  int time = rtimer; while(rtimer-time<TTT) {}
+  int time = rtimer;
   intvec indices = read_needed_indices_list.data[1];
   int r = size(indices);
 
@@ -363,11 +580,44 @@ RETURN: nothing (GB will be written in files called g1, g2, g3, ...)
   }
 
   write("ssi:w "+DIR+"g"+string(n), g/leadcoef(g));
-  return();
+  return(rtimer-time);
 }
 
 
 static proc chain_criterion(int i, int j)
+"USAGE: chain_criterion(intmat A, int i, int j, list M)
+RETURN: A after applying the chain criterion under the assumption that only the
+        entry A_ij has changed (to a 'finished' state); assumes i != j.
+"
+{
+  chain_criterion_row(i,j);
+  chain_criterion_col(i,j);
+}
+
+static proc delete_element(int i)
+"USAGE: delete_element(int i)
+RETURN: 'Deletes' the i-th row and column of A (overwrites them with -5)
+"
+{
+  int r = nrows(A);
+//  int k;
+//  if(i<=r) {
+//    for(k=1; k<=r; k++)
+//    {
+//      if(A[i,k]>=2 && i!=k)
+//      {
+//        //delete_element(A[i,k]); // recursively delete elements created by the i-th element
+//      }
+//      else { if(A[i,k] == STARTED) {
+//        if(i<k) {kill_indices[size(kill_indices)+1] = string(i,",",k);}
+//        else    {kill_indices[size(kill_indices)+1] = string(k,",",i);}
+//      }}
+//      A[i,k] = UNNECESSARY_ELEMENT; A[k,i] = UNNECESSARY_ELEMENT;
+//    }
+//  }
+}
+
+static proc chain_criterion_row(int i, int j)
 "USAGE: chain_criterion(intmat A, int i, int j, list M)
 RETURN: A after applying the chain criterion under the assumption that only the
         entry A_ij has changed (to a 'finished' state); assumes i != j.
@@ -382,46 +632,65 @@ RETURN: A after applying the chain criterion under the assumption that only the
       entry = A[i,k];
       if(entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
       {
-        if(NF(lcm(M[j][1],M[k][1]), M[i][1])==0)  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
+        //if(NF(lcm(M[j][1],M[k][1]), M[i][1])==0)  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
+        if(NF(B[k,j], M[i][1])==0)  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
         {
-          if(A[k,j] == STARTED)
+          entry = A[k,j];
+          if(entry == STARTED)
           {
-            if(k<j) {kill_indices[size(kill_indices)+1] = intvec(k,j);}
-            else    {kill_indices[size(kill_indices)+1] = intvec(j,k);}
+            if(k<j) {kill_indices[size(kill_indices)+1] = string(k,",",j);}
+            else    {kill_indices[size(kill_indices)+1] = string(j,",",k);}
           }
-          if(A[k,j] == STARTED || A[k,j] == 0) // if A[k,j]>0: we now know that we created an unnecessary GB element, could we delete it somehow?
+          if(entry == STARTED || entry == 0)
           {
             A[k,j] = CHAIN_CRITERION; A[j,k] = CHAIN_CRITERION;
             chain_criterion(k,j);
           }
-        }
-      }
-
-      entry = A[k,j];
-      if(entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
-      {
-        if(NF(lcm(M[i][1],M[k][1]), M[j][1])==0)  // chain-criterion
-        {
-          if(A[i,k] == STARTED)
-          {
-            if(i<k) {kill_indices[size(kill_indices)+1] = intvec(i,k);}
-            else    {kill_indices[size(kill_indices)+1] = intvec(k,i);}
-          }
-          if(A[i,k] == STARTED || A[i,k] == 0) // if A[i,k]>0: ...
-          {
-            A[i,k] = CHAIN_CRITERION; A[k,i] = CHAIN_CRITERION;
-            chain_criterion(i,k);
-          }
+          else { if(entry>=2) { // if A[k,j]>=2: we now know that we created an unnecessary GB element, so we delete it:
+            A[k,j] = CHAIN_CRITERION; A[j,k] = CHAIN_CRITERION;
+            delete_element(entry);
+          }}
         }
       }
     }
   }
+}
 
+static proc chain_criterion_col(int i, int j)
+"USAGE: chain_criterion(intmat A, int i, int j, list M)
+RETURN: A after applying the chain criterion under the assumption that only the
+        entry A_ij has changed (to a 'finished' state); assumes i != j.
+"
+{
+  int r = nrows(A);
+  int entry;
   for(int k=1; k<=r; k++)
   {
     if(k!=i && k!=j && M[i][2]==M[j][2] && M[j][2]==M[k][2])
     {
-
+      entry = A[k,j];
+      if(entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
+      {
+        //if(NF(lcm(M[i][1],M[k][1]), M[j][1])==0)  // chain-criterion
+        if(NF(B[i,k], M[j][1])==0)  // chain-criterion
+        {
+          entry = A[i,k];
+          if(entry == STARTED)
+          {
+            if(i<k) {kill_indices[size(kill_indices)+1] = string(i,",",k);}
+            else    {kill_indices[size(kill_indices)+1] = string(k,",",i);}
+          }
+          if(entry == STARTED || entry == 0)
+          {
+            A[i,k] = CHAIN_CRITERION; A[k,i] = CHAIN_CRITERION;
+            chain_criterion(i,k);
+          }
+          else { if(entry>=2) { // if A[i,k]>=2: we now know that we created an unnecessary GB element, so we delete it:
+            A[i,k] = CHAIN_CRITERION; A[k,i] = CHAIN_CRITERION;
+            delete_element(entry);
+          }}
+        }
+      }
     }
   }
 }
@@ -437,17 +706,20 @@ RETURN: A after applying the product criterion (in the case of ideals) but only
   int r = nrows(A);
   for(int j=1; j<i; j++)
   {
-    if(M[1][2]!=0) // module case: check if f_i, f_j have leads in different components
-    {
-      if(M[i][2]!=M[j][2])
-        {A[i,j] = DIFFERENT_COMPONENTS; A[j,i] = DIFFERENT_COMPONENTS;}
-    }
-    else // ideal case: check product criterion
-    {
-      if(lcm(M[i][1],M[j][1])==M[i][1]*M[j][1])
+    if(A[i-1,j]==UNNECESSARY_ELEMENT)
+      {A[i,j] = UNNECESSARY_ELEMENT; A[j,i] = UNNECESSARY_ELEMENT;}
+    else { if(M[1][2]!=0) // module case: check if f_i, f_j have leads in different components
       {
-        A[i,j] = PRODUCT_CRITERION; A[j,i] = PRODUCT_CRITERION;
-        chain_criterion(i, j);
+        if(M[i][2]!=M[j][2])
+          {A[i,j] = DIFFERENT_COMPONENTS; A[j,i] = DIFFERENT_COMPONENTS;}
+      }
+      else // ideal case: check product criterion
+      {
+        if(lcm(M[i][1],M[j][1])==M[i][1]*M[j][1])
+        {
+          A[i,j] = PRODUCT_CRITERION; A[j,i] = PRODUCT_CRITERION;
+          chain_criterion(i, j);
+        }
       }
     }
   }

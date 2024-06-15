@@ -1,14 +1,16 @@
 <defun name="buchberger">
-	<!--include-structs href="structures.xpnet"/-->
+	<!--include-structs href="structures.xpnet"-->
 
 	<in name="base_filename" type="string" place="place_base_filename"/>
 	<in name="library_name" type="string" place="place_library_name"/>
+	<in name="nworkers" type="long" place="place_nworkers"/>
 	<in name="redSB" type="long" place="place_redSB"/>
 	<in name="input" type="string" place="place_input"/>
 	<out name="output" type="string" place="place_output"/>
 	<net>
 		<place name="place_base_filename" type="string"/>
 		<place name="place_library_name" type="string"/>
+		<place name="place_nworkers" type="long"/>
 		<place name="place_redSB" type="long"/>
 		<place name="place_input" type="string"/>
 		<place name="place_output" type="string"/>
@@ -17,6 +19,8 @@
 		<place name="place_A" type="string"/>
 		<place name="place_started_indices" type="string"/>
 		<place name="place_finished_indices" type="string"/>
+		<place name="place_kill_indices" type="string"/>
+		<place name="place_remainder" type="string"/>
 		<place name="place_NF" type="string"/>
 		<place name="place_needed_indices" type="long"/>
 		<place name="place_needed_indices_list" type="string"/>
@@ -37,15 +41,22 @@
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
 					<code><![CDATA[
+						long runtime;
+						long d;
+						std::string test_str = "1_2";
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "init";
 						args_read  = {base_filename};
-						args_in    = {input};
+						args_in    = {input, test_str};
 						args_inout = {};
-						out        = {&A, &r};
+						out        = {&runtime, &d, &A, &r, &test_str};
 						out_many   = {};
 						bool delete_files = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						std::cout << "test_str after init:       " << test_str << std::endl;
+						std::cout << "test_str.length():         " << test_str.length() << std::endl;
+						std::cout << "current_degree after init: " << d << std::endl;
+						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -61,34 +72,121 @@
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
+				<in name="nworkers" type="long"/>
 				<inout name="A" type="string"/>
 				<out name="started_indices" type="list"/>
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_list_indices(base_filename, library_name, A, started_indices, BB_finished)">
+							  function="function_list_indices(base_filename, library_name, nworkers, A, started_indices, BB_finished)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
 					<code><![CDATA[
+						long runtime;
+						long d;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "list_indices";
-						args_read  = {};
+						args_read  = {nworkers};
 						args_in    = {};
 						args_inout = {&A};
-						out        = {};
+						out        = {&runtime,&d};
 						out_many   = {&started_indices, &BB_finished};
 						bool delete_files = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						std::cout << "current_degree after list_indices: " << d << std::endl;
+						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="library_name" place="place_library_name"/>
+			<connect-read port="nworkers" place="place_nworkers"/>
 			<connect-inout port="A" place="place_A"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
 		</transition>
+
+		<!--transition name="NF_init">
+			<defun>
+				<require key="worker" mandatory="true"/>
+				<in name="base_filename" type="string"/>
+				<in name="library_name" type="string"/>
+				<in name="r" type="long"/>
+				<in name="started_indices" type="string"/>
+				<out name="remainder" type="string"/>
+				<module name="singular_buchberger"
+							  require_function_unloads_without_rest="false"
+							  function="function_NF_init(base_filename, library_name, r, started_indices, remainder)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<code><![CDATA[
+						long runtime;
+						std::cout << "starting NF_init with indices =  (" << started_indices << ")" << std::endl;
+						std::cout << "                      and r   = " << r << std::endl;
+						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::string singular_function_name = "NF_init";
+						args_read  = {base_filename, r};
+						args_in    = {started_indices};
+						args_inout = {};
+						out        = {&runtime, &remainder};
+						out_many   = {};
+						bool delete_files = true;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+					]]></code>
+				</module>
+			</defun>
+			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="library_name" place="place_library_name"/>
+			<connect-read port="r" place="place_r"/>
+			<connect-in port="started_indices" place="place_started_indices"/>
+			<connect-out port="remainder" place="place_remainder"/>
+		</transition-->
+
+		<!--transition name="NF_step">
+			<defun>
+				<require key="worker" mandatory="true"/>
+				<in name="base_filename" type="string"/>
+				<in name="library_name" type="string"/>
+				<in name="r" type="long"/>
+				<in name="remainder" type="string"/>
+				<out name="new_remainder" type="list"/>
+				<out name="finished_indices" type="list"/>
+				<out name="NF" type="list"/>
+				<module name="singular_buchberger"
+								require_function_unloads_without_rest="false"
+								function="function_NF_step(base_filename, library_name, r, remainder, new_remainder, finished_indices, NF)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<code><![CDATA[
+						long runtime;
+						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::string singular_function_name = "NF_step";
+						args_read  = {base_filename, r};
+						args_in    = {remainder};
+						args_inout = {};
+						out        = {&runtime};
+						out_many   = {&new_remainder, &finished_indices, &NF};
+						bool delete_files = true;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						if(new_remainder.size()==0) {std::cout << "                                                                                                                                                                                         " << runtime << " μs (FULL NF(spoly(...))-step)" << std::endl;}
+					]]></code>
+				</module>
+			</defun>
+			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="library_name" place="place_library_name"/>
+			<connect-read port="r" place="place_r"/>
+			<connect-in port="remainder" place="place_remainder"/>
+			<connect-out-many port="new_remainder" place="place_remainder"/>
+			<connect-out-many port="finished_indices" place="place_finished_indices"/>
+			<connect-out-many port="NF" place="place_NF"/>
+		</transition-->
 
 		<transition name="NF_of_spoly">
 			<defun>
@@ -102,19 +200,24 @@
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
 							  function="function_NF_of_spoly(base_filename, library_name, r, started_indices, finished_indices, NF)">
-				  <cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
 					<code><![CDATA[
+						long runtime;
+						std::cout << "starting NF with indices =  (" << started_indices << ")" << std::endl;
+						std::cout << "                 and r   = " << r << std::endl;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "NF_of_spoly";
 						args_read  = {base_filename, r};
 						args_in    = {started_indices};
 						args_inout = {};
-						out        = {};
+						out        = {&runtime};
 						out_many   = {&finished_indices, &NF};
 						bool delete_files = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -135,22 +238,31 @@
 				<inout name="A" type="string"/>
 				<inout name="r" type="long"/>
 				<out name="finished_indices" type="string"/>
+				<out name="kill_indices" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_increment(base_filename, library_name, NF, A, r, finished_indices)">
+							  function="function_increment(base_filename, library_name, NF, A, r, finished_indices, kill_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
 					<code><![CDATA[
+						long runtime, ccruntime;
+						long d;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "increment";
 						args_read  = {base_filename};
 						args_in    = {NF};
 						args_inout = {&A, &r};
-						out        = {&finished_indices};
-						out_many   = {};
+						out        = {&runtime, &ccruntime, &d, &finished_indices};
+						out_many   = {&kill_indices};
 						bool delete_files = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						std::cout << "current_degree after increment: " << d << std::endl;
+						std::cout << "r after increment: " << r << std::endl;
+						std::cout << "                                                                                                                                                                                     " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << ccruntime << " ms (c/p criterion)" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << runtime-ccruntime << " ms (everything else)" << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -160,6 +272,7 @@
 			<connect-inout port="A" place="place_A"/>
 			<connect-inout port="r" place="place_r"/>
 			<connect-out port="finished_indices" place="place_finished_indices"/>
+			<connect-out-many port="kill_indices" place="place_kill_indices"/>
 		</transition>
 
 		<transition name="write_finished_indices_to_A">
@@ -169,22 +282,28 @@
 				<in name="library_name" type="string"/>
 				<in name="finished_indices" type="string"/>
 				<inout name="A" type="string"/>
+				<out name="kill_indices" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_write_finished_indices_to_A(base_filename, library_name, finished_indices, A)">
+							  function="function_write_finished_indices_to_A(base_filename, library_name, finished_indices, A, kill_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
 					<code><![CDATA[
+						long runtime, ccruntime;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "write_finished_indices_to_A";
 						args_read  = {base_filename};
 						args_in    = {finished_indices};
 						args_inout = {&A};
-						out        = {};
-						out_many   = {};
+						out        = {&runtime, &ccruntime};
+						out_many   = {&kill_indices};
 						bool delete_files = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						std::cout << "                                                                                                                                                                                     " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << ccruntime << " ms (c/p criterion)" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << runtime-ccruntime << " ms (everything else)" << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -192,6 +311,7 @@
 			<connect-read port="library_name" place="place_library_name"/>
 			<connect-in port="finished_indices" place="place_finished_indices"/>
 			<connect-inout port="A" place="place_A"/>
+			<connect-out-many port="kill_indices" place="place_kill_indices"/>
 		</transition>
 
 		<transition name="minimize_GB">
@@ -211,16 +331,19 @@
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
 					<code><![CDATA[
+						long runtime;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
 						args_read  = {base_filename};
 						args_in    = {A, r};
 						args_inout = {};
-						out        = {&needed_indices_list, &output};
+						out        = {&runtime, &needed_indices_list, &output};
 						out_many   = {&needed_indices};
 						bool delete_files = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -248,16 +371,19 @@
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
 					<code><![CDATA[
+						long runtime;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "reduce_GB";
 						args_read  = {base_filename, redSB, needed_indices_list};
 						args_in    = {needed_indices};
 						args_inout = {};
-						out        = {};
+						out        = {&runtime};
 						out_many   = {};
 						bool delete_files = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
 					]]></code>
 				</module>
 			</defun>
