@@ -239,18 +239,11 @@ proc NF_init(string DIR, int read_r, token in_started_indices)
 proc NF_step(string DIR, int read_r, token in_remainder)
 {
   int time = rtimer;
-  //int ddd = 1;
-  //debug(DIR,ddd,string(ddd)); ddd++;
-
 
   def R = in_remainder.r_data;
   setring R;
 
-  //debug(DIR,ddd,string(ddd)); ddd++;
-
   def rem = in_remainder.data[1];
-
-  //debug(DIR,ddd,string(ddd)); ddd++;
 
   poly q;
   list out_many_remainder, out_many_finished_indices, out_many_NF;
@@ -271,29 +264,27 @@ proc NF_step(string DIR, int read_r, token in_remainder)
 
     int k;
     list m;
-//    list leads, comps, degrees, nterms, ecarts;
+    list leads, comps, degrees, nterms, ecarts;
     for(k=1; k<=read_r; k++)
     {
       m = read("ssi:r "+DIR+"m"+string(k));
-//      leads[k]   = m[1]; // lead monomial (as poly)
-//      comps[k]   = m[2]; // lead component (int)
-//      degrees[k] = m[3]; // degree
-//      nterms[k]  = m[4]; // nterms
-//      ecarts[k]  = m[5]; // ecart
+      leads[k]   = m[1]; // lead monomial (as poly)
+      comps[k]   = m[2]; // lead component (int)
+      degrees[k] = m[3]; // degree
+      nterms[k]  = m[4]; // nterms
+      ecarts[k]  = m[5]; // ecart
+    }
 
-//    }
+    intvec indices = sort(ecarts)[2];
+    indices = intvec(indices[sort(list(nterms[indices]))[2]]);
+    indices = intvec(indices[sort(list(degrees[indices]))[2]]);
 
-//    //intvec indices = sort(ecarts)[2];
-//    //indices = intvec(indices[sort(list(nterms[indices]))[2]]);
-//    //indices = intvec(indices[sort(list(degrees[indices]))[2]]);
-//
-//    for(int kk=1; kk<=read_r; kk++)
-//    {
-//      k = indices[kk]; // go through the f_k in order from smallest to highest degree (with nterms and ecarts as tie-break)
-//      k = kk;
+    for(int kk=1; kk<=read_r; kk++)
+    {
+      k = indices[kk]; // go through the f_k in order from smallest to highest degree (with nterms and ecarts as tie-break)
 
-      q = rem_lmon/m[1];   //leads[k]; // quotient if divisible, 0 else (as poly)
-      if(q!=0 && rem_lcomp==m[2])   //comps[k]) // use f_k to reduce
+      q = rem_lmon/leads[k]; // quotient if divisible, 0 else (as poly)
+      if(q!=0 && rem_lcomp==comps[k]) // use f_k to reduce
       {
         def f = read("ssi:r "+DIR+"f"+string(k));
         if((option(get) % 2^27) >= 2^26) // if option(intStrategy) is activated: dont divide the lead coefficients:
@@ -315,8 +306,6 @@ proc NF_step(string DIR, int read_r, token in_remainder)
     }
   }
 
-  //debug(DIR,ddd,string(ddd)); ddd++;
-
   if(rem!=0) // non-zero remainder ==> add to the place "NF"
   {
     out_many_NF[1] = in_remainder;
@@ -330,7 +319,7 @@ proc NF_step(string DIR, int read_r, token in_remainder)
     out_finished_indices.data[2] = NF_IS_ZERO;
     out_many_finished_indices[1] = out_finished_indices;
   }
-  //debug(DIR,ddd,string(ddd)); ddd++;
+
   time = in_remainder.data[3] + (rtimer-time);
   return(time, out_many_remainder, out_many_finished_indices, out_many_NF); // exactly one list will contain exactly one element, the others will be empty
 }

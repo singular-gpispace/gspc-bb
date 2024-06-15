@@ -108,7 +108,7 @@
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
 		</transition>
 
-		<!--transition name="NF_init">
+		<transition name="NF_init">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -145,9 +145,9 @@
 			<connect-read port="r" place="place_r"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-out port="remainder" place="place_remainder"/>
-		</transition-->
+		</transition>
 
-		<!--transition name="NF_step">
+		<transition name="NF_step">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -186,9 +186,9 @@
 			<connect-out-many port="new_remainder" place="place_remainder"/>
 			<connect-out-many port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="NF" place="place_NF"/>
-		</transition-->
+		</transition>
 
-		<transition name="NF_of_spoly">
+		<!--transition name="NF_of_spoly">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -227,7 +227,7 @@
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="NF" place="place_NF"/>
-		</transition>
+		</transition-->
 
 		<transition name="increment">
 			<defun>
