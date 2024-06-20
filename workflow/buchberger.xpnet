@@ -1,5 +1,5 @@
 <defun name="buchberger">
-	<!--include-structs href="structures.xpnet"-->
+	<include-structs href="structures.xpnet"/>
 
 	<in name="base_filename" type="string" place="place_base_filename"/>
 	<in name="library_name" type="string" place="place_library_name"/>
@@ -22,8 +22,12 @@
 		<place name="place_kill_indices" type="string"/>
 		<place name="place_remainder" type="string"/>
 		<place name="place_NF" type="string"/>
+		<place name="place_element_index" type="long"/>
+		<place name="place_element_index_to_delete" type="long"/>
 		<place name="place_needed_indices" type="long"/>
 		<place name="place_needed_indices_list" type="string"/>
+		<place name="place_runtime" type="runtimes"/>
+		<place name="place_reduce_F_limit" type="bool"> <token><value>false</value></token></place>
 
 		<transition name="init">
 			<defun>
@@ -33,30 +37,38 @@
 				<in name="input" type="string"/>
 				<out name="A" type="string"/>
 				<out name="r" type="long"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(base_filename, library_name, input, A, r)">
+							  function="function_init(runtime, base_filename, library_name, input, A, r)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
 						long d;
-						std::string test_str = "1_2";
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "init";
 						args_read  = {base_filename};
-						args_in    = {input, test_str};
+						args_in    = {input};
 						args_inout = {};
-						out        = {&runtime, &d, &A, &r, &test_str};
+						out        = {&s_time, &d, &A, &r};
 						out_many   = {};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
-						std::cout << "test_str after init:       " << test_str << std::endl;
-						std::cout << "test_str.length():         " << test_str.length() << std::endl;
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
 						std::cout << "current_degree after init: " << d << std::endl;
-						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() << " ms (time since epoch)" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -65,6 +77,7 @@
 			<connect-in port="input" place="place_input"/>
 			<connect-out port="A" place="place_A"/>
 			<connect-out port="r" place="place_r"/>
+			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
 		<transition name="list_indices">
@@ -76,27 +89,37 @@
 				<inout name="A" type="string"/>
 				<out name="started_indices" type="list"/>
 				<out name="BB_finished" type="list"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_list_indices(base_filename, library_name, nworkers, A, started_indices, BB_finished)">
+							  function="function_list_indices(runtime, base_filename, library_name, nworkers, A, started_indices, BB_finished)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
 						long d;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "list_indices";
 						args_read  = {nworkers};
 						args_in    = {};
 						args_inout = {&A};
-						out        = {&runtime,&d};
+						out        = {&s_time,&d};
 						out_many   = {&started_indices, &BB_finished};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
 						std::cout << "current_degree after list_indices: " << d << std::endl;
-						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -106,9 +129,10 @@
 			<connect-inout port="A" place="place_A"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
+			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
-		<transition name="NF_init">
+		<!--transition name="NF_init">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -116,15 +140,19 @@
 				<in name="r" type="long"/>
 				<in name="started_indices" type="string"/>
 				<out name="remainder" type="string"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_init(base_filename, library_name, r, started_indices, remainder)">
+							  function="function_NF_init(runtime, base_filename, library_name, r, started_indices, remainder)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
 						std::cout << "starting NF_init with indices =  (" << started_indices << ")" << std::endl;
 						std::cout << "                      and r   = " << r << std::endl;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
@@ -132,11 +160,17 @@
 						args_read  = {base_filename, r};
 						args_in    = {started_indices};
 						args_inout = {};
-						out        = {&runtime, &remainder};
+						out        = {&s_time, &remainder};
 						out_many   = {};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
-						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -145,6 +179,7 @@
 			<connect-read port="r" place="place_r"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-out port="remainder" place="place_remainder"/>
+			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
 		<transition name="NF_step">
@@ -157,25 +192,35 @@
 				<out name="new_remainder" type="list"/>
 				<out name="finished_indices" type="list"/>
 				<out name="NF" type="list"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
-								function="function_NF_step(base_filename, library_name, r, remainder, new_remainder, finished_indices, NF)">
+								function="function_NF_step(runtime, base_filename, library_name, r, remainder, new_remainder, finished_indices, NF)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "NF_step";
 						args_read  = {base_filename, r};
 						args_in    = {remainder};
 						args_inout = {};
-						out        = {&runtime};
+						out        = {&s_time};
 						out_many   = {&new_remainder, &finished_indices, &NF};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
-						if(new_remainder.size()==0) {std::cout << "                                                                                                                                                                                         " << runtime << " μs (FULL NF(spoly(...))-step)" << std::endl;}
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						if(new_remainder.size()==0) {std::cout << "                                                                                                                                                                                         " << s_time << " ms (FULL NF(spoly(...))-step)" << std::endl;}
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -186,9 +231,10 @@
 			<connect-out-many port="new_remainder" place="place_remainder"/>
 			<connect-out-many port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="NF" place="place_NF"/>
-		</transition>
+			<connect-out port="runtime" place="place_runtime"/>
+		</transition-->
 
-		<!--transition name="NF_of_spoly">
+		<transition name="NF_of_spoly">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -197,15 +243,19 @@
 				<in name="started_indices" type="string"/>
 				<out name="finished_indices" type="list"/>
 				<out name="NF" type="list"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(base_filename, library_name, r, started_indices, finished_indices, NF)">
+							  function="function_NF_of_spoly(runtime, base_filename, library_name, r, started_indices, finished_indices, NF)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
 						std::cout << "starting NF with indices =  (" << started_indices << ")" << std::endl;
 						std::cout << "                 and r   = " << r << std::endl;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
@@ -213,11 +263,17 @@
 						args_read  = {base_filename, r};
 						args_in    = {started_indices};
 						args_inout = {};
-						out        = {&runtime};
+						out        = {&s_time};
 						out_many   = {&finished_indices, &NF};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
-						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -227,7 +283,8 @@
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="NF" place="place_NF"/>
-		</transition-->
+			<connect-out port="runtime" place="place_runtime"/>
+		</transition>
 
 		<transition name="increment">
 			<defun>
@@ -237,32 +294,44 @@
 				<in name="NF" type="string"/>
 				<inout name="A" type="string"/>
 				<inout name="r" type="long"/>
+				<out name="element_index" type="long"/>
 				<out name="finished_indices" type="string"/>
 				<out name="kill_indices" type="list"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_increment(base_filename, library_name, NF, A, r, finished_indices, kill_indices)">
+							  function="function_increment(runtime, base_filename, library_name, NF, A, r, element_index, finished_indices, kill_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime, ccruntime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+						long ccruntime;
+
 						long d;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "increment";
 						args_read  = {base_filename};
 						args_in    = {NF};
 						args_inout = {&A, &r};
-						out        = {&runtime, &ccruntime, &d, &finished_indices};
+						out        = {&s_time, &ccruntime, &element_index, &d, &finished_indices};
 						out_many   = {&kill_indices};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
 						std::cout << "current_degree after increment: " << d << std::endl;
 						std::cout << "r after increment: " << r << std::endl;
-						std::cout << "                                                                                                                                                                                     " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						std::cout << "                                                                                                                                                                                     " << s_time << " ms (" << singular_function_name << ")" << std::endl;
 						std::cout << "                                                                                                                                                                                         " << ccruntime << " ms (c/p criterion)" << std::endl;
-						std::cout << "                                                                                                                                                                                         " << runtime-ccruntime << " ms (everything else)" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << s_time-ccruntime << " ms (everything else)" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = ccruntime;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -271,8 +340,10 @@
 			<connect-in port="NF" place="place_NF"/>
 			<connect-inout port="A" place="place_A"/>
 			<connect-inout port="r" place="place_r"/>
+			<connect-out port="element_index" place="place_element_index"/>
 			<connect-out port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="kill_indices" place="place_kill_indices"/>
+			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
 		<transition name="write_finished_indices_to_A">
@@ -283,27 +354,38 @@
 				<in name="finished_indices" type="string"/>
 				<inout name="A" type="string"/>
 				<out name="kill_indices" type="list"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_write_finished_indices_to_A(base_filename, library_name, finished_indices, A, kill_indices)">
+							  function="function_write_finished_indices_to_A(runtime, base_filename, library_name, finished_indices, A, kill_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime, ccruntime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+						long ccruntime;
+
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "write_finished_indices_to_A";
 						args_read  = {base_filename};
 						args_in    = {finished_indices};
 						args_inout = {&A};
-						out        = {&runtime, &ccruntime};
+						out        = {&s_time, &ccruntime};
 						out_many   = {&kill_indices};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
-						std::cout << "                                                                                                                                                                                     " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						std::cout << "                                                                                                                                                                                     " << s_time << " ms (" << singular_function_name << ")" << std::endl;
 						std::cout << "                                                                                                                                                                                         " << ccruntime << " ms (c/p criterion)" << std::endl;
-						std::cout << "                                                                                                                                                                                         " << runtime-ccruntime << " ms (everything else)" << std::endl;
+						std::cout << "                                                                                                                                                                                         " << s_time-ccruntime << " ms (everything else)" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = ccruntime;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -312,6 +394,7 @@
 			<connect-in port="finished_indices" place="place_finished_indices"/>
 			<connect-inout port="A" place="place_A"/>
 			<connect-out-many port="kill_indices" place="place_kill_indices"/>
+			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
 		<transition name="minimize_GB">
@@ -325,25 +408,35 @@
 				<out name="needed_indices_list" type="string"/>
 				<out name="output" type="string"/>
 				<out name="needed_indices" type="list"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_minimize_GB(base_filename, library_name, A, r, needed_indices_list, needed_indices, output)">
+							  function="function_minimize_GB(runtime, base_filename, library_name, A, r, needed_indices_list, needed_indices, output)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
 						args_read  = {base_filename};
 						args_in    = {A, r};
 						args_inout = {};
-						out        = {&runtime, &needed_indices_list, &output};
+						out        = {&s_time, &needed_indices_list, &output};
 						out_many   = {&needed_indices};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
-						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -355,6 +448,7 @@
 			<connect-out port="needed_indices_list" place="place_needed_indices_list"/>
 			<connect-out port="output" place="place_output"/>
 			<connect-out-many port="needed_indices" place="place_needed_indices"/>
+			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
 		<transition name="reduce_GB">
@@ -365,25 +459,35 @@
 				<in name="redSB" type="long"/>
 				<in name="needed_indices_list" type="string"/>
 				<in name="needed_indices" type="long"/>
+				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
-								function="function_reduce_GB(base_filename, library_name, redSB, needed_indices_list, needed_indices)">
+								function="function_reduce_GB(runtime, base_filename, library_name, redSB, needed_indices_list, needed_indices)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
 					<code><![CDATA[
-						long runtime;
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "reduce_GB";
 						args_read  = {base_filename, redSB, needed_indices_list};
 						args_in    = {needed_indices};
 						args_inout = {};
-						out        = {&runtime};
+						out        = {&s_time};
 						out_many   = {};
 						bool delete_files = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files);
-						std::cout << "                                                                                                                                                                                         " << runtime << " μs (" << singular_function_name << ")" << std::endl;
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
 			</defun>
@@ -392,6 +496,143 @@
 			<connect-read port="redSB" place="place_redSB"/>
 			<connect-read port="needed_indices_list" place="place_needed_indices_list"/>
 			<connect-in port="needed_indices" place="place_needed_indices"/>
+			<connect-out port="runtime" place="place_runtime"/>
+		</transition>
+
+		<transition name="reduce_F">
+			<defun>
+				<require key="worker" mandatory="true"/>
+				<inout name="reduce_F_limit" type="bool"/>
+				<in name="base_filename" type="string"/>
+				<in name="library_name" type="string"/>
+				<in name="r" type="long"/>
+				<in name="in_element_index" type="long"/>
+				<out name="out_element_index" type="list"/>
+				<out name="element_index_to_delete" type="list"/>
+				<out name="runtime" type="runtimes"/>
+				<module name="singular_buchberger"
+								require_function_unloads_without_rest="false"
+								function="function_reduce_F(runtime, base_filename, library_name, r, in_element_index, out_element_index, element_index_to_delete)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
+					<code><![CDATA[
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
+						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::string singular_function_name = "reduce_F";
+						args_read  = {base_filename, r};
+						args_in    = {in_element_index};
+						args_inout = {};
+						out        = {&s_time};
+						out_many   = {&element_index_to_delete, &out_element_index};
+						bool delete_files = true;
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+					]]></code>
+				</module>
+			</defun>
+			<connect-inout port="reduce_F_limit" place="place_reduce_F_limit"/>
+			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="library_name" place="place_library_name"/>
+			<connect-read port="r" place="place_r"/>
+			<connect-in port="in_element_index" place="place_element_index"/>
+			<connect-out-many port="out_element_index" place="place_element_index"/>
+			<connect-out-many port="element_index_to_delete" place="place_element_index_to_delete"/>
+			<connect-out port="runtime" place="place_runtime"/>
+		</transition>
+
+		<transition name="delete_element">
+			<defun>
+				<require key="worker" mandatory="true"/>
+				<in name="base_filename" type="string"/>
+				<in name="library_name" type="string"/>
+				<in name="element_index_to_delete" type="long"/>
+				<inout name="A" type="string"/>
+				<out name="kill_indices" type="list"/>
+				<out name="runtime" type="runtimes"/>
+				<module name="singular_buchberger"
+								require_function_unloads_without_rest="false"
+								function="function_delete_element(runtime, base_filename, library_name, element_index_to_delete, A, kill_indices)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
+					<code><![CDATA[
+						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long s_time;
+
+						std::cout << "    deleting element f_" << element_index_to_delete << std::endl;
+						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::string singular_function_name = "delete_element";
+						args_read  = {};
+						args_in    = {element_index_to_delete};
+						args_inout = {&A};
+						out        = {&s_time};
+						out_many   = {&kill_indices};
+						bool delete_files = true;
+						bool silent = false;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+
+						runtime.transition = singular_function_name;
+						runtime.singular = s_time;
+						runtime.chaincrit = 0L;
+						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+					]]></code>
+				</module>
+			</defun>
+			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="library_name" place="place_library_name"/>
+			<connect-in port="element_index_to_delete" place="place_element_index_to_delete"/>
+			<connect-inout port="A" place="place_A"/>
+			<connect-out-many port="kill_indices" place="place_kill_indices"/>
+			<connect-out port="runtime" place="place_runtime"/>
+		</transition>
+
+		<transition name="summarize_runtimes">
+			<defun>
+				<require key="worker" mandatory="true"/>
+				<in name="base_filename" type="string"/>
+				<in name="library_name" type="string"/>
+				<in name="runtime" type="runtimes"/>
+				<inout name="output" type="string"/>
+				<module name="singular_buchberger"
+								require_function_unloads_without_rest="false"
+								function="function_summarize_runtimes(runtime, base_filename, library_name, output)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
+					<code><![CDATA[
+						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::string singular_function_name = "summarize_runtimes";
+						args_read  = {};
+						args_in    = {runtime.transition, runtime.start, runtime.stop, runtime.singular, runtime.chaincrit};
+						args_inout = {&output};
+						out        = {};
+						out_many   = {};
+						bool delete_files = true;
+						bool silent = true;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+					]]></code>
+				</module>
+			</defun>
+			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="library_name" place="place_library_name"/>
+			<connect-in port="runtime" place="place_runtime"/>
+			<connect-inout port="output" place="place_output"/>
 		</transition>
 	</net>
 </defun>

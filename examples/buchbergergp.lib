@@ -36,29 +36,19 @@ proc mod_init()
     int CHAIN_CRITERION      = -3;
     int PRODUCT_CRITERION    = -4;
     int UNNECESSARY_ELEMENT  = -5;
-    system("--ticks-per-sec", 1000000);
-    int TTT = 0;
-    export(NF_IS_ZERO, STARTED, DIFFERENT_COMPONENTS, CHAIN_CRITERION, PRODUCT_CRITERION, UNNECESSARY_ELEMENT, TTT);
+    system("--ticks-per-sec", 1000);
+    export(NF_IS_ZERO, STARTED, DIFFERENT_COMPONENTS, CHAIN_CRITERION, PRODUCT_CRITERION, UNNECESSARY_ELEMENT);
 }
 
 // argument order is ALWAYS:
 // for inputs:  read  - in  - inout
 // for outputs: inout - out - out_many
 
-proc init(string DIR, token input, string test_str)
+proc init(string DIR, token input)
 "USAGE: init(token input)
 RETURN: token out_A, token out_r
 "
 {
-//  if(test_str != "1_2") {ERROR("42!");}
-//  debug(DIR, test_str, "wtf", "%s");
-//  int index_ij = find(test_str,"_");
-//  debug(DIR, index_ij, "wtf2", "%s");
-//  int ii = int(test_str[1,index_ij-1]);
-//  int jj = int(test_str[index_ij+1,size(test_str)]);
-//  test_str = string(jj)+"_"+string(ii);
-
-
   int time = rtimer;
   def F = input.data[1];
   int out_r = size(F);
@@ -132,8 +122,7 @@ RETURN: token out_A, token out_r
   out_A.data[3] = D;
   out_A.fieldnames[4] = "current_degree";
   out_A.data[4] = current_degree;
-  //debug(DIR,out_A,"A_after_init");
-  return(rtimer-time, current_degree, out_A, out_r, test_str);
+  return(rtimer-time, current_degree, out_A, out_r);
 }
 
 proc list_indices(int read_nworkers, token inout_A) // nworkers = number of workers that will be dedicated to the NF_of_spoly transition (assuming no lagging in the book-keeping)
@@ -449,7 +438,8 @@ RETURN: token inout_A, token inout_r, token out_finished_indices
   out_finished_indices.fieldnames[2] = "new_state_for_A";
   out_finished_indices.data[2] = inout_r+1;
   inout_r++;
-  return(inout_A, inout_r, rtimer-time, cctime, current_degree, out_finished_indices, kill_indices);
+  int out_i = inout_r;
+  return(inout_A, inout_r, rtimer-time, cctime, out_i, current_degree, out_finished_indices, kill_indices);
 }
 
 proc write_finished_indices_to_A(string DIR, token in_finished_indices, token inout_A)
@@ -486,7 +476,7 @@ RETURN: token inout_A
 
 proc minimize_GB(string DIR, token in_A, int in_r)
 "USAGE: minimize_GB(token in_A, token in_r)
-RETURN: token needed_indices_list, token result, int out_reduced_indices_counter, list out_many_needed_indices
+RETURN: token needed_indices_list, token output, int out_reduced_indices_counter, list out_many_needed_indices
 "
 {
   int time = rtimer;
@@ -519,24 +509,30 @@ RETURN: token needed_indices_list, token result, int out_reduced_indices_counter
   }
   indices = indices[sort(L)[2]]; // sort indices w.r.t. the monomial ordering on the lead monomials (same as SINGULARs 'std')
 
-  token out_needed_indices_list, result;
+  token out_needed_indices_list, output;
   out_needed_indices_list.fieldnames[1] = "needed_indices";
   out_needed_indices_list.data[1] = indices;
-  result.fieldnames[1] = "final_r";
-  result.data[1] = final_r;
+  output.fieldnames[1] = "final_r";
+  output.data[1] = final_r;
 
   // This output is just for debugging and analysing the algorithm:
-    result.fieldnames[2] = "bookkeeping_matrix_A";
-    result.data[2] = in_A.data[1];
-    result.fieldnames[3] = "bookkeeping_matrix_D";
-    result.data[3] = in_A.data[3];
-    result.fieldnames[4] = "current_degree";
-    result.data[4] = in_A.data[4];
-    result.fieldnames[5] = "needed_indices";
-    result.data[5] = indices;
+    output.fieldnames[2] = "bookkeeping_matrix_A";
+    output.data[2] = in_A.data[1];
+    output.fieldnames[3] = "bookkeeping_matrix_D";
+    output.data[3] = in_A.data[3];
+    output.fieldnames[4] = "current_degree";
+    output.data[4] = in_A.data[4];
+    output.fieldnames[5] = "needed_indices";
+    output.data[5] = indices;
+    output.fieldnames[6] = "transition_names";
+    output.data[6] = list("total_start_stop", "total_time");
+    output.fieldnames[7] = "runtimes_per_transition";
+    output.data[7] = list(intvec(0,-2^31),intvec(0,0,0));
+    output.fieldnames[8] = "runtimes_raw";
+    output.data[8] = list();
 
   list out_many_needed_indices = indices[1..final_r];
-  return(rtimer-time, out_needed_indices_list, result, out_many_needed_indices);
+  return(rtimer-time, out_needed_indices_list, output, out_many_needed_indices);
 }
 
 proc reduce_GB(string DIR, int read_redSB, token read_needed_indices_list, int in_needed_indices)
@@ -572,6 +568,95 @@ RETURN: nothing (GB will be written in files called g1, g2, g3, ...)
   return(rtimer-time);
 }
 
+proc reduce_F(string DIR, int read_r, int in_element_index)
+{
+  int time = rtimer;
+
+  def f = read("ssi:r "+DIR+"f"+string(in_element_index)); // element to reduce
+  if(typeof(f)=="poly") {ideal F; poly g;}
+  else                  {module F; vector g;}
+  def Lf = leadmonom(f);
+
+  for(int k=1; k<=read_r; k++)
+  {
+    if(k!=in_element_index)
+    {
+      g = read("ssi:r "+DIR+"f"+string(k));
+      if(Lf!=leadmonom(g) || k<in_element_index) {F[size(F)+1] = g;}
+    }
+  }
+
+  list out_many_element_index_to_delete, out_many_element_index;
+  if(NF(f,F,1)==0) {
+    out_many_element_index_to_delete[1] = in_element_index;
+  }
+  else {
+    out_many_element_index[1] = in_element_index;
+  }
+  return(rtimer-time, out_many_element_index_to_delete, out_many_element_index);
+}
+
+proc delete_element(int in_element_index_to_delete, token inout_A)
+"USAGE: delete_element(int i)
+RETURN: 'Deletes' the i-th row and column of A (overwrites them with -5)
+"
+{
+  int time = rtimer;
+
+  intmat A = inout_A.data[1];
+  int r = nrows(A);
+
+  list out_many_kill_indices;
+  int k;
+  if(in_element_index_to_delete<=r) {
+    for(k=1; k<=r; k++)
+    {
+      if(A[in_element_index_to_delete,k] == STARTED) {
+        if(in_element_index_to_delete<k)
+                {out_many_kill_indices[size(out_many_kill_indices)+1] = string(in_element_index_to_delete,",",k);}
+        else    {out_many_kill_indices[size(out_many_kill_indices)+1] = string(k,",",in_element_index_to_delete);}
+      }
+      A[in_element_index_to_delete,k] = UNNECESSARY_ELEMENT;
+      A[k,in_element_index_to_delete] = UNNECESSARY_ELEMENT;
+    }
+  }
+
+  inout_A.data[1] = A;
+  return(inout_A, rtimer-time, out_many_kill_indices);
+}
+
+proc summarize_runtimes(string transition, int start, int stop, int singular, int chaincrit, token output)
+"USAGE: summarize_runtimes(token read_needed_indices_list, token in_needed_indices)
+RETURN: token output
+"
+{
+  int k=0;
+  int ntransitions = size(output.data[6]);
+  for(int i=1; i<=ntransitions; i++)
+  {
+    if(transition==output.data[6][i]) {k=i; break;}
+  }
+  if(k==0) {
+    k = ntransitions+1;
+    output.data[6][k] = transition;
+    output.data[7][k] = intvec(0,0);
+  }
+  output.data[7][k][1] = output.data[7][k][1] + stop-start;
+  output.data[7][2][1] = output.data[7][2][1] + stop-start; // add to total time
+  output.data[7][k][2] = output.data[7][k][2] + singular;
+  output.data[7][2][2] = output.data[7][2][2] + singular; // add to total time
+  output.data[8][size(output.data[8])+1] = list(transition, start, stop, singular, chaincrit);
+  if(chaincrit>0) {
+    if(size(output.data[7][k])==2) {output.data[7][k][3]=0;}
+    output.data[7][k][3] = output.data[7][k][3] + chaincrit;
+    output.data[7][2][3] = output.data[7][2][3] + chaincrit; // add to total time
+  }
+  if(transition=="init") {
+    output.data[7][1][1] = start; // count start of init transition as beginning of the algorithm
+  }
+  output.data[7][1][2] = max(stop, output.data[7][1][2]); // count end of last activated transition as ending of the algorithm
+  return(output);
+}
 
 static proc chain_criterion(int i, int j)
 "USAGE: chain_criterion(intmat A, int i, int j, list M)
@@ -581,29 +666,6 @@ RETURN: A after applying the chain criterion under the assumption that only the
 {
   chain_criterion_row(i,j);
   chain_criterion_col(i,j);
-}
-
-static proc delete_element(int i)
-"USAGE: delete_element(int i)
-RETURN: 'Deletes' the i-th row and column of A (overwrites them with -5)
-"
-{
-  int r = nrows(A);
-//  int k;
-//  if(i<=r) {
-//    for(k=1; k<=r; k++)
-//    {
-//      if(A[i,k]>=2 && i!=k)
-//      {
-//        //delete_element(A[i,k]); // recursively delete elements created by the i-th element
-//      }
-//      else { if(A[i,k] == STARTED) {
-//        if(i<k) {kill_indices[size(kill_indices)+1] = string(i,",",k);}
-//        else    {kill_indices[size(kill_indices)+1] = string(k,",",i);}
-//      }}
-//      A[i,k] = UNNECESSARY_ELEMENT; A[k,i] = UNNECESSARY_ELEMENT;
-//    }
-//  }
 }
 
 static proc chain_criterion_row(int i, int j)
@@ -637,7 +699,7 @@ RETURN: A after applying the chain criterion under the assumption that only the
           }
           else { if(entry>=2) { // if A[k,j]>=2: we now know that we created an unnecessary GB element, so we delete it:
             A[k,j] = CHAIN_CRITERION; A[j,k] = CHAIN_CRITERION;
-            delete_element(entry);
+            //delete_element(entry);
           }}
         }
       }
@@ -676,7 +738,7 @@ RETURN: A after applying the chain criterion under the assumption that only the
           }
           else { if(entry>=2) { // if A[i,k]>=2: we now know that we created an unnecessary GB element, so we delete it:
             A[i,k] = CHAIN_CRITERION; A[k,i] = CHAIN_CRITERION;
-            delete_element(entry);
+            //delete_element(entry);
           }}
         }
       }

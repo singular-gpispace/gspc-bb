@@ -1,4 +1,12 @@
 <structs>
+  <struct name="runtimes">
+    <field name="transition" type="string"/>
+    <field name="start" type="long"/>
+    <field name="stop" type="long"/>
+    <field name="singular" type="long"/>
+    <field name="chaincrit" type="long"/>
+	</struct>
+
   <struct name="ssi">
 		<field name="filename" type="string"/>
 	</struct>

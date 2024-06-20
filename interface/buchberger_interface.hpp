@@ -36,4 +36,5 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::vector<boost::variant<long*,std::string*,GpiList*>> &args_inout,
 																 std::vector<boost::variant<long*,std::string*,GpiList*>> &out,
 																 std::vector<GpiList*> &out_many,
-															 	 bool delete_files=true);
+															 	 bool delete_files=true,
+                                 bool silent=true);

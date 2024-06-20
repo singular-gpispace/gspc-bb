@@ -143,7 +143,8 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::vector<boost::variant<long*,std::string*,GpiList*>> &args_inout,
 																 std::vector<boost::variant<long*,std::string*,GpiList*>> &out,
 																 std::vector<GpiList*> &out_many,
-															 	 bool delete_files)
+															 	 bool delete_files,
+                                 bool silent)
 {
 	std::pair<int,lists> input;
 	std::vector<std::pair<int, void*>> output;
@@ -155,7 +156,7 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 	int n_out_many = out_many.size();
 
 	// start Singular and load the specified library:
-	std::cout << ids << " in Singular proc " << singular_function_name << std::endl;
+	if(!silent) {std::cout << ids << " in Singular proc " << singular_function_name << std::endl;}
 	init_singular (config::singularLibrary().string());
 	load_singular_library(singular_library_name);
 
