@@ -5,7 +5,7 @@ option("redSB"); // if option redSB is set: gspc_buchberger will calculate a uni
 configToken gc = configure_gspc();
 gc.options.tmpdir = "tempdir";
 gc.options.nodefile = "nodefile";
-gc.options.procspernode = 3;
+gc.options.procspernode = 6;
 gc.options.loghostfile = "loghostfile";
 gc.options.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
 gc.options.logport = 9876;
@@ -30,6 +30,8 @@ proc comp(def I, def J) // compare-function for indexed types
 
 
 // minimal example:
+
+/*
 ring R = 0,(x,y),dp;
 ideal I = x5, y7+x4, x2y-xy;
 I = I;
@@ -48,20 +50,48 @@ else                 {printf("%nNOT equal to std(I) !!!",0);}
 
 printf("%nbookkeeping matrix A (%s elements): %n%p%n%n%n",nrows(A),A,0);
 
-
+*/
 
 // bigger example:
-//I = I^2;
-def I = katsura(6);
-def GB, A, F, M, indices = gspc_buchberger(I, gc);
 
-if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
-else {printf("%nI (%s elements): ...",size(I));}
-if(size(string(GB))<2000) {printf("%nGB (%s elements): %n%p",size(GB),GB);}
-else {printf("%nGB (%s elements): ...",size(GB));}
-if(comp(std(I), GB)) {printf("%nEQUAL to std(I) !!!",0);}
-else                 {printf("%nNOT equal to std(I) !!!",0);}
 
-printf("%nbookkeeping matrix A (%s elements): %n%p%n",nrows(A),A,0);
-int i,j; for(i=1;i<=nrows(A);i++) {for(j=1;j<=nrows(A);j++) { if(A[i,j]<2) {A[i,j]=0;}}} A[1,1] = 1;
-printf("%nsyzygies responsible for new GB elements (%s elements): %n%p",nrows(A),A);
+ring R = 0,(x,y),dp;
+ideal I = x5, y7+x4, x2y-xy;
+I  = I^2;
+//I = ideal(I)*I;
+//I = ideal(I)*gen(2)+I;
+//def I = katsura(7);
+
+proc testBB(def I, int nworkers)
+{
+  def GB;
+  intmat A,D;
+  int cd;
+  def F;
+  def M;
+  intvec indices;
+  list runtimes, runtimes_raw;
+  GB, A, D, cd, F, M, indices, runtimes, runtimes_raw = gspc_buchberger(I, gc, nworkers);
+
+  if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
+  else {printf("%nI (%s elements): ...",size(I));}
+  if(size(string(GB))<2000) {printf("%nGB (%s elements): %n%p",size(GB),GB);}
+  else {printf("%nGB (%s elements): ...",size(GB));}
+  if(comp(std(I), GB)) {printf("%nEQUAL to std(I) !!!",0);}
+  else                 {printf("%nNOT equal to std(I) !!!",0);}
+
+  intmat AA = A; int i,j;
+  for(i=1;i<=nrows(AA);i++) {for(j=1;j<=nrows(AA);j++) { if(AA[i,j]<2) {AA[i,j]=0;}}} AA[1,1] = 1;
+  if(size(string(A))<2000) {
+    printf("%nbookkeeping matrix A (%s elements): %n%p%n",nrows(A),A,0);
+    printf("%nsyzygies responsible for new GB elements (%s elements): %n%p",nrows(AA),AA);
+  }
+  else {
+    printf("%nbookkeeping matrix A (%s elements): %n...%n",nrows(A), 0);
+  }
+
+  export(GB,A,D,cd,F,M,indices,AA, runtimes, runtimes_raw);
+}
+
+def I = katsura(7);
+testBB(I, 2);
