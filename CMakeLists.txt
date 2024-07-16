@@ -70,3 +70,4 @@ add_custom_target (Config
 install (DIRECTORY examples
   DESTINATION "${CMAKE_INSTALL_PREFIX}/share"
 )
+

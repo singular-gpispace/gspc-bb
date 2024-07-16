@@ -254,7 +254,7 @@
 					<cinclude href="chrono"/>
 					<code><![CDATA[
 						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time;
+						long s_time, readF_time;
 
 						std::cout << "starting NF with indices =  (" << started_indices << ")" << std::endl;
 						std::cout << "                 and r   = " << r << std::endl;
@@ -263,7 +263,7 @@
 						args_read  = {base_filename, r};
 						args_in    = {started_indices};
 						args_inout = {};
-						out        = {&s_time};
+						out        = {&s_time, &readF_time};
 						out_many   = {&finished_indices, &NF};
 						bool delete_files = true;
 						bool silent = false;
@@ -272,7 +272,7 @@
 
 						runtime.transition = singular_function_name;
 						runtime.singular = s_time;
-						runtime.chaincrit = 0L;
+						runtime.chaincrit = readF_time;
 						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					]]></code>
 				</module>
