@@ -12,8 +12,86 @@
 #include "singular_functions.hpp"
 
 
+std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file);
+std::pair<int,void*> make_singular_data(std::string const& input, std::string const& ids, bool const& delete_file);
+std::pair<int,void*> make_singular_data(GpiVariant const& input, std::string const& ids, bool const& delete_file);
 
-std::pair<int,void*> make_singular_data(long const& input)
+class return_singular_data : public boost::static_visitor<std::pair<int,void*>>
+{
+private:
+  std::string ids;
+  bool delete_file;
+public:
+  return_singular_data(std::string const& ids, bool const& delete_file)
+  {
+    this->ids = ids;
+    this->delete_file = delete_file;
+  }
+
+  std::pair<int,void*> operator() (const bool& data) const
+  {
+    return make_singular_data((long) data, this->ids, this->delete_file);
+  }
+  std::pair<int,void*> operator() (const int& data) const
+  {
+    return make_singular_data((long) data, this->ids, this->delete_file);
+  }
+  std::pair<int,void*> operator() (const long& data) const
+  {
+    return make_singular_data(data, this->ids, this->delete_file);
+  }
+  std::pair<int,void*> operator() (const unsigned int& data) const
+  {
+    return make_singular_data((long) data, this->ids, this->delete_file);
+  }
+  std::pair<int,void*> operator() (const long unsigned int& data) const
+  {
+    return make_singular_data((long) data, this->ids, this->delete_file);
+  }
+  std::pair<int,void*> operator() (const std::string& data) const
+  {
+    return make_singular_data(data, this->ids, this->delete_file);
+  }
+  std::pair<int,void*> operator() (const GpiList& data) const
+  {
+    lists L=(lists)omAllocBin(slists_bin);
+    L->Init(data.size());
+    std::pair<int,void*> content;
+    int i=0;
+    for (GpiVariant const& elem : data) {
+      content = make_singular_data(elem, this->ids, this->delete_file); // recursion! (elem will be of type GpiVariant)
+      L->m[i].rtyp = content.first;
+     L->m[i].data = content.second;
+      i++;
+    }
+    return std::make_pair(LIST_CMD, L);
+  }
+
+  template <typename U>
+  std::pair<int,void*> operator() (const U&) const
+  {
+    throw std::runtime_error ("Type not implemented!");
+    return std::pair<int,void*>{};
+  }
+};
+
+template <typename T>
+class variant_visitor : public boost::static_visitor<T>
+{
+public:
+  T operator() (const T& data) const
+  {
+    return data;
+  }
+
+  template <typename U>
+  T operator() (const U&) const
+  {
+      return T{};
+  }
+};
+
+std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file)
 {
   return std::make_pair(INT_CMD, (void*) (char*) (input));
 }
@@ -24,19 +102,10 @@ std::pair<int,void*> make_singular_data(std::string const& input, std::string co
   else                                        // pass the string directly to SINGULAR
     {return std::make_pair(STRING_CMD, (void *)omStrDup(input.c_str()));}
 }
+
 std::pair<int,void*> make_singular_data(GpiVariant const& input, std::string const& ids, bool const& delete_file)
 {
-  switch(input.which()) {
-    case 0:  throw std::runtime_error ("Type not implemented! (control)");
-    case 1:  return make_singular_data((long) boost::get<bool>              (input));
-    case 2:  return make_singular_data((long) boost::get<int>               (input));
-    case 3:  return make_singular_data(       boost::get<long>              (input));
-    case 4:  return make_singular_data((long) boost::get<unsigned int>      (input));
-    case 5:  return make_singular_data((long) boost::get<long unsigned int> (input));
-    case 9:  return make_singular_data(       boost::get<std::string>       (input), ids, delete_file);
-    case 12: throw std::runtime_error ("Type not implemented yet! (recursive instance of GpiList)"); // TODO!
-  }
-	throw std::runtime_error ("Type not implemented!");
+  return boost::apply_visitor(return_singular_data(ids,delete_file), input);
 }
 std::pair<int,void*> make_singular_data(GpiList const& input, std::string const& ids, bool const& delete_file)
 {
@@ -55,7 +124,7 @@ std::pair<int,void*> make_singular_data(GpiList const& input, std::string const&
 std::pair<int,void*> make_singular_data(boost::variant<long, std::string, GpiList> const& input, std::string const& ids, bool const& delete_file)
 {
   switch(input.which()) {
-    case 0: return make_singular_data( (boost::get<long>        (input)));
+    case 0: return make_singular_data( (boost::get<long>        (input)), ids, delete_file);
     case 1: return make_singular_data( (boost::get<std::string> (input)), ids, delete_file);
     case 2: return make_singular_data( (boost::get<GpiList>     (input)), ids, delete_file);
   }
@@ -64,12 +133,15 @@ std::pair<int,void*> make_singular_data(boost::variant<long, std::string, GpiLis
 std::pair<int,void*> make_singular_data(boost::variant<long*, std::string*, GpiList*> const& input, std::string const& ids, bool const& delete_file)
 {
   switch(input.which()) {
-    case 0: return make_singular_data( *(boost::get<long*>        (input)));
+    case 0: return make_singular_data( *(boost::get<long*>        (input)), ids, delete_file);
     case 1: return make_singular_data( *(boost::get<std::string*> (input)), ids, delete_file);
     case 2: return make_singular_data( *(boost::get<GpiList*>     (input)), ids, delete_file);
   }
 	throw std::runtime_error ("Type not implemented!");
 }
+
+
+
 
 
 bool write_singular_output(std::pair<int, void*> const& res, long& out_var)
@@ -92,6 +164,7 @@ bool write_singular_output(std::pair<int, void*> const& res, std::string& out_va
 }
 bool write_singular_output(std::pair<int, void*> const& res, GpiList& out_var, std::string const& base_filename, std::string const& singular_function_name)
 {
+  out_var = {};
 	if(res.first != LIST_CMD) {return true;}
 	bool err=false;
 	lists res_list = (lists) res.second;

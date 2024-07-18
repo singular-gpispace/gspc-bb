@@ -44,11 +44,18 @@ proc mod_init()
 // for inputs:  read  - in  - inout
 // for outputs: inout - out - out_many
 
-proc init(string DIR, token input)
+proc init(string DIR, token input, list testlist, int testint, string teststring)
 "USAGE: init(token input)
 RETURN: token out_A, token out_r
 "
 {
+  //list testlist = 6,9,"fourty-two";
+  //int testint   = 42;
+  //if(typeof(testlist)!="list" || typeof(testint)!="int" || size(testlist)!=3 || testlist[1]!=6 || testlist[2]!=9 || testlist[3]!="fourty-two" || testint!=42) {ERROR("test error");}
+  debug(DIR, testlist, "testlist");
+  debug(DIR, testint, "testint");
+  debug(DIR, teststring, "teststring");
+
   int time = rtimer;
   def F = input.data[1];
   int out_r = size(F);
@@ -56,14 +63,15 @@ RETURN: token out_A, token out_r
   intvec e;
   int i,j;
   list M;
+  int n = nvars(basering);
   if(typeof(F) == "module") { // module
-    int n = nvars(basering);
     for(i=1; i<=out_r; i++)
     {
       write("ssi:w "+DIR+"f"+string(i), F[i]);
 
       e = leadexp(F[i]);
-      m[1] = monomial(intvec(e[1..n])); // lead monomial as poly
+      //m[1] = monomial(intvec(e[1..n])); // lead monomial as poly
+      m[1] = list(e[1..n]); // lead monomial as poly
       m[2] = e[n+1];                    // the lead monomials component as int (0 in case of polynomials & ideals)
       m[3] = deg(F[i]);                 // degree
       m[4] = size(F[i]);                // number of terms
@@ -77,7 +85,9 @@ RETURN: token out_A, token out_r
     {
       write("ssi:w "+DIR+"f"+string(i), F[i]);
 
-      m[1] = leadmonom(F[i]);           // lead monomial as poly
+      e = leadexp(F[i]);
+      //m[1] = leadmonom(F[i]);           // lead monomial as poly
+      m[1] = list(e[1..n]); // lead monomial as poly
       m[2] = 0;                         // the lead monomials component as int (0 in case of polynomials & ideals)
       m[3] = deg(F[i]);                 // degree
       m[4] = size(F[i]);                // number of terms
@@ -86,6 +96,7 @@ RETURN: token out_A, token out_r
       M[i] = m;
     }
   }
+
 
   list kill_indices;
   intmat A[out_r][out_r];
@@ -96,7 +107,8 @@ RETURN: token out_A, token out_r
     for(j=i; j<=out_r; j++) {
       //B[i,j] = lcm(M[i][1],M[j][1]);
       //B[j,i] = B[i,j];
-      D[i,j] = deg(lcm(M[i][1],M[j][1]));
+      D[i,j] = sum(lcm_monom(M[i][1],M[j][1]));
+      //D[i,j] = deg(lcm(M[i][1],M[j][1]));
       D[j,i] = D[i,j];
     }
   }
@@ -125,7 +137,8 @@ RETURN: token out_A, token out_r
   out_A.data[4] = current_degree;
   out_A.fieldnames[5] = "deleted_elements"; // intvec of 0's and 1's
   out_A.data[5] = deleted_elements;         // initialized with 0's
-  return(rtimer-time, current_degree, out_A, out_r);
+
+  return(rtimer-time, current_degree, out_A, out_r, M);
 }
 
 proc list_indices(int read_nworkers, token inout_A) // nworkers = number of workers that will be dedicated to the NF_of_spoly transition (assuming no lagging in the book-keeping)
@@ -316,7 +329,7 @@ proc NF_step(string DIR, int read_r, token in_remainder)
   return(time, out_many_remainder, out_many_finished_indices, out_many_NF); // exactly one list will contain exactly one element, the others will be empty
 }
 
-proc NF_of_spoly(string DIR, int read_r, token in_started_indices)
+proc NF_of_spoly(string DIR, int read_r, list read_M, token in_started_indices)
 "USAGE: NF_of_spoly(token read_r, token in_started_indices)
 RETURN: list out_many_finished_indices, list out_many_NF
 "
@@ -332,7 +345,9 @@ RETURN: list out_many_finished_indices, list out_many_NF
 //  int j = int(in_started_indices[ind+1,size(in_started_indices)]);
 //  debug(DIR, j, "o"+in_started_indices+"o_j", "%s");
 
-  list m1 = read("ssi:r "+DIR+"m1");
+  //list m1 = read("ssi:r "+DIR+"m1");
+  list m1 = read_M[1];
+
   int k;
   if(m1[2]==0) {ideal F;}
   else         {module F;}
@@ -361,14 +376,16 @@ RETURN: list out_many_finished_indices, list out_many_NF
     out_finished_indices.data[2] = NF_IS_ZERO;
     out_many_finished_indices[1] = out_finished_indices;
   }
+
   return(rtimer-time, readFtime, out_many_finished_indices, out_many_NF);
 }
 
-proc increment(string DIR, token in_NF, token inout_A, int inout_r)
+proc increment(string DIR, token in_NF, token inout_A, int inout_r, list M)
 "USAGE: increment(token in_NF, token inout_A, token inout_r)
 RETURN: token inout_A, token inout_r, token out_finished_indices
 "
 {
+
   int time = rtimer;
   def R = in_NF.r_data;
   setring R;
@@ -380,16 +397,19 @@ RETURN: token inout_A, token inout_r, token out_finished_indices
   int current_degree = inout_A.data[4];
 
   list m;
+  int n = nvars(basering);
   if(typeof(p)=="vector") // p vector
   {
-    int n = nvars(basering);
     intvec e = leadexp(p);
-    m[1] = monomial(intvec(e[1..n]));
+    //m[1] = monomial(intvec(e[1..n]));
+    m[1] = list(e[1..n]);
     m[2] = e[n+1];
   }
   else // p polynomial
   {
-    m[1] = leadmonom(p);
+    intvec e = leadexp(p);
+    //m[1] = leadmonom(p);
+    m[1] = list(e[1..n]);
     m[2] = 0;
   }
   m[3] = deg(p);
@@ -408,18 +428,17 @@ RETURN: token inout_A, token inout_r, token out_finished_indices
   inout_A.data[5][inout_r+1] = 0;
   intvec deleted_elements = inout_A.data[5];
 
-  list M;
+  //list M;
   int i;
-  for(i=1; i<=inout_r; i++) {M[i] = read("ssi:r "+DIR+"m"+string(i));}
+  //for(i=1; i<=inout_r; i++) {M[i] = read("ssi:r "+DIR+"m"+string(i));}
   M[inout_r+1] = m;
-
 
   //update B,D
   for(i=1; i<=inout_r+1; i++)
   {
     //B[i,inout_r+1] = lcm(M[i][1],m[1]);
     //B[inout_r+1,i] = B[i,inout_r+1];
-    D[i,inout_r+1] = deg(lcm(M[i][1],m[1]));
+    D[i,inout_r+1] = sum(lcm_monom(M[i][1],m[1]));
     D[inout_r+1,i] = D[i,inout_r+1];
   }
 
@@ -446,14 +465,16 @@ RETURN: token inout_A, token inout_r, token out_finished_indices
   out_finished_indices.data[2] = inout_r+1;
   inout_r++;
   int out_i = inout_r;
-  return(inout_A, inout_r, rtimer-time, cctime, out_i, current_degree, out_finished_indices, kill_indices);
+
+  return(inout_A, inout_r, M, rtimer-time, cctime, out_i, current_degree, out_finished_indices, kill_indices);
 }
 
-proc write_finished_indices_to_A(string DIR, token in_finished_indices, token inout_A)
+proc write_finished_indices_to_A(string DIR, list M, token in_finished_indices, token inout_A)
 "USAGE: write_finished_indices_to_A(token in_finished_indices, token inout_A)
 RETURN: token inout_A
 "
 {
+
   int time = rtimer;
   intmat A = inout_A.data[1];
   //matrix B = inout_A.data[2];
@@ -461,8 +482,8 @@ RETURN: token inout_A
   int new_state = in_finished_indices.data[2];
 
   int r = nrows(A); // need this r, not the (potentially bigger) r from place_r!
-  list M;
-  for(int k=1; k<=r; k++) {M[k] = read("ssi:r "+DIR+"m"+string(k));}
+  //list M;
+  //for(int k=1; k<=r; k++) {M[k] = read("ssi:r "+DIR+"m"+string(k));}
   list kill_indices;
   export(A, kill_indices, M);
 
@@ -481,39 +502,51 @@ RETURN: token inout_A
   return(inout_A, rtimer-time, cctime, kill_indices);
 }
 
-proc minimize_GB(string DIR, token in_A, int in_r)
+proc minimize_GB(string DIR, token in_A, int in_r, list M)
 "USAGE: minimize_GB(token in_A, token in_r)
 RETURN: token needed_indices_list, token output, int out_reduced_indices_counter, list out_many_needed_indices
 "
 {
   int time = rtimer;
-  list M;
+  //list M;
   int k;
-  for(k=1; k<=in_r; k++) {M[k] = read("ssi:r "+DIR+"m"+string(k));}
-
+  //for(k=1; k<=in_r; k++) {M[k] = read("ssi:r "+DIR+"m"+string(k));}
   intvec indices;
   int i,j,needed;
   k=1;
   for(i=1; i<=in_r; i++)
   {
     needed = 1;
-    for(j=1; j<=in_r; j++) { if(j!=i) {
-      if(M[i][2]==M[j][2] && NF(M[i][1],M[j][1])==0) {
-        if(M[i][1]!=M[j][1] || i<j) {
+    for(j=1; j<=in_r; j++) {
+      if(j!=i) {
+      if(M[i][2]==M[j][2] && divides_monom(M[i][1],M[j][1])) {
+        if(!(comp(M[i][1],M[j][1])) || i<j) {
           needed = 0; break;
-    }}}}
+      }}}
+    }
     if(needed) {indices[k] = i; k++;}
   }
   int final_r = size(indices);
 
+
+  list lexp;
   if(M[1][2]==0) { // ideals
     ideal L;
-    for(i=1; i<=final_r; i++) {L[i] = M[indices[i]][1];}
+    for(i=1; i<=final_r; i++) {
+      //L[i] = M[indices[i]][1];
+      lexp = M[indices[i]][1];
+      L[i] = monomial(intvec(lexp[1..size(lexp)]));
+    }
   }
   else { // modules
     module L;
-    for(i=1; i<=final_r; i++) {L[i] = M[indices[i]][1]*gen(M[indices[i]][2]);}
+    for(i=1; i<=final_r; i++) {
+      //L[i] = M[indices[i]][1]*gen(M[indices[i]][2]);
+      lexp = M[indices[i]][1];
+      L[i] = monomial(intvec(lexp[1..size(lexp)])) * gen(M[indices[i]][2]);
+    }
   }
+
   indices = indices[sort(L)[2]]; // sort indices w.r.t. the monomial ordering on the lead monomials (same as SINGULARs 'std')
 
   token out_needed_indices_list, output;
@@ -539,6 +572,8 @@ RETURN: token needed_indices_list, token output, int out_reduced_indices_counter
     output.data[8] = list();
     output.fieldnames[9] = "deleted_elements";
     output.data[9] = in_A.data[5];
+    output.fieldnames[10] = "M";
+    output.data[10] = M;
 
   list out_many_needed_indices = indices[1..final_r];
   return(rtimer-time, out_needed_indices_list, output, out_many_needed_indices);
@@ -707,7 +742,8 @@ RETURN: A after applying the chain criterion under the assumption that only the
       entry = A[i,k];
       if(entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
       {
-        if(NF(lcm(M[j][1],M[k][1]), M[i][1])==0)  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
+        //if(NF(lcm(M[j][1],M[k][1]), M[i][1])==0)  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
+        if(divides_monom(lcm_monom(M[j][1],M[k][1]), M[i][1]))  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
         //if(NF(B[k,j], M[i][1])==0)  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
         {
           entry = A[k,j];
@@ -746,7 +782,8 @@ RETURN: A after applying the chain criterion under the assumption that only the
       entry = A[k,j];
       if(entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
       {
-        if(NF(lcm(M[i][1],M[k][1]), M[j][1])==0)  // chain-criterion
+        //if(NF(lcm(M[i][1],M[k][1]), M[j][1])==0)  // chain-criterion
+        if(divides_monom(lcm_monom(M[i][1],M[k][1]), M[j][1]))  // chain-criterion
         //if(NF(B[i,k], M[j][1])==0)  // chain-criterion
         {
           entry = A[i,k];
@@ -790,7 +827,8 @@ RETURN: A after applying the product criterion (in the case of ideals) but only
       }
       else // ideal case: check product criterion
       {
-        if(lcm(M[i][1],M[j][1])==M[i][1]*M[j][1])
+        //if(lcm(M[i][1],M[j][1])==M[i][1]*M[j][1])
+        if(coprime_monom(M[i][1],M[j][1]))
         {
           A[i,j] = PRODUCT_CRITERION; A[j,i] = PRODUCT_CRITERION;
           chain_criterion(i, j);
@@ -801,10 +839,58 @@ RETURN: A after applying the product criterion (in the case of ideals) but only
 }
 
 
+proc divides_monom(list m1, list m2)
+{
+  int n=size(m1);
+  for(int i=1; i<=n; i++)
+  {
+    if(m1[i]<m2[i]) {return (0);}
+  }
+  return (1);
+}
+
+proc lcm_monom(list m1, list m2)
+{
+  int n=size(m1);
+  list m;
+  for(int i=1; i<=n; i++)
+  {
+    m[i] = max(m1[i],m2[i]);
+  }
+  return (m);
+}
+
+proc coprime_monom(list m1, list m2)
+{
+  int n=size(m1);
+  for(int i=1; i<=n; i++)
+  {
+    if(m1[i]>0 && m2[i]>0) {return (0);}
+  }
+  return (1);
+}
+
+proc comp(def I, def J) // compare-function for indexed types
+{
+  string t = typeof(I);
+  int i,n;
+  if(t!=typeof(J)) {return(0);}
+  if(t=="ideal" || t=="list" || t=="intvec" || t=="module")
+  {
+    n = size(I);
+    if(n != size(J)) {return(0);}
+    else {
+      for(i=1; i<=n; i++) {if(!comp(I[i],J[i])) {return(0);}}
+      return(1);
+    }
+  }
+  else {return (I==J);}
+}
+
 // for debugging as error messages wont be pushed to gspc-monitor:
 static proc debug(string DIR, def object, def filename, list #)
 {
   if(size(#)==0) {#[1]="";}
   if(#[1]!="") {link l=   ":w "+DIR+string(filename); write(l, typeof(object)+": "+sprintf(#[1], object)); close(l);}
-  else         {link l="ssi:w "+DIR+string(filename); write(l, object);                                   close(l);}
+  else         {link l="ssi:w "+DIR+string(filename); write(l, object);                                    close(l);}
 }

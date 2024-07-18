@@ -189,8 +189,8 @@ proc gspc_buchberger(def I, configToken gc, list #)
     def m1 = read("ssi:r "+DIR+"m1");
     int mode = m1[2];
 
-    if(mode==0) {ideal  GB,F,M; list m;}
-    else        {module GB,F,M; list m;}
+    if(mode==0) {ideal  GB,F; list m;}
+    else        {module GB,F; list m;}
     for(int i=1; i<=r; i++)
     {
       GB[i] = read("ssi:r "+DIR+"g"+string(i));
@@ -198,9 +198,9 @@ proc gspc_buchberger(def I, configToken gc, list #)
     for(int i=1; i<=r_all; i++)
     {
       F[i] = read("ssi:r tempdir/f"+string(i));
-      m = read("ssi:r tempdir/m"+string(i));
-      if(mode==0) {M[i] = m[1];}
-      else        {M[i] = m[1]*gen(m[2]);}
+      //m = read("ssi:r tempdir/m"+string(i));
+      //if(mode==0) {M[i] = m[1];}
+      //else        {M[i] = m[1]*gen(m[2]);}
     }
-    return(GB, A, D, cd, F, M, indices, list(output[1].data[6],output[1].data[7]), output[1].data[8], output[1].data[9]);
+    return(GB, A, D, cd, F, indices, list(output[1].data[6],output[1].data[7]), output[1].data[8], output[1].data[9], output[1].data[10]);
 }

@@ -16,6 +16,7 @@
 		<place name="place_output" type="string"/>
 		<place name="place_BB_finished" type="long"/>
 		<place name="place_r" type="long"/>
+		<place name="place_M" type="list"/>
 		<place name="place_A" type="string"/>
 		<place name="place_started_indices" type="string"/>
 		<place name="place_finished_indices" type="string"/>
@@ -29,6 +30,7 @@
 		<place name="place_runtime" type="runtimes"/>
 		<place name="place_reduce_F_limit" type="bool"> <token><value>false</value></token></place>
 
+
 		<transition name="init">
 			<defun>
 				<require key="worker" mandatory="true"/>
@@ -37,10 +39,11 @@
 				<in name="input" type="string"/>
 				<out name="A" type="string"/>
 				<out name="r" type="long"/>
+				<out name="M" type="list"/>
 				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(runtime, base_filename, library_name, input, A, r)">
+							  function="function_init(runtime, base_filename, library_name, input, A, r, M)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -50,15 +53,21 @@
 						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						long s_time;
 
+						std::list<GpiVariant> innerinnertestlist = {6, 9, (std::string)("fourty-two")};
+						std::list<GpiVariant> innertestlist = {6, 9, innerinnertestlist};
+						std::list<GpiVariant> testlist = {0, 1, innertestlist};
+						long testint = 42;
+						std::string teststring = "abc";
+
 						long d;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "init";
 						args_read  = {base_filename};
-						args_in    = {input};
+						args_in    = {input, testlist, testint, teststring};
 						args_inout = {};
-						out        = {&s_time, &d, &A, &r};
+						out        = {&s_time, &d, &A, &r, &M};
 						out_many   = {};
-						bool delete_files = true;
+						bool delete_files = false;
 						bool silent = false;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
 						std::cout << "current_degree after init: " << d << std::endl;
@@ -77,8 +86,11 @@
 			<connect-in port="input" place="place_input"/>
 			<connect-out port="A" place="place_A"/>
 			<connect-out port="r" place="place_r"/>
+			<connect-out port="M" place="place_M"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
+
+
 
 		<transition name="list_indices">
 			<defun>
@@ -132,6 +144,8 @@
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
+
+
 		<!--transition name="NF_init">
 			<defun>
 				<require key="worker" mandatory="true"/>
@@ -181,6 +195,8 @@
 			<connect-out port="remainder" place="place_remainder"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
+
+
 
 		<transition name="NF_step">
 			<defun>
@@ -234,24 +250,30 @@
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition-->
 
+
+
 		<transition name="NF_of_spoly">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
 				<in name="r" type="long"/>
+				<in name="M" type="list"/>
 				<in name="started_indices" type="string"/>
 				<out name="finished_indices" type="list"/>
 				<out name="NF" type="list"/>
 				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(runtime, base_filename, library_name, r, started_indices, finished_indices, NF)">
+							  function="function_NF_of_spoly(runtime, base_filename, library_name, r, M, started_indices, finished_indices, NF)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
 					<cinclude href="chrono"/>
+					<cinclude href="fstream"/>
+					<cinclude href="boost/archive/binary_iarchive.hpp"/>
+					<cinclude href="boost/archive/binary_oarchive.hpp"/>
 					<code><![CDATA[
 						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						long s_time, readF_time;
@@ -260,7 +282,7 @@
 						std::cout << "                 and r   = " << r << std::endl;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "NF_of_spoly";
-						args_read  = {base_filename, r};
+						args_read  = {base_filename, r, M};
 						args_in    = {started_indices};
 						args_inout = {};
 						out        = {&s_time, &readF_time};
@@ -280,11 +302,14 @@
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="r" place="place_r"/>
+			<connect-read port="M" place="place_M"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="NF" place="place_NF"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
+
+
 
 		<transition name="increment">
 			<defun>
@@ -294,13 +319,14 @@
 				<in name="NF" type="string"/>
 				<inout name="A" type="string"/>
 				<inout name="r" type="long"/>
+				<inout name="M" type="list"/>
 				<out name="element_index" type="long"/>
 				<out name="finished_indices" type="string"/>
 				<out name="kill_indices" type="list"/>
 				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_increment(runtime, base_filename, library_name, NF, A, r, element_index, finished_indices, kill_indices)">
+							  function="function_increment(runtime, base_filename, library_name, NF, A, r, M, element_index, finished_indices, kill_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -311,12 +337,17 @@
 						long s_time;
 						long ccruntime;
 
+
+
 						long d;
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "increment";
+
+						std::cout << "M.size() BEFORE " << singular_function_name << ":  " << M.size() << std::endl;
+
 						args_read  = {base_filename};
 						args_in    = {NF};
-						args_inout = {&A, &r};
+						args_inout = {&A, &r, &M};
 						out        = {&s_time, &ccruntime, &element_index, &d, &finished_indices};
 						out_many   = {&kill_indices};
 						bool delete_files = true;
@@ -327,6 +358,8 @@
 						std::cout << "                                                                                                                                                                                     " << s_time << " ms (" << singular_function_name << ")" << std::endl;
 						std::cout << "                                                                                                                                                                                         " << ccruntime << " ms (c/p criterion)" << std::endl;
 						std::cout << "                                                                                                                                                                                         " << s_time-ccruntime << " ms (everything else)" << std::endl;
+
+						std::cout << "M.size() AFTER " << singular_function_name << ":  " << M.size() << std::endl;
 
 						runtime.transition = singular_function_name;
 						runtime.singular = s_time;
@@ -340,24 +373,28 @@
 			<connect-in port="NF" place="place_NF"/>
 			<connect-inout port="A" place="place_A"/>
 			<connect-inout port="r" place="place_r"/>
+			<connect-inout port="M" place="place_M"/>
 			<connect-out port="element_index" place="place_element_index"/>
 			<connect-out port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="kill_indices" place="place_kill_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
+
+
 		<transition name="write_finished_indices_to_A">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
+				<in name="M" type="list"/>
 				<in name="finished_indices" type="string"/>
 				<inout name="A" type="string"/>
 				<out name="kill_indices" type="list"/>
 				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_write_finished_indices_to_A(runtime, base_filename, library_name, finished_indices, A, kill_indices)">
+							  function="function_write_finished_indices_to_A(runtime, base_filename, library_name, M, finished_indices, A, kill_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -368,9 +405,13 @@
 						long s_time;
 						long ccruntime;
 
+
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "write_finished_indices_to_A";
-						args_read  = {base_filename};
+
+						std::cout << "M.size() BEFORE " << singular_function_name << ":  " << M.size() << std::endl;
+
+						args_read  = {base_filename, M};
 						args_in    = {finished_indices};
 						args_inout = {&A};
 						out        = {&s_time, &ccruntime};
@@ -382,6 +423,8 @@
 						std::cout << "                                                                                                                                                                                         " << ccruntime << " ms (c/p criterion)" << std::endl;
 						std::cout << "                                                                                                                                                                                         " << s_time-ccruntime << " ms (everything else)" << std::endl;
 
+						std::cout << "M.size() AFTER " << singular_function_name << ":  " << M.size() << std::endl;
+
 						runtime.transition = singular_function_name;
 						runtime.singular = s_time;
 						runtime.chaincrit = ccruntime;
@@ -391,11 +434,14 @@
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="library_name" place="place_library_name"/>
+			<connect-read port="M" place="place_M"/>
 			<connect-in port="finished_indices" place="place_finished_indices"/>
 			<connect-inout port="A" place="place_A"/>
 			<connect-out-many port="kill_indices" place="place_kill_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
+
+
 
 		<transition name="minimize_GB">
 			<defun>
@@ -405,13 +451,14 @@
 				<in name="BB_finished" type="long"/>
 				<in name="A" type="string"/>
 				<in name="r" type="long"/>
+				<in name="M" type="list"/>
 				<out name="needed_indices_list" type="string"/>
 				<out name="output" type="string"/>
 				<out name="needed_indices" type="list"/>
 				<out name="runtime" type="runtimes"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_minimize_GB(runtime, base_filename, library_name, A, r, needed_indices_list, needed_indices, output)">
+							  function="function_minimize_GB(runtime, base_filename, library_name, A, r, M, needed_indices_list, needed_indices, output)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -424,7 +471,7 @@
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
 						args_read  = {base_filename};
-						args_in    = {A, r};
+						args_in    = {A, r, M};
 						args_inout = {};
 						out        = {&s_time, &needed_indices_list, &output};
 						out_many   = {&needed_indices};
@@ -445,11 +492,14 @@
 			<connect-in port="BB_finished" place="place_BB_finished"/>
 			<connect-in port="A" place="place_A"/>
 			<connect-in port="r" place="place_r"/>
+			<connect-in port="M" place="place_M"/>
 			<connect-out port="needed_indices_list" place="place_needed_indices_list"/>
 			<connect-out port="output" place="place_output"/>
 			<connect-out-many port="needed_indices" place="place_needed_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
+
+
 
 		<transition name="reduce_GB">
 			<defun>
@@ -498,6 +548,8 @@
 			<connect-in port="needed_indices" place="place_needed_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
+
+
 
 		<transition name="reduce_F">
 			<defun>
@@ -551,6 +603,8 @@
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
+
+
 		<transition name="delete_element">
 			<defun>
 				<require key="worker" mandatory="true"/>
@@ -599,6 +653,8 @@
 			<connect-out-many port="kill_indices" place="place_kill_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
+
+
 
 		<transition name="summarize_runtimes">
 			<defun>
