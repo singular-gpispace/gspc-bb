@@ -56,6 +56,9 @@ RETURN: token out_A, token out_r
   debug(DIR, testint, "testint");
   debug(DIR, teststring, "teststring");
 
+  link l=":w "+DIR+"debug"; write(l, "init"); close(l);
+
+
   int time = rtimer;
   def F = input.data[1];
   int out_r = size(F);
@@ -153,8 +156,6 @@ RETURN: token inout_A, list out_many_started_indices, list out_many_BB_finished
 
   int r = nrows(A);
   list out_many_started_indices;
-  token out_started_indices;
-  out_started_indices.fieldnames[1] = "started_indices";
   int finished = 1;
   int new_degree = -2;
   int nrunning = 0;
@@ -183,9 +184,7 @@ RETURN: token inout_A, list out_many_started_indices, list out_many_BB_finished
         A[i,j] = STARTED;
         A[j,i] = STARTED;
 
-        out_started_indices.data[1] = intvec(i,j);
-
-        out_many_started_indices[k] = out_started_indices;
+        out_many_started_indices[k] = list(i,j);
         //out_many_started_indices[k] = string(i)+","+string(j);
 
         k++;
@@ -214,7 +213,7 @@ RETURN: token inout_A, list out_many_started_indices, list out_many_BB_finished
 }
 
 
-
+/*
 proc NF_init(string DIR, int read_r, token in_started_indices)
 {
   int time = rtimer;
@@ -328,16 +327,20 @@ proc NF_step(string DIR, int read_r, token in_remainder)
   time = in_remainder.data[3] + (rtimer-time);
   return(time, out_many_remainder, out_many_finished_indices, out_many_NF); // exactly one list will contain exactly one element, the others will be empty
 }
+*/
 
-proc NF_of_spoly(string DIR, int read_r, list read_M, token in_started_indices)
+proc NF_of_spoly(string DIR, int read_r, list read_M, list read_Qback, list in_started_indices)
 "USAGE: NF_of_spoly(token read_r, token in_started_indices)
 RETURN: list out_many_finished_indices, list out_many_NF
 "
 {
+  newstruct("token", "list fieldnames, list data"); // without this, creating a "token" object throws an error for some reason...
   int time = rtimer;
-
-  int i,j = in_started_indices.data[1];
-
+  int i,j = in_started_indices[1..2];
+  int r_used = in_started_indices[3];
+  int readFtime=0;
+  
+  debug(DIR, 0,"debug","%s");
 //  debug(DIR, in_started_indices, "o"+in_started_indices+"o", "%s");
 //  int ind = find(in_started_indices,",");
 //  int i = int(in_started_indices[1,ind-1]);
@@ -346,57 +349,139 @@ RETURN: list out_many_finished_indices, list out_many_NF
 //  debug(DIR, j, "o"+in_started_indices+"o_j", "%s");
 
   //list m1 = read("ssi:r "+DIR+"m1");
-  list m1 = read_M[1];
-
-  int k;
-  if(m1[2]==0) {ideal F;}
-  else         {module F;}
-  int readFtime = rtimer;
-  for(k=1; k<=read_r; k++)   {F[k] = read("ssi:r "+DIR+"f"+string(k));}
-  readFtime = rtimer-readFtime;
-
-  def p = NF(spoly(F[i],F[j]),F,1);
-
-  list out_many_NF, out_many_finished_indices;
-  if(p!=0)
+  if(r_used<read_r)
   {
-    token out_NF;
-    out_NF.fieldnames[1] = "normal_form";
-    out_NF.data[1] = p;
-    out_NF.fieldnames[2] = "indices";
-    out_NF.data[2] = intvec(i,j);
-    out_many_NF[1] = out_NF;
+    debug(DIR, 1000,"debug","%s");
+
+    def f1 = read("ssi:r "+DIR+"f1");
+    debug(DIR, 1001,"debug","%s");
+    int k;
+    if(typeof(f1)=="poly") {ideal  F=f1;}
+    else                   {module F=f1;}
+    debug(DIR, 1002000+read_r,"debug","%s");
+    int readFtime = rtimer;
+    for(k=2; k<=read_r; k++)   {F[k] = read("ssi:r "+DIR+"f"+string(k));}
+    readFtime = rtimer-readFtime;
+
+    debug(DIR, 1003,"debug","%s");
+    if(size(in_started_indices)==4)
+    {
+      debug(DIR, 1004,"debug","%s");
+      def p = NF(in_started_indices[4].data[1],F,1); // reduce further!
+    }
+    else
+    {
+      debug(DIR, 1005,"debug","%s");
+      def p = NF(spoly(F[i],F[j]),F,1); // create s-polynomial and reduce!
+    }
+    debug(DIR, 1006,"debug","%s");
   }
   else
   {
-    token out_finished_indices;
-    out_finished_indices.fieldnames[1] = "finished_indices";
-    out_finished_indices.data[1] = intvec(i,j);
-    out_finished_indices.fieldnames[2] = "new_state_for_A";
-    out_finished_indices.data[2] = NF_IS_ZERO;
-    out_many_finished_indices[1] = out_finished_indices;
+    debug(DIR, 2,"debug","%s");
+    def p = in_started_indices[4].data[1]; // already reduced, return directly!
   }
 
-  return(rtimer-time, readFtime, out_many_finished_indices, out_many_NF);
+  debug(DIR, 3,"debug","%s");
+
+  list out_many_NF, out_many_finished_indices, out_many_started_indices;
+  token out_NF;
+  debug(DIR, 3,"debug","%s");
+  if(p!=0)
+  {
+    debug(DIR, 4,"debug"),"%s";
+    if((read_Qback[1]==i && read_Qback[2]==j) || (read_Qback[1]==j && read_Qback[2]==i)) // new GB element found!
+    {
+      //out_NF.fieldnames[1] = "normal_form";
+      //out_NF.data[1] = p;
+      //out_NF.fieldnames[2] = "indices";
+      //out_NF.data[2] = intvec(i,j);
+      list m;
+      int n = nvars(basering);
+      if(typeof(p)=="vector") // p vector
+      {
+        debug(DIR, 5,"debug","%s");
+        intvec e = leadexp(p);
+        //m[1] = monomial(intvec(e[1..n]));
+        m[1] = list(e[1..n]);
+        m[2] = e[n+1];
+      }
+      else // p polynomial
+      {
+        debug(DIR, 6,"debug","%s");
+        intvec e = leadexp(p);
+        //m[1] = leadmonom(p);
+        m[1] = list(e[1..n]);
+        m[2] = 0;
+      }
+      m[3] = deg(p);
+      m[4] = size(p);
+      m[5] = ecart(p);
+      /*
+      debug(DIR, 3, "debug");
+      string m_temp = "m"+string(rtimer);
+      debug(DIR, 4, "debug");
+      string f_temp = "f"+string(rtimer);
+      debug(DIR, m_temp, "debug");
+      debug(DIR, f_temp, "debug2");
+      write("ssi:w "+DIR+m_temp, m);
+      debug(DIR, 6, "debug");
+      write("ssi:w "+DIR+f_temp, p); // TO DO: dont read in f_{r+1} into SINGULAR but just change the filename in C++ !
+      debug(DIR, 7, "debug"); */
+      debug(DIR, 7,"debug","%s");
+      link l = "ssi:w "+DIR+"f"+string(read_r+1);
+      write(l, p); // save NEW GB ELEMENT!
+      close(l);
+      debug(DIR, "ssi:w "+DIR+"f"+string(read_r+1), "debug", "executed %s");
+      debug(DIR, "saved new element f"+string(read_r+1),"debug_r_equals_"+string(read_r)+"_from_started_index_("+string(i)+","+string(j)+")_at_time_"+string(timer),"%s");
+      //out_many_NF[1] = list(m, m_temp, f_temp, i, j);
+      out_many_NF[1] = list(i, j, m); // also return the new lead monomial to be saved in M
+    }
+    else // element (i,j) not at end of queue, so put the result back!
+    {
+      debug(DIR, 8,"debug","%s");
+      token p_token;
+      debug(DIR, 9,"debug","%s");
+      p_token.fieldnames[1] = "current remainder";
+      p_token.data[1] = p;
+      out_many_started_indices[1] = list(i, j, read_r, p_token);
+      debug(DIR, 10,"debug","%s");
+    }
+  }
+  else
+  {
+    //token out_finished_indices;
+    //out_finished_indices.fieldnames[1] = "finished_indices";
+    //out_finished_indices.data[1] = intvec(i,j);
+    //out_finished_indices.fieldnames[2] = "new_state_for_A";
+    //out_finished_indices.data[2] = NF_IS_ZERO;
+    out_many_finished_indices[1] = list(i, j, NF_IS_ZERO);
+  }
+
+  return(rtimer-time, readFtime, out_many_started_indices, out_many_finished_indices, out_many_NF);
 }
 
-proc increment(string DIR, token in_NF, token inout_A, int inout_r, list M)
+proc increment(string DIR, list in_NF, token inout_A, int inout_r, list M)
 "USAGE: increment(token in_NF, token inout_A, token inout_r)
 RETURN: token inout_A, token inout_r, token out_finished_indices
 "
 {
-
+  //debug(DIR, in_NF, "in_NF");
   int time = rtimer;
-  def R = in_NF.r_data;
-  setring R;
-  def p = in_NF.data[1];
-  intvec indices = in_NF.data[2];
+  //token NF_result = in_NF[1];
+  //def R = NF_result.r_data;
+  //setring R;
+  //def p = NF_result.data[1];
+  list m=in_NF[1];
+  string m_temp = in_NF[2];
+  string f_temp = in_NF[3];
+  intvec indices = intvec(in_NF[4],in_NF[5]);
   intmat old_A = inout_A.data[1];
   //matrix old_B = inout_A.data[2];
   intmat old_D = inout_A.data[3];
   int current_degree = inout_A.data[4];
 
-  list m;
+/*
   int n = nvars(basering);
   if(typeof(p)=="vector") // p vector
   {
@@ -415,9 +500,11 @@ RETURN: token inout_A, token inout_r, token out_finished_indices
   m[3] = deg(p);
   m[4] = size(p);
   m[5] = ecart(p);
+*/
+  M[inout_r+1] = m;
 
-  write("ssi:w "+DIR+"m"+string(inout_r+1), m);
-  write("ssi:w "+DIR+"f"+string(inout_r+1), p); // TO DO: dont read in f_{r+1} into SINGULAR but just change the filename in C++ !
+  write("ssi:w "+DIR+"m"+string(inout_r+1), read("ssi:r "+DIR+m_temp));
+  write("ssi:w "+DIR+"f"+string(inout_r+1), read("ssi:r "+DIR+f_temp)); // TO DO: dont read in f_{r+1} into SINGULAR but just change the filename in C++ !
 
   intmat A[inout_r+1][inout_r+1];
   //matrix B[inout_r+1][inout_r+1];
@@ -431,7 +518,6 @@ RETURN: token inout_A, token inout_r, token out_finished_indices
   //list M;
   int i;
   //for(i=1; i<=inout_r; i++) {M[i] = read("ssi:r "+DIR+"m"+string(i));}
-  M[inout_r+1] = m;
 
   //update B,D
   for(i=1; i<=inout_r+1; i++)
@@ -458,18 +544,21 @@ RETURN: token inout_A, token inout_r, token out_finished_indices
   //inout_A.data[2] = B;
   inout_A.data[3] = D;
   inout_A.data[4] = current_degree;
-  token out_finished_indices;
-  out_finished_indices.fieldnames[1] = "finished_indices";
-  out_finished_indices.data[1] = indices;
-  out_finished_indices.fieldnames[2] = "new_state_for_A";
-  out_finished_indices.data[2] = inout_r+1;
+
+  //token out_finished_indices;
+  //out_finished_indices.fieldnames[1] = "finished_indices";
+  //out_finished_indices.data[1] = indices;
+  //out_finished_indices.fieldnames[2] = "new_state_for_A";
+  //out_finished_indices.data[2] = inout_r+1;
+
+  list out_finished_indices = list(indices[1], indices[2], inout_r+1);
   inout_r++;
   int out_i = inout_r;
 
   return(inout_A, inout_r, M, rtimer-time, cctime, out_i, current_degree, out_finished_indices, kill_indices);
 }
 
-proc write_finished_indices_to_A(string DIR, list M, token in_finished_indices, token inout_A)
+proc write_finished_indices_to_A(string DIR, list M, list in_finished_indices, token inout_A)
 "USAGE: write_finished_indices_to_A(token in_finished_indices, token inout_A)
 RETURN: token inout_A
 "
@@ -478,8 +567,9 @@ RETURN: token inout_A
   int time = rtimer;
   intmat A = inout_A.data[1];
   //matrix B = inout_A.data[2];
-  int i,j = in_finished_indices.data[1];
-  int new_state = in_finished_indices.data[2];
+  int i = in_finished_indices[1];
+  int j = in_finished_indices[2];
+  int new_state = in_finished_indices[3];
 
   int r = nrows(A); // need this r, not the (potentially bigger) r from place_r!
   //list M;
@@ -507,6 +597,7 @@ proc minimize_GB(string DIR, token in_A, int in_r, list M)
 RETURN: token needed_indices_list, token output, int out_reduced_indices_counter, list out_many_needed_indices
 "
 {
+  write("ssi:w  "+DIR+"NF_of_spoly_counter",0);
   int time = rtimer;
   //list M;
   int k;
@@ -567,7 +658,7 @@ RETURN: token needed_indices_list, token output, int out_reduced_indices_counter
     output.fieldnames[6] = "transition_names";
     output.data[6] = list("total_start_stop", "total_time", "readF_in_NF_transition");
     output.fieldnames[7] = "runtimes_per_transition";
-    output.data[7] = list(intvec(0,-2^31),intvec(0,0,0), intvec(0,0));
+    output.data[7] = list(intvec(0,-2^31),intvec(0,0,0,0), intvec(0,0,0));
     output.fieldnames[8] = "runtimes_raw";
     output.data[8] = list();
     output.fieldnames[9] = "deleted_elements";
@@ -683,6 +774,7 @@ proc summarize_runtimes(string transition, int start, int stop, int singular, in
 RETURN: token output
 "
 {
+
   int k=0;
   int ntransitions = size(output.data[6]);
   for(int i=1; i<=ntransitions; i++)
@@ -692,13 +784,17 @@ RETURN: token output
   if(k==0) {
     k = ntransitions+1;
     output.data[6][k] = transition;
-    output.data[7][k] = intvec(0,0);
+    output.data[7][k] = intvec(0,0,0);
   }
   output.data[7][k][1] = output.data[7][k][1] + stop-start;
   output.data[7][2][1] = output.data[7][2][1] + stop-start; // add to total time
   output.data[7][k][2] = output.data[7][k][2] + singular;
   output.data[7][2][2] = output.data[7][2][2] + singular; // add to total time
+  output.data[7][k][3] = output.data[7][k][3] + 1;
+  output.data[7][2][4] = output.data[7][2][4] + 1; // add to total
   output.data[8][size(output.data[8])+1] = list(transition, start, stop, singular, chaincrit);
+
+
   if(chaincrit>0) {
     if(transition=="NF_of_spoly") {
       output.data[7][3][1] = output.data[7][3][1] + chaincrit; // measuring the time for reading F in NF-transition
@@ -891,6 +987,6 @@ proc comp(def I, def J) // compare-function for indexed types
 static proc debug(string DIR, def object, def filename, list #)
 {
   if(size(#)==0) {#[1]="";}
-  if(#[1]!="") {link l=   ":w "+DIR+string(filename); write(l, typeof(object)+": "+sprintf(#[1], object)); close(l);}
+  if(#[1]!="") {link l=   ":a "+DIR+string(filename); write(l, typeof(object)+": "+sprintf(#[1], object)); close(l);}
   else         {link l="ssi:w "+DIR+string(filename); write(l, object);                                    close(l);}
 }

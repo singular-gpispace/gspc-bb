@@ -12,6 +12,56 @@
 #include "singular_functions.hpp"
 
 
+
+// visitor functions to convert to proper lists, sets and maps:
+
+
+/*
+GpiList get_list(GpiVariant const& v)
+{
+  return boost::apply_visitor(variant_visitor<GpiList>(), v);
+}
+GpiSet get_set(GpiVariant const& v)
+{
+  return boost::apply_visitor(variant_visitor<GpiSet>(), v);
+}
+GpiMap get_map(GpiVariant const& v)
+{
+  return boost::apply_visitor(variant_visitor<GpiMap>(), v);
+}*/
+
+/*
+// helper functions:
+GpiList lcm_monom(GpiVariant const& m1, GpiVariant const& m2)
+{
+  GpiList M1 = get_list(m1);
+  GpiList M2 = get_list(m2);
+  GpiList res;
+  if(M1.size()!=M2.size()) {throw std::runtime_error ("exponent vectors have different lengths");}
+  GpiList::iterator it1 = M1.begin();
+  GpiList::iterator it2 = M2.begin();
+  for(; it1 != M1.end(); ++it1, ++it2)
+  {
+    res.emplace_back(std::max(boost::get<long>(*it1), boost::get<long>(*it2)));
+  }
+  return res;
+}
+
+long deg_monom(GpiVariant const& m)
+{
+  GpiList M = get_list(m);
+  long d=0;
+  for(GpiList::iterator it = M.begin(); it != M.end(); ++it)
+  {
+    d += boost::get<long>(*it);
+  }
+  return d;
+}
+
+*/
+
+
+
 std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file);
 std::pair<int,void*> make_singular_data(std::string const& input, std::string const& ids, bool const& delete_file);
 std::pair<int,void*> make_singular_data(GpiVariant const& input, std::string const& ids, bool const& delete_file);
@@ -75,21 +125,8 @@ public:
   }
 };
 
-template <typename T>
-class variant_visitor : public boost::static_visitor<T>
-{
-public:
-  T operator() (const T& data) const
-  {
-    return data;
-  }
 
-  template <typename U>
-  T operator() (const U&) const
-  {
-      return T{};
-  }
-};
+
 
 std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file)
 {
@@ -139,9 +176,6 @@ std::pair<int,void*> make_singular_data(boost::variant<long*, std::string*, GpiL
   }
 	throw std::runtime_error ("Type not implemented!");
 }
-
-
-
 
 
 bool write_singular_output(std::pair<int, void*> const& res, long& out_var)
@@ -207,6 +241,12 @@ bool write_singular_output(std::pair<int, void*> const& res, boost::variant<long
 
 NO_NAME_MANGLING
 
+/*
+std::string filename_gen(std::string const& base_filename)
+{
+  init_singular (config::library().string());
+  return base_filename+filename_generator();
+}*/
 
 void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::string const& singular_function_name,
