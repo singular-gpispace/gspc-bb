@@ -29,7 +29,7 @@ proc mod_init()
     LIB "buchbergergp.lib";
     newstruct("configToken", "string tokentype, def options");
     newstruct("gspcConfigToken", "string tmpdir, string nodefile, int procspernode, string rifstrategy, string rifstrategyparameters, string loghost, int logport, string loghostfile, int deleteoutputfiles");
-    newstruct("buchbergerConfigToken", " string neededLibrary, string functionName, int nworkers, int redSB");
+    newstruct("buchbergerConfigToken", " string neededLibrary, string functionName");
     newstruct("token", "list fieldnames, list data");
 }
 
@@ -153,12 +153,6 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
     // parse delete-output-files option (boolean)
     workflow_opts = workflow_opts + " --deleteoutputfiles " + string(gc.options.deleteoutputfiles);
 
-    // parse number of workers for "NF(spoly(...),...)"
-    workflow_opts = workflow_opts + " --nworkers " + string(pc.options.nworkers);
-
-    // parse redSB option (boolean)
-    workflow_opts = workflow_opts + " --redSB " + string(pc.options.redSB);
-
     string all_opts = driver_opts + " " + workflow_opts;
     def sm_result = sggspc_buchberger(all_opts);
     return(sm_result);
@@ -168,39 +162,15 @@ proc gspc_buchberger(def I, configToken gc, list #)
 {
     configToken ct = configure_buchberger();
     ct.options.neededLibrary = "buchbergergp.lib";
-    if(size(#)==0) {#[1] = 1;} // by default: just one worker (i.e. nothing runs in parallel!)
-    ct.options.nworkers = #[1];
-    ct.options.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
     token t;
     t.fieldnames[1] = "ideal_generators";
     t.data[1] = I;
     list inputlists;
     inputlists[1] = t;
+
     def output = gspc_buchberger_static(inputlists, 1, gc, ct);
-    int r = output[1].data[1];
-    intmat A = output[1].data[2];
-    intmat D = output[1].data[3];
-    int cd = output[1].data[4]; // current degree
-    intvec indices = output[1].data[5];
-    int r_all = nrows(A);
 
-    string DIR = gc.options.tmpdir + "/";
+    int test_result = output[1].data[1];
 
-    def m1 = read("ssi:r "+DIR+"m1");
-    int mode = m1[2];
-
-    if(mode==0) {ideal  GB,F; list m;}
-    else        {module GB,F; list m;}
-    for(int i=1; i<=r; i++)
-    {
-      GB[i] = read("ssi:r "+DIR+"g"+string(i));
-    }
-    for(int i=1; i<=r_all; i++)
-    {
-      F[i] = read("ssi:r tempdir/f"+string(i));
-      //m = read("ssi:r tempdir/m"+string(i));
-      //if(mode==0) {M[i] = m[1];}
-      //else        {M[i] = m[1]*gen(m[2]);}
-    }
-    return(GB, A, D, cd, F, indices, list(output[1].data[6],output[1].data[7]), output[1].data[8], output[1].data[9], output[1].data[10]);
+    return(test_result, list(output[1].data[2],output[1].data[3]), output[1].data[4]);
 }

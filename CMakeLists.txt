@@ -38,6 +38,15 @@ find_boost (1.61 REQUIRED QUIET FROM_GPISPACE_INSTALLATION COMPONENTS
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 find_package (Singular REQUIRED)
 
+
+if (Singular_FOUND)
+    message(STATUS "Singular found at: ${SINGULAR_HOME}")
+    include_directories("${SINGULAR_HOME}/include")
+    include_directories("${SINGULAR_HOME}/include/singular")
+endif()
+
+
+
 #set (BUNDLE_ROOT "libexec/bundle")
 #bundle_GPISpace (DESTINATION "${BUNDLE_ROOT}/gpispace" COMPONENTS "runtime" "monitoring")
 
@@ -46,6 +55,7 @@ set (SP_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}")
 include_directories ("src")
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}")
 include_directories ("${CMAKE_CURRENT_BINARY_DIR}/src")
+#include_directories ("${SINGULAR_HOME}")
 
 add_subdirectory (src)
 add_subdirectory (buchberger)
@@ -70,4 +80,3 @@ add_custom_target (Config
 install (DIRECTORY examples
   DESTINATION "${CMAKE_INSTALL_PREFIX}/share"
 )
-

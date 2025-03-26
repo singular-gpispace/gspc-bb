@@ -1,0 +1,151 @@
+LIB "buchbergergspc.lib";
+LIB "random.lib";
+
+option(redSB); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis
+
+configToken gc = configure_gspc();
+
+gc.options.tmpdir = "tempdir";
+gc.options.tmpdir = "/dev/shm/marcel/buchberger/tempdir";
+
+gc.options.nodefile = "nodefile";
+gc.options.procspernode = 3;
+gc.options.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
+
+// only needed if you use gspc-monitor:
+//gc.options.loghostfile = "loghostfile";
+//gc.options.logport = 3217;
+
+proc setcores(int n)
+{
+  gc.options.procspernode = n;
+}
+
+proc getcores()
+{
+  return(gc.options.procspernode);
+}
+
+proc comp(def I, def J) // compare-function for indexed types
+{
+  string t = typeof(I);
+  int i,n;
+  if(t!=typeof(J)) {return(0);}
+  if(t=="ideal" || t=="list" || t=="intvec" || t=="module")
+  {
+    n = size(I);
+    if(n != size(J)) {return(0);}
+    else {
+      for(i=1; i<=n; i++) {if(!comp(I[i],J[i])) {return(0);}}
+      return(1);
+    }
+  }
+  else {return (I==J);}
+}
+
+proc testSTD(def I)
+{
+  system("--ticks-per-sec", 1000); option(prot);
+  int time = rtimer;
+  print("std(...)");
+  def G = std(I);
+  printf(" took %sms", rtimer-time);
+  option(noprot);
+  return(G);
+}
+
+proc verifyGB(def I)
+{
+  int test_result;
+  list runtimes;
+  list s_pair;
+  test_result, runtimes, s_pair = gspc_buchberger(I, gc);
+
+  bigint irl_time = runtimes[2][1][2]-runtimes[2][1][1];
+  print("TIMINGS (in ms):");
+  printf("starttime:                                  %s ms",  runtimes[2][1][1]);
+  printf("stoptime:                                   %s ms",  runtimes[2][1][2]);
+  printf("runtime (stoptime - starttime):             %s ms",  irl_time);       bigint runtimes_times_100 = runtimes[2][2][1]*100;
+  printf("cputime (added up over parallel processes): %s ms (%s%)", runtimes[2][2][1], runtimes_times_100 div irl_time);
+  printf("total number of transitions:                %s %n",       runtimes[2][2][2],0);
+  printf("max time of a single transition:            %s ms%n",     runtimes[2][2][3],0);
+  int j_max=0;
+  int i,j;
+  for(i=3; i<=size(runtimes[1]); i++) {j_max = max(j_max,size(runtimes[1][i]));}
+  string s;
+  for(i=3; i<=size(runtimes[1]); i++) {
+    s="";
+    for(j=size(runtimes[1][i]); j<=j_max; j++) {runtimes[1][i] = " "+runtimes[1][i];}
+    for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
+    if (runtimes[2][i][1]==runtimes[2][i][2] && runtimes[2][i][2]==runtimes[2][i][3]) //count
+      {printf(runtimes[1][i]+": %s"+s+" times", runtimes[2][i][1]);}
+    else // timing
+      {printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);}
+  }
+
+  if(test_result)  {printf("%nBuchberger Test: result is a GRÖBNER BASIS",0);}
+  else             {printf("%nBuchberger Test: result is NOT a GRÖBNER BASIS",0); printf("(The (%s,%s)-th s-polynomial did not reduce to 0)", s_pair[1], s_pair[2]);}
+
+  export(runtimes);
+}
+
+proc testSystem(ideal II)
+{
+  system("--cpus",getcores()); system("--ticks-per-sec",1000); int TTT = rtimer; printf("%n%nsystem('verifyGB', ... ): %s", system("verifyGB", II)); printf("%ntime: %s ms", rtimer-TTT);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+//def J8 = read("ssi:r bigGB.ssi");
+//def J = read("ssi:r cyclic8_GB.ssi");
+
+//def J = read("ssi:r bigGB.ssi"); setcores(3); verifyGB(J); option(noprot); testSystem(J);
+//ideal I = J[1..66]; setcores(3); verifyGB(I), option(noprot); testSystem(I);
+
+//verifyGB(ideal(x(1)*x(2)-x(1),x(1)*x(3)-x(2)));
+//verifyGB(I);
+
+list ncores_list = 64,48,32,16,8,4,2,1;
+int ncores;
+
+def J = read("ssi:r bigGB.ssi");
+for(int i=1; i<=size(ncores_list); i++)
+{
+  ncores = ncores_list[i];
+  printf("## %s bigGB ##########################################################################",ncores);
+  setcores(ncores);
+  verifyGB(J);
+  option(noprot); testSystem(J);
+}
+
+def J = read("ssi:r cyclic8_GB.ssi");
+for(int i=1; i<=size(ncores_list); i++)
+{
+  ncores = ncores_list[i];
+  printf("## %s cyclic8_GB ##########################################################################",ncores);
+  setcores(ncores);
+  verifyGB(J);
+  option(noprot); testSystem(J);
+}
+
+def J = read("ssi:r M1_plus_M2_GB.ssi");
+for(int i=1; i<=size(ncores_list); i++)
+{
+  ncores = ncores_list[i];
+  printf("## %s M1_plus_M2_GB ##########################################################################",ncores);
+  setcores(ncores);
+  verifyGB(J);
+  //option(noprot); testSystem(J);
+}
+
+def J = read("ssi:r katsura11_GB.ssi");
+for(int i=1; i<=size(ncores_list); i++)
+{
+  ncores = ncores_list[i];
+  printf("## %s katsura11_GB ##########################################################################",ncores);
+  setcores(ncores);
+  verifyGB(J);
+  option(noprot); testSystem(J);
+}
+
+////////////////////////////////////////////////////////////////////////////////

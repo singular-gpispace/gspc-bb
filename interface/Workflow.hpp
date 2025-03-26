@@ -26,7 +26,5 @@ namespace buchberger_module
     std::string _input;
     std::string _basefilename;
     std::string _libraryname;
-    long _nworkers;
-    long _redSB;
   };
 }

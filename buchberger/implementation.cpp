@@ -3,62 +3,16 @@
 #include <interface/buchberger_interface.hpp>
 
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 #include <unistd.h>
 #include <vector>
 #include <boost/variant.hpp>
-
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <chrono>
 #include "config.hpp"
 #include "singular_functions.hpp"
-
-
-
-// visitor functions to convert to proper lists, sets and maps:
-
-
-/*
-GpiList get_list(GpiVariant const& v)
-{
-  return boost::apply_visitor(variant_visitor<GpiList>(), v);
-}
-GpiSet get_set(GpiVariant const& v)
-{
-  return boost::apply_visitor(variant_visitor<GpiSet>(), v);
-}
-GpiMap get_map(GpiVariant const& v)
-{
-  return boost::apply_visitor(variant_visitor<GpiMap>(), v);
-}*/
-
-/*
-// helper functions:
-GpiList lcm_monom(GpiVariant const& m1, GpiVariant const& m2)
-{
-  GpiList M1 = get_list(m1);
-  GpiList M2 = get_list(m2);
-  GpiList res;
-  if(M1.size()!=M2.size()) {throw std::runtime_error ("exponent vectors have different lengths");}
-  GpiList::iterator it1 = M1.begin();
-  GpiList::iterator it2 = M2.begin();
-  for(; it1 != M1.end(); ++it1, ++it2)
-  {
-    res.emplace_back(std::max(boost::get<long>(*it1), boost::get<long>(*it2)));
-  }
-  return res;
-}
-
-long deg_monom(GpiVariant const& m)
-{
-  GpiList M = get_list(m);
-  long d=0;
-  for(GpiList::iterator it = M.begin(); it != M.end(); ++it)
-  {
-    d += boost::get<long>(*it);
-  }
-  return d;
-}
-
-*/
 
 
 
@@ -238,15 +192,18 @@ bool write_singular_output(std::pair<int, void*> const& res, boost::variant<long
 }
 
 
+std::string filename_gen(std::string const& base_filename, std::string const& singular_function_name)
+{
+  init_singular (config::singularLibrary().string());
+  return base_filename+filename_generator(singular_function_name);
+}
+
+
+
+
+
 
 NO_NAME_MANGLING
-
-/*
-std::string filename_gen(std::string const& base_filename)
-{
-  init_singular (config::library().string());
-  return base_filename+filename_generator();
-}*/
 
 void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::string const& singular_function_name,
@@ -286,6 +243,7 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 		args.add_argument(make_singular_data(args_inout[i], ids, delete_files));
 	}
 
+
 	// call the SINGULAR procedure:
 	output = call_user_proc(singular_function_name, singular_library_name, args);
 
@@ -313,4 +271,254 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 		err = write_singular_output(output[j], out_many[i], base_filename, singular_function_name); j++;
 		if(err) { throw std::runtime_error (ids + ": wrong 'out-many' output pointer given for the " + std::to_string(j) + "-th output of " + singular_function_name); }
 	}
+}
+
+
+NO_NAME_MANGLING
+
+std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_and_F( [[maybe_unused]] std::string const& singular_library_name,
+                                                                                      [[maybe_unused]] std::string const& base_filename,
+                                                                                      [[maybe_unused]] std::string const& input,
+                                                                                      [[maybe_unused]] GpiMap* runtime )
+{
+  std::string ids = worker();
+  init_singular (config::singularLibrary().string());
+	//load_singular_library(singular_library_name);
+
+  long start_time,stop_time;
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  //ideal F = readIdealSSI(base_filename+"GB_for_BB_test.ssi", false);
+  std::pair<int,void*> input_ideal = deserialize(input, ids, false);
+  ideal F = (ideal) ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data;
+
+  if (TEST_OPT_INTSTRATEGY) {
+    for(int i=0; i<F->ncols; i++)
+    {
+      F->m[i] = p_Cleardenom(F->m[i], currRing);
+    }
+  }
+
+  writeIdealSSI(F, base_filename+"GB_for_BB_test.ssi");
+  ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data = (void*) F;
+  std::string GB = serialize((lists) input_ideal.second, base_filename, (std::string) "init_GB");
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "reading ideal for Buchberger test (init)"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  std::vector<std::vector<int>> Mvec;
+  for (int i=0; i<F->ncols; i++)
+  {
+    std::vector<int> Mjvec;
+    for (int j=1; j<=currRing->N; j++)
+    {
+      Mjvec.emplace_back(p_GetExp(F->m[i], j, currRing));
+    }
+    Mjvec.emplace_back(p_GetComp(F->m[i],currRing)); // last entry = component
+    Mvec.emplace_back(Mjvec);
+  }
+
+  kStrategy strat=new skStrategy;
+  strat->ak = id_RankFreeModule(F,currRing);
+  strat->kModW=kModW=NULL;
+  strat->kHomW=kHomW=NULL;
+  initBuchMoraCrit(strat);
+  initBuchMoraPos(strat);
+  initBba(strat);
+  initBuchMora(F, currRing->qideal,strat);
+  //initBuchMora:
+  strat->tail = pInit();
+  //- set s -
+  strat->sl = -1;
+  //- set L -
+  strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
+  strat->Ll = -1;
+  strat->L = initL(strat->Lmax);
+  //- set B -
+  strat->Bmax = setmaxL;
+  strat->Bl = -1;
+  strat->B = initL();
+  //- set T -
+  strat->tl = -1;
+  strat->tmax = setmaxT;
+  strat->T = initT();
+  strat->R = initR();
+  strat->sevT = initsevT();
+  //- init local data struct.----------------------------------------
+  strat->P.ecart=0;
+  strat->P.length=0;
+  strat->P.pLength=0;
+  initS(F, currRing->qideal,strat); //sets also S, ecartS, fromQ
+  strat->fromT = FALSE;
+  strat->noTailReduction = FALSE;
+  // build pairs
+  /*
+  if (strat->fromQ!=NULL)
+  {
+    for(int i=1; i<=strat->sl;i++)
+    {
+      initenterpairs(strat->S[i],i-1,0,strat->fromQ[i],strat);
+    }
+  }
+  else
+  {
+    for(int i=1; i<=strat->sl;i++)
+    {
+      initenterpairs(strat->S[i],i-1,0,FALSE,strat);
+    }
+  }*/
+
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "building kStrategy object for Buchberger test (init)"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+
+  return std::make_pair(Mvec,GB);
+}
+
+
+
+NO_NAME_MANGLING
+
+std::pair<ideal,kStrategy> singular_buchberger_get_Fstrat([[maybe_unused]] std::string const& singular_library_name,
+                                                          [[maybe_unused]] std::string const& base_filename,
+                                                          [[maybe_unused]] std::string const& GB,
+                                                          [[maybe_unused]] GpiMap* runtime )
+{
+  std::string ids = worker();
+
+  init_singular (config::singularLibrary().string());
+	//load_singular_library(singular_library_name);
+
+  long start_time,stop_time;
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  //ideal F = readIdealSSI(base_filename+"GB_for_BB_test.ssi", false);
+  std::pair<int,void*> input_ideal = deserialize(GB, ids, false);
+  ideal F = (ideal) ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data;
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "reading ideal for Buchberger test"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  kStrategy strat=new skStrategy;
+  strat->ak = id_RankFreeModule(F,currRing);
+  strat->kModW=kModW=NULL;
+  strat->kHomW=kHomW=NULL;
+  initBuchMoraCrit(strat);
+  initBuchMoraPos(strat);
+  initBba(strat);
+  initBuchMora(F, currRing->qideal,strat);
+  //initBuchMora:
+  strat->tail = pInit();
+  //- set s -
+  strat->sl = -1;
+  //- set L -
+  strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
+  strat->Ll = -1;
+  strat->L = initL(strat->Lmax);
+  //- set B -
+  strat->Bmax = setmaxL;
+  strat->Bl = -1;
+  strat->B = initL();
+  //- set T -
+  strat->tl = -1;
+  strat->tmax = setmaxT;
+  strat->T = initT();
+  strat->R = initR();
+  strat->sevT = initsevT();
+  //- init local data struct.----------------------------------------
+  strat->P.ecart=0;
+  strat->P.length=0;
+  strat->P.pLength=0;
+  initS(F, currRing->qideal,strat); //sets also S, ecartS, fromQ
+  strat->fromT = FALSE;
+  strat->noTailReduction = FALSE;
+  // build pairs
+  /*
+  if (strat->fromQ!=NULL)
+  {
+    for(int i=1; i<=strat->sl;i++)
+    {
+      initenterpairs(strat->S[i],i-1,0,strat->fromQ[i],strat);
+    }
+  }
+  else
+  {
+    for(int i=1; i<=strat->sl;i++)
+    {
+      initenterpairs(strat->S[i],i-1,0,FALSE,strat);
+    }
+  }*/
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "building kStrategy object for Buchberger test"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+
+  return std::make_pair(F,strat);
+}
+
+
+
+NO_NAME_MANGLING
+
+void singular_buchberger_compute_NF( [[maybe_unused]] std::string const& singular_library_name,
+                                     [[maybe_unused]] std::string const& base_filename,
+                                     std::pair<ideal,kStrategy> Fstrat,
+                                     GpiList const& started_indices,
+                                     GpiList* BB_test_fail,
+                                     GpiMap* runtime)
+{
+  ideal F = Fstrat.first;
+  kStrategy strat = Fstrat.second;
+
+	//// start Singular and load the specified library ////
+  init_singular (config::singularLibrary().string());
+	//load_singular_library(singular_library_name);
+
+  // calculate NF(spoly,F)
+  long start_time,stop_time;
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+  int i = (int) boost::get<long>(started_indices.front());
+  int j = (int) boost::get<long>(started_indices.back());
+
+  LObject sPair;
+  sPair.Init();
+  sPair.p1=F->m[i-1];
+  sPair.p2=F->m[j-1];
+  ksCreateSpoly(&sPair);
+
+  /*
+  LObject sPair = strat->L[started_indices];
+  if (pNext(sPair.p) == strat->tail)
+  {
+    pLmFree(sPair.p);
+    sPair.p = NULL;
+    poly m1 = NULL, m2 = NULL;
+    kCheckSpolyCreation(&(sPair), strat, m1, m2);
+    ksCreateSpoly(&(sPair), NULL, strat->use_buckets,
+                  strat->tailRing, m1, m2, strat->R);
+  }*/
+
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "building s-polynomial"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  poly NF_spoly;
+  int red_result=1;
+  if ((sPair.p == NULL) && (sPair.t_p == NULL))
+  {
+    red_result = 0;
+  }
+  else
+  {
+    int sl=strat->sl;
+    sPair.GetP();
+
+    // the actual reduction:
+    NF_spoly=redNF(sPair.p,sl,TRUE,strat);
+
+    if (NF_spoly==NULL) red_result=0;
+  }
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "reduction of s-polynomial"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+
+  if (red_result!=0) // reduction to non-zero polynomial ==> Buchberger Test fails
+  {
+    (*BB_test_fail).emplace_back(started_indices);
+  }
 }
