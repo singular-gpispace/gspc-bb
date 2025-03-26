@@ -1,13 +1,14 @@
 <structs>
-  <struct name="runtimes">
-    <field name="transition" type="string"/>
-    <field name="start" type="long"/>
-    <field name="stop" type="long"/>
-    <field name="singular" type="long"/>
-    <field name="chaincrit" type="long"/>
+
+  <struct name="running_reduction">
+    <field name="i" type="int"/>
+    <field name="j" type="int"/>
+    <field name="old_r" type="int"/>
 	</struct>
 
-  <struct name="ssi">
-		<field name="filename" type="string"/>
-	</struct>
+  <struct name="index_pair">
+    <field name="i" type="int"/>
+    <field name="j" type="int"/>
+  </struct>
+
 </structs>

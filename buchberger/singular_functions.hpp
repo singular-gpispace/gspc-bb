@@ -13,6 +13,7 @@
 #define SSI_VERSION 13
 
 
+
 // these are from ssiLink.cc
 char* ssiReadString(const ssiInfo *d);
 
@@ -38,6 +39,9 @@ class ScopedLeftv
     leftv _;
     bool chained = false;
 };
+
+void writePolySSI(poly P, std::string out_filename);
+poly readPolySSI(std::string filename, BOOLEAN delete_file);
 
 int get_struct_cmd();
 

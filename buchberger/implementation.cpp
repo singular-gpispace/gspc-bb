@@ -7,58 +7,9 @@
 #include <unistd.h>
 #include <vector>
 #include <boost/variant.hpp>
-
+#include <chrono>
 #include "config.hpp"
 #include "singular_functions.hpp"
-
-
-
-// visitor functions to convert to proper lists, sets and maps:
-
-
-/*
-GpiList get_list(GpiVariant const& v)
-{
-  return boost::apply_visitor(variant_visitor<GpiList>(), v);
-}
-GpiSet get_set(GpiVariant const& v)
-{
-  return boost::apply_visitor(variant_visitor<GpiSet>(), v);
-}
-GpiMap get_map(GpiVariant const& v)
-{
-  return boost::apply_visitor(variant_visitor<GpiMap>(), v);
-}*/
-
-/*
-// helper functions:
-GpiList lcm_monom(GpiVariant const& m1, GpiVariant const& m2)
-{
-  GpiList M1 = get_list(m1);
-  GpiList M2 = get_list(m2);
-  GpiList res;
-  if(M1.size()!=M2.size()) {throw std::runtime_error ("exponent vectors have different lengths");}
-  GpiList::iterator it1 = M1.begin();
-  GpiList::iterator it2 = M2.begin();
-  for(; it1 != M1.end(); ++it1, ++it2)
-  {
-    res.emplace_back(std::max(boost::get<long>(*it1), boost::get<long>(*it2)));
-  }
-  return res;
-}
-
-long deg_monom(GpiVariant const& m)
-{
-  GpiList M = get_list(m);
-  long d=0;
-  for(GpiList::iterator it = M.begin(); it != M.end(); ++it)
-  {
-    d += boost::get<long>(*it);
-  }
-  return d;
-}
-
-*/
 
 
 
@@ -239,14 +190,8 @@ bool write_singular_output(std::pair<int, void*> const& res, boost::variant<long
 
 
 
-NO_NAME_MANGLING
 
-/*
-std::string filename_gen(std::string const& base_filename)
-{
-  init_singular (config::library().string());
-  return base_filename+filename_generator();
-}*/
+NO_NAME_MANGLING
 
 void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::string const& singular_function_name,
@@ -286,6 +231,7 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 		args.add_argument(make_singular_data(args_inout[i], ids, delete_files));
 	}
 
+
 	// call the SINGULAR procedure:
 	output = call_user_proc(singular_function_name, singular_library_name, args);
 
@@ -313,4 +259,479 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 		err = write_singular_output(output[j], out_many[i], base_filename, singular_function_name); j++;
 		if(err) { throw std::runtime_error (ids + ": wrong 'out-many' output pointer given for the " + std::to_string(j) + "-th output of " + singular_function_name); }
 	}
+}
+
+NO_NAME_MANGLING
+
+void singular_buchberger_compute_NF( std::string const& singular_library_name,
+                                     std::string const& singular_function_name,
+                                     std::string const& base_filename,
+                                     std::list<poly> const& generators,
+                                     int r,
+                                     /*[[maybe_unused]] GpiList const& M,*/
+                                     int Qback_i,
+                                     int Qback_j,
+                                     int index_i,
+                                     int index_j,
+                                     int old_r,
+                                     long time_offset,
+                                     GpiMap* runtime,
+                                     GpiList* started_indices_out,
+                                     GpiList* finished_indices,
+                                     GpiList* NF,
+                                     [[maybe_unused]] bool delete_files,
+                                     bool silent )
+{
+	std::string ids = worker();
+  std::string save_filename = base_filename+"intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
+
+
+	//// start Singular and load the specified library ////
+  if(!silent) {std::cout << ids << " in Singular proc " << singular_function_name << std::endl;}
+	init_singular (config::singularLibrary().string());
+	load_singular_library(singular_library_name);
+  long start_time,stop_time;
+
+  poly NF_spoly;
+
+  if(old_r==r && index_i==Qback_i && index_j==Qback_j)
+  {
+    // (non-zero) reduction result from a previous computation with the same r that now moved to the back of the queue
+    // pass straight to place_NF:
+
+    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    NF_spoly = readPolySSI(save_filename, false);
+    std::rename(save_filename.c_str(), (base_filename + "f"+std::to_string(r+1)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator f{r+1}
+    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    (*runtime)[(std::string) "reading partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+    GpiList m;
+    int n = currRing->N; // number of variables
+    //long deg_p=0L;
+    for(int k=1; k<=n; k++)
+    {
+      //deg_p += p_GetExp(NF_spoly,k,currRing);
+      m.emplace_back((int) p_GetExp(NF_spoly,k,currRing));
+    }
+    m.emplace_back((int) p_GetComp(NF_spoly, currRing));
+
+    (*NF).emplace_back(GpiList({index_i, index_j,m}));
+
+    return;
+  }
+
+  // calculate NF(spoly(F[i],F[j]), F)
+  //poly f;
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+  ideal F = idInit(r,1);
+  std::list<poly>::const_iterator gen = generators.begin();
+  for(int ii=1; ii<=r; ii++)
+  {
+    //f = readPolySSI(base_filename+"f"+std::to_string(ii), false);
+    //idInsertPolyOnPos(F,f,ii-1);
+    idInsertPolyOnPos(F, *gen, ii-1); ++gen;
+  }
+  F->rank = id_RankFreeModule(F, currRing, currRing);
+  if (F->rank==0) F->rank=1;
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+  (*runtime)[(std::string) "reading generators in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+
+  if (old_r == 0)
+  {
+    LObject Pair;
+    Pair.Init();
+    Pair.p1=F->m[index_i-1];
+    Pair.p2=F->m[index_j-1];
+    ksCreateSpoly(&Pair);
+
+
+    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    if (USE_KNF)
+    {
+      if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,Pair.p,0,4);}
+      else                      {NF_spoly = kNF(F,currRing->qideal,Pair.p);}
+    }
+    else
+    {
+      kStrategy strat=new skStrategy;
+      strat->ak = id_RankFreeModule(F,currRing);
+      strat->kModW=kModW=NULL;
+      strat->kHomW=kHomW=NULL;
+      initBuchMoraCrit(strat); /*set Gebauer, honey, sugarCrit*/
+      initBuchMoraPos(strat);
+      initBba(strat);
+      initBuchMora(F, currRing->qideal,strat);
+      /*initBuchMora:*/
+      strat->tail = pInit();
+      /*- set s -*/
+      strat->sl = -1;
+      /*- set L -*/
+      strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
+      strat->Ll = -1;
+      strat->L = initL(strat->Lmax);
+      /*- set B -*/
+      strat->Bmax = setmaxL;
+      strat->Bl = -1;
+      strat->B = initL();
+      /*- set T -*/
+      strat->tl = -1;
+      strat->tmax = setmaxT;
+      strat->T = initT();
+      strat->R = initR();
+      strat->sevT = initsevT();
+      /*- init local data struct.---------------------------------------- -*/
+      strat->P.ecart=0;
+      strat->P.length=0;
+      strat->P.pLength=0;
+      initS(F, currRing->qideal,strat); /*sets also S, ecartS, fromQ */
+      strat->fromT = FALSE;
+      strat->noTailReduction = FALSE;
+
+      int sl = strat->sl;
+      //long start_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+      NF_spoly = redNF(Pair.p,sl,TRUE,strat);
+      //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+      //(*runtime)[(std::string) "just the call to redNF(..) in NF_of_spoly"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
+    }
+
+    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+    }
+  else
+  {
+    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    NF_spoly = readPolySSI(save_filename, true);
+    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    (*runtime)[(std::string) "reading partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    if (USE_KNF)
+    {
+      if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,NF_spoly,0,4);}
+      else                      {NF_spoly = kNF(F,currRing->qideal,NF_spoly);}
+    }
+    else
+    {
+      kStrategy strat=new skStrategy;
+      strat->ak = id_RankFreeModule(F,currRing);
+      strat->kModW=kModW=NULL;
+      strat->kHomW=kHomW=NULL;
+      initBuchMoraCrit(strat); /*set Gebauer, honey, sugarCrit*/
+      initBuchMoraPos(strat);
+      initBba(strat);
+      initBuchMora(F, currRing->qideal,strat);
+      /*initBuchMora:*/
+      strat->tail = pInit();
+      /*- set s -*/
+      strat->sl = -1;
+      /*- set L -*/
+      strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
+      strat->Ll = -1;
+      strat->L = initL(strat->Lmax);
+      /*- set B -*/
+      strat->Bmax = setmaxL;
+      strat->Bl = -1;
+      strat->B = initL();
+      /*- set T -*/
+      strat->tl = -1;
+      strat->tmax = setmaxT;
+      strat->T = initT();
+      strat->R = initR();
+      strat->sevT = initsevT();
+      /*- init local data struct.---------------------------------------- -*/
+      strat->P.ecart=0;
+      strat->P.length=0;
+      strat->P.pLength=0;
+      initS(F, currRing->qideal,strat); /*sets also S, ecartS, fromQ */
+      strat->fromT = FALSE;
+      strat->noTailReduction = FALSE;
+
+      int sl = strat->sl;
+
+      //long start_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+      NF_spoly = redNF(NF_spoly,sl,TRUE,strat);
+      //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+      //(*runtime)[(std::string) "just the call to redNF(..) in NF_of_spoly"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
+    }
+
+    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+  }
+
+  if (NF_spoly==NULL) // reduction to 0 ==> pair is finished (and to be removed from Q)
+  {
+    (*finished_indices).emplace_back(index_i);
+    (*finished_indices).emplace_back(index_j);
+  }
+  else
+  {
+    if (index_i==Qback_i && index_j==Qback_j) // element at end of Q ==> add as new GB element
+    {
+      writePolySSI(NF_spoly, base_filename + "f"+std::to_string(r+1));
+
+
+      GpiList m;
+      int n = currRing->N; // number of variables
+      //long deg_p=0L;
+      for(int k=1; k<=n; k++)
+      {
+        //deg_p += p_GetExp(NF_spoly,k,currRing);
+        m.emplace_back((int) p_GetExp(NF_spoly,k,currRing));
+      }
+      m.emplace_back((int) p_GetComp(NF_spoly, currRing));
+
+      (*NF).emplace_back(GpiList({index_i, index_j,m}));
+    }
+    else // element not at end of Q ==> put back to started indices (to be reduced further in future)
+    {
+      start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+      writePolySSI(NF_spoly, save_filename);
+      stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+      (*runtime)[(std::string) "saving partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+      (*started_indices_out).emplace_back(index_i);
+      (*started_indices_out).emplace_back(index_j);
+    }
+  }
+}
+
+NO_NAME_MANGLING
+
+std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F( [[maybe_unused]] std::string const& singular_library_name,
+                                                                    [[maybe_unused]] std::string const& base_filename,
+                                                                    [[maybe_unused]] std::string const& input,
+                                                                    long time_offset,
+                                                                    [[maybe_unused]] GpiMap* runtime )
+{
+  std::string ids = worker();
+  init_singular (config::singularLibrary().string());
+	//load_singular_library(singular_library_name);
+
+  long start_time,stop_time;
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+
+  //read ideal from input
+  std::pair<int,void*> input_ideal = deserialize(input, ids, false);
+  ideal F = (ideal) ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data;
+
+  if (TEST_OPT_INTSTRATEGY) {
+    for(int i=0; i<F->ncols; i++)
+    {
+      F->m[i] = p_Cleardenom(F->m[i], currRing);
+    }
+  }
+
+  //writeIdealSSI(F, base_filename+"GB_for_BB_test.ssi");
+  //((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data = (void*) F;
+  //std::string GB = serialize((lists) input_ideal.second, base_filename, (std::string) "init_GB");
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+  (*runtime)[(std::string) "reading input ideal in init"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+
+  ideal F_sorted = idInit(IDELEMS(F),F->rank);
+  intvec *sort   = idSort(F);
+  for (int i=0; i<sort->length();++i)
+    {F_sorted->m[i] = F->m[(*sort)[i]-1];}
+
+  kStrategy strat=new skStrategy;
+  ideal FF = idInit(1,1);
+  idInsertPolyOnPos(FF,F_sorted->m[0],0); // instert first polynomial of F
+  writePolySSI(F_sorted->m[0], base_filename+"f1");
+
+  for(int i=1; i<F->ncols; i++)
+  {
+    FF->rank = id_RankFreeModule(FF, currRing, currRing);
+    if (FF->rank==0) {FF->rank=1;}
+
+    // take next polynomial, ...
+    poly new_f = F_sorted->m[i];
+
+    // update strat
+    strat->ak = id_RankFreeModule(FF,currRing);
+    strat->kModW=kModW=NULL;
+    strat->kHomW=kHomW=NULL;
+    initBuchMoraCrit(strat);
+    initBuchMoraPos(strat);
+    initBba(strat);
+    initBuchMora(FF, currRing->qideal,strat);
+    //initBuchMora:
+    strat->tail = pInit();
+    //- set s -
+    strat->sl = -1;
+    //- set L -
+    strat->Lmax = ((IDELEMS(FF)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
+    strat->Ll = -1;
+    strat->L = initL(strat->Lmax);
+    //- set B -
+    strat->Bmax = setmaxL;
+    strat->Bl = -1;
+    strat->B = initL();
+    //- set T -
+    strat->tl = -1;
+    strat->tmax = setmaxT;
+    strat->T = initT();
+    strat->R = initR();
+    strat->sevT = initsevT();
+    //- init local data struct.----------------------------------------
+    strat->P.ecart=0;
+    strat->P.length=0;
+    strat->P.pLength=0;
+    initS(FF, currRing->qideal,strat); //sets also S, ecartS, fromQ
+    strat->fromT = FALSE;
+    strat->noTailReduction = FALSE;
+
+    int sl=strat->sl;
+
+    // reduce new_f by previously added elements:
+    new_f = redNF(new_f,sl,TRUE,strat);
+
+    writePolySSI(new_f, base_filename+"f"+std::to_string(i+1));
+    idInsertPolyOnPos(FF,new_f,i);
+  }
+
+  if (TEST_OPT_INTSTRATEGY) {
+    for(int i=0; i<FF->ncols; i++)
+    {
+      FF->m[i] = p_Cleardenom(FF->m[i], currRing);
+    }
+  }
+
+  //building Mvec
+  std::vector<std::vector<int>> Mvec;
+  for (int i=0; i<FF->ncols; i++)
+  {
+    std::vector<int> Mjvec;
+    for (int j=1; j<=currRing->N; j++)
+    {
+      Mjvec.emplace_back(p_GetExp(FF->m[i], j, currRing));
+    }
+    Mjvec.emplace_back(p_GetComp(FF->m[i],currRing)); // last entry = component
+    Mvec.emplace_back(Mjvec);
+  }
+
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+  (*runtime)[(std::string) "saving initial ideal elements in init"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+  return Mvec;
+}
+
+NO_NAME_MANGLING
+
+poly read_generator (std::string const& base_filename, int k, std::vector<int> permutation)
+{
+  init_singular (config::singularLibrary().string());
+  return readPolySSI(base_filename+"f"+std::to_string(permutation[k-1]),false);
+}
+
+NO_NAME_MANGLING
+
+void singular_buchberger_reduce_GB (std::string const& base_filename,
+                                    std::string const& singular_library_name,
+                                    std::list<poly> const& generators,
+                                    long needed_indices,
+                                    int current_index,
+                                    int final_r,
+                                    long redSB,
+                                    long time_offset,
+                                    GpiMap* runtime)
+{
+  init_singular (config::singularLibrary().string());
+  load_singular_library(singular_library_name);
+
+  poly f; // poly ro be reduced and/or saved in a file
+
+  long start_time,stop_time;
+
+  if (redSB)
+  {
+    ideal F = idInit(final_r-1,1);
+    std::list<poly>::const_iterator gen = generators.begin();
+    int ii=0;
+    for(int i=0; i<final_r; i++)
+    {
+      if(i==current_index)
+        {f = p_Copy(*gen, currRing, currRing);}
+      else
+      {
+        idInsertPolyOnPos(F, *gen, ii);
+       ii++;
+      }
+      ++gen;
+    }
+    F->rank = id_RankFreeModule(F, currRing, currRing);
+    if (F->rank==0) F->rank=1;
+
+    // start reduction
+    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    if (USE_KNF || true)
+    {
+      if (TEST_OPT_INTSTRATEGY) {f = kNF(F,currRing->qideal,f,0,4);}
+      else                      {f = kNF(F,currRing->qideal,f);}
+    }
+    else
+    {
+      kStrategy strat=new skStrategy;
+      strat->ak = id_RankFreeModule(F,currRing);
+      strat->kModW=kModW=NULL;
+      strat->kHomW=kHomW=NULL;
+      initBuchMoraCrit(strat); /*set Gebauer, honey, sugarCrit*/
+      initBuchMoraPos(strat);
+      initBba(strat);
+      initBuchMora(F, currRing->qideal,strat);
+      /*initBuchMora:*/
+      strat->tail = pInit();
+      /*- set s -*/
+      strat->sl = -1;
+      /*- set L -*/
+      strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
+      strat->Ll = -1;
+      strat->L = initL(strat->Lmax);
+      /*- set B -*/
+      strat->Bmax = setmaxL;
+      strat->Bl = -1;
+      strat->B = initL();
+      /*- set T -*/
+      strat->tl = -1;
+      strat->tmax = setmaxT;
+      strat->T = initT();
+      strat->R = initR();
+      strat->sevT = initsevT();
+      /*- init local data struct.---------------------------------------- -*/
+      strat->P.ecart=0;
+      strat->P.length=0;
+      strat->P.pLength=0;
+      initS(F, currRing->qideal,strat); /*sets also S, ecartS, fromQ */
+      strat->fromT = FALSE;
+      strat->noTailReduction = FALSE;
+
+      int sl = strat->sl;
+
+      //long start_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+      f = redNF(f,sl,TRUE,strat);
+      //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+      //(*runtime)[(std::string) "just the call to redNF(..) in reduce_GB"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
+    }
+    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+    (*runtime)[(std::string) "applying NF in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+  }
+  else
+  {
+    f = readPolySSI(base_filename+"f"+std::to_string(needed_indices),false);
+  }
+
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+  if (TEST_OPT_INTSTRATEGY)
+  {
+    f = p_Cleardenom(f, currRing);
+  }
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+  (*runtime)[(std::string) "clearing denominators in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+  writePolySSI(f, base_filename + "g" + std::to_string(current_index+1));
+  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+  (*runtime)[(std::string) "saving GB in files in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 }

@@ -1,0 +1,188 @@
+LIB "buchbergergspc.lib";
+LIB "random.lib";
+
+option(redSB); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis
+
+configToken gc = configure_gspc();
+gc.options.tmpdir = "/dev/shm/marcel/buchberger/tempdir";
+gc.options.tmpdir = "tempdir";
+
+gc.options.nodefile = "nodefile";
+gc.options.procspernode = 48;
+gc.options.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
+
+// only needed if you use gspc-monitor:
+gc.options.loghostfile = "loghostfile";
+gc.options.logport = 3217;
+
+proc setcores(int n)
+{
+  gc.options.procspernode = n;
+}
+
+proc getcores()
+{
+  return(gc.options.procspernode);
+}
+
+proc comp(def I, def J) // compare-function for indexed types
+{
+  string t = typeof(I);
+  int i,n;
+  if(t!=typeof(J)) {return(0);}
+  if(t=="ideal" || t=="list" || t=="intvec" || t=="module")
+  {
+    n = size(I);
+    if(n != size(J)) {return(0);}
+    else {
+      for(i=1; i<=n; i++) {if(!comp(I[i],J[i])) {return(0);}}
+      return(1);
+    }
+  }
+  else {return (I==J);}
+}
+
+
+// minimal example:
+
+/*
+ring R = 0,(x,y),dp;
+ideal I = x5, y7+x4, x2y-xy;
+I = I;
+
+ideal GB, F, M;
+intmat A;
+intvec indices;
+GB, A, F, M, indices = gspc_buchberger(I, gc);
+
+if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
+else {printf("%nI (%s elements): ...",size(I));}
+if(size(string(GB))<2000) {printf("%nGB (%s elements): %n%p",size(GB),GB);}
+else {printf("%nGB (%s elements): ...",size(GB));}
+if(comp(std(I), GB)) {printf("%nEQUAL to std(I) !!!",0);}
+else                 {printf("%nNOT equal to std(I) !!!",0);}
+
+printf("%nbookkeeping matrix A (%s elements): %n%p%n%n%n",nrows(A),A,0);
+
+*/
+
+// bigger example:
+
+
+//ring R = 0,(x,y),dp;
+//ideal I = 2*x5, y7+x4, 3*(x2y-xy), y7+x4-y;
+//module I = 2*x5*gen(3), y7+x4, 3*(x2y-xy), y7+x4-y;
+//testBB(I,2);
+//I  = I^2;
+//I = ideal(I)*I;
+//I = ideal(I)*gen(2)+I;
+//def I = katsura(7);
+
+
+proc parallelStd(def I, list #)
+{
+  int ncores, nworkers;
+  if(size(#)>=1) {ncores   = #[1];}
+  else           {ncores = getcores();}
+  if(size(#)>=2) {nworkers = #[2];}
+  else           {nworkers = ncores-2;}
+
+  setcores(ncores);
+  return(gspc_buchberger(I, gc, nworkers));
+}
+
+
+proc testSTD(def I)
+{
+  system("--ticks-per-sec", 1000); option(prot);
+  int time = rtimer;
+  print("std:");
+  def G = std(I);
+  printf(" took %sms", rtimer-time);
+  option(noprot);
+  return(G);
+}
+
+proc testParallelBB(def I, nworkers)
+{
+  def GB;
+  int r_all;
+  def F;
+  list indices;
+  list runtimes;
+  GB, r_all, F, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers);
+
+  if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
+  else {printf("%nI (%s elements): ...",size(I));}
+  if(size(string(GB))<2000) {printf("%nGB (%s elements): %n%p",size(GB),GB);}
+  else {printf("%nGB (%s elements): ...",size(GB));}
+  printf("%nmax number of elements during the BB algorithm: %s%n",r_all,0);
+
+  int i,j;
+  bigint irl_time = runtimes[2][1][2]-runtimes[2][1][1];
+  print("TIMINGS (in ms):");
+  //printf("starttime:                                  %s ms",  runtimes[2][1][1]);
+  //printf("stoptime:                                   %s ms",  runtimes[2][1][2]);
+  printf("runtime (stoptime - starttime):             %s ms",  irl_time);       bigint runtimes_times_100 = runtimes[2][2][1]*100;
+  printf("cputime (added up over parallel processes): %s ms (%s%)", runtimes[2][2][1], runtimes_times_100 div irl_time);
+  printf("total number of transitions:                %s %n",       runtimes[2][2][2],0);
+  printf("max time of a single transition:            %s ms%n",     runtimes[2][2][3],0);
+  int j_max=0;
+  for(i=3; i<=size(runtimes[1]); i++) {j_max = max(j_max,size(runtimes[1][i]));}
+  string s;
+  for(i=3; i<=size(runtimes[1]); i++) {
+    s="";
+    for(j=size(runtimes[1][i]); j<=j_max; j++) {runtimes[1][i] = " "+runtimes[1][i];}
+    for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
+    if (runtimes[2][i][1]==runtimes[2][i][3] && runtimes[2][i][1]==-1) //count
+      {printf(runtimes[1][i]+": %s"+s, runtimes[2][i][2]);}
+    else // timing
+      {printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);}
+  }
+
+  export(GB,F,indices,runtimes);
+}
+
+proc testBB(def I, nworkers)
+{
+
+  def G = testSTD(I);
+  print("parallelStd:");
+
+  testParallelBB(I, nworkers);
+
+  if(comp(G, GB)) {printf("%nEQUAL to std(I) !!!",0);}
+  else                     {printf("%nNOT equal to std(I) !!!",0);}
+
+  export(G);
+}
+
+proc testSystem(ideal II)
+{
+  system("--cpus",getcores()); system("--ticks-per-sec",1000); int TTT = rtimer; printf("%n%nsystem('verifyGB', ... ): %s", system("verifyGB", II)); printf("%ntime: %s ms", rtimer-TTT);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+//system("--random", 42); ring r = 0,x(1..7),dp; ideal I = std(randomid(maxideal(2),5)); testBB(I, 1000000);
+//system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
+//system("--random", 42); ring r = 0,x(1..8),dp; ideal I = std(randomid(maxideal(2),6));
+
+
+//def I = read("ssi:r bigGB.ssi");
+//system("--random",42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
+system("--random",42); ring r = 0,x(1..9),dp; ideal I = cyclic(5);
+
+//setcores(48);
+setcores(6);
+
+//testBB(I, 46);
+testBB(I, 4);
+
+//testParallelBB(I);
+//testSystem(I);
+
+
+////////////////////////////////////////////////////////////////////////////////

@@ -18,6 +18,7 @@ configure_gspc()                               generates standard config token f
 configure_buchberger()                         generates standard config token for the transition procedure
 generateIOTokenTypes(configToken)              register the user-defined types for input and output
 gspc_buchberger(list,configToken,configToken)  interface of the buchberger framework in Singular
+gspc_buchberger_extraData(list,configToken,configToken)  interface of the buchberger framework in Singular
 ";
 
 proc mod_init()
@@ -164,11 +165,11 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
     return(sm_result);
 }
 
-proc gspc_buchberger(def I, configToken gc, list #)
+proc gspc_buchberger_extraData(def I, configToken gc, list #)
 {
     configToken ct = configure_buchberger();
     ct.options.neededLibrary = "buchbergergp.lib";
-    if(size(#)==0) {#[1] = 1;} // by default: just one worker (i.e. nothing runs in parallel!)
+    if(size(#)==0) {#[1] = gc.options.procspernode - 2;} // by default: use all but 2 workers for the NF(spoly)-transition
     ct.options.nworkers = #[1];
     ct.options.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
     token t;
@@ -176,31 +177,81 @@ proc gspc_buchberger(def I, configToken gc, list #)
     t.data[1] = I;
     list inputlists;
     inputlists[1] = t;
+
+
     def output = gspc_buchberger_static(inputlists, 1, gc, ct);
+
+
     int r = output[1].data[1];
-    intmat A = output[1].data[2];
-    intmat D = output[1].data[3];
-    int cd = output[1].data[4]; // current degree
-    intvec indices = output[1].data[5];
-    int r_all = nrows(A);
+    int r_all = output[1].data[4];
+    list indices = output[1].data[5];
 
     string DIR = gc.options.tmpdir + "/";
 
-    def m1 = read("ssi:r "+DIR+"m1");
-    int mode = m1[2];
+    system("--ticks-per-sec",1000); int T = rtimer;
+    def g1 = read("ssi:r "+DIR+"g1");
 
-    if(mode==0) {ideal  GB,F; list m;}
-    else        {module GB,F; list m;}
-    for(int i=1; i<=r; i++)
+    if(typeof(g1)=="poly") {ideal  GB,F;}
+    else                   {module GB,F;}
+    GB[1] = g1;
+    for(int i=2; i<=r; i++)
     {
       GB[i] = read("ssi:r "+DIR+"g"+string(i));
     }
-    for(int i=1; i<=r_all; i++)
+    printf("reading GB elements from files: %s ms",rtimer-T);
+
+    system("--ticks-per-sec",1000); int TT = rtimer;
+    for(i=1; i<=r_all; i++)
     {
-      F[i] = read("ssi:r tempdir/f"+string(i));
-      //m = read("ssi:r tempdir/m"+string(i));
-      //if(mode==0) {M[i] = m[1];}
-      //else        {M[i] = m[1]*gen(m[2]);}
+      F[i] = read("ssi:r "+DIR+"f"+string(i));
     }
-    return(GB, A, D, cd, F, indices, list(output[1].data[6],output[1].data[7]), output[1].data[8], output[1].data[9], output[1].data[10]);
+    printf("reading all intermediate elements from files: %s ms",rtimer-TT);
+
+    system("--ticks-per-sec",1000); int TTT = rtimer;
+    GB = sort(GB)[1];
+    printf("sorting GB by user specified monomial ordering: %s ms",rtimer-TTT);
+
+    return(GB, r_all, F, indices, list(output[1].data[2],output[1].data[3]));
+}
+
+
+proc gspc_buchberger(def I, configToken gc, list #)
+{
+    configToken ct = configure_buchberger();
+    ct.options.neededLibrary = "buchbergergp.lib";
+    if(size(#)==0) {#[1] = gc.options.procspernode - 2;} // by default: use all but 2 workers for the NF(spoly)-transition
+    ct.options.nworkers = #[1];
+    ct.options.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
+    token t;
+    t.fieldnames[1] = "ideal_generators";
+    t.data[1] = I;
+    list inputlists;
+    inputlists[1] = t;
+
+
+    def output = gspc_buchberger_static(inputlists, 1, gc, ct);
+
+
+    int r = output[1].data[1];
+    list indices = output[1].data[5];
+
+    string DIR = gc.options.tmpdir + "/";
+
+    system("--ticks-per-sec",1000); int T = rtimer;
+    def g1 = read("ssi:r "+DIR+"g1");
+
+    if(typeof(g1)=="poly") {ideal  GB,F;}
+    else                   {module GB,F;}
+    GB[1] = g1;
+    for(int i=2; i<=r; i++)
+    {
+      GB[i] = read("ssi:r "+DIR+"g"+string(i));
+    }
+    printf("reading GB elements from files: %s ms",rtimer-T);
+
+    system("--ticks-per-sec",1000); int TT = rtimer;
+    GB = sort(GB)[1];
+    printf("sorting GB by user specified monomial ordering: %s ms",rtimer-TT);
+
+    return(GB);
 }

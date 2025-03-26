@@ -3,55 +3,55 @@
 
 	<in name="base_filename" type="string" place="place_base_filename"/>
 	<in name="library_name" type="string" place="place_library_name"/>
-	<in name="nworkers" type="long" place="place_nworkers"/>
 	<in name="redSB" type="long" place="place_redSB"/>
 	<in name="input" type="string" place="place_input"/>
+	<in name="nworkers" type="long" place="place_nworkers"/>
 	<out name="output" type="string" place="place_output"/>
+	<out name="runtime" type="map" place="place_runtime"/>
 	<net>
 		<place name="place_base_filename" type="string"/>
 		<place name="place_library_name" type="string"/>
-		<place name="place_nworkers" type="long"/>
-		<place name="place_nrunning" type="long"/>
 		<place name="place_redSB" type="long"/>
 		<place name="place_input" type="string"/>
 		<place name="place_output" type="string"/>
 		<place name="place_BB_finished" type="control"/>
-		<place name="place_r" type="long"/>
+		<place name="place_r" type="int"/>
 		<place name="place_M" type="list"/>
-		<place name="place_A" type="string"/>
-		<place name="place_bookkeeping" type="map"/>
+		<place name="place_nworkers" type="long"/>
+		<place name="place_balNF" type="control"/>
+		<!--place name="place_Mvec" type="bytearray"/-->
+		<!--place name="place_bookkeeping" type="map"/-->
 		<place name="place_Q" type="list"/>
-		<place name="place_Qback" type="list"/>
-		<place name="place_started_indices" type="list"/>
-		<place name="place_finished_indices" type="list"/>
-		<place name="place_kill_indices" type="string"/>
-		<!--place name="place_remainder" type="string"/-->
+		<place name="place_Qback" type="index_pair"/>
+		<place name="place_started_indices" type="running_reduction"/>
+		<place name="place_finished_indices" type="index_pair"/>
 		<place name="place_NF" type="list"/>
-		<place name="place_element_index" type="long"/>
-		<!--place name="place_element_index_to_delete" type="long"/-->
 		<place name="place_needed_indices" type="long"/>
-		<place name="place_needed_indices_list" type="string"/>
-		<place name="place_runtime" type="runtimes"/>
-		<!--place name="place_reduce_F_limit" type="bool"> <token><value>false</value></token></place-->
+		<place name="place_needed_indices_list" type="list"/>
+		<place name="place_runtime" type="map"/>
+		<place name="place_time_offset" type="long"/>
+		<place name="place_blacklist" type="set"/>
 
-
-		<transition name="init">
+		<transition name="init" priority="42">
 			<defun>
 				<require key="worker" mandatory="true"/>
        	<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
 				<in name="input" type="string"/>
-				<out name="A" type="string"/>
-				<out name="bookkeeping" type="map"/>
+				<in name="nworkers" type="long"/>
+				<!--out name="bookkeeping" type="map"/-->
 				<out name="Q" type="list"/>
-				<out name="Qback" type="list"/>
-				<out name="r" type="long"/>
+				<out name="started_indices" type="list"/>
+				<out name="Qback" type="index_pair"/>
+				<out name="blacklist" type="set"/>
+				<out name="r" type="int"/>
 				<out name="M" type="list"/>
-				<out name="nrunning" type="long"/>
-				<out name="runtime" type="runtimes"/>
+				<out name="runtime" type="map"/>
+				<out name="time_offset" type="long"/>
+				<out name="balNF" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(runtime, base_filename, library_name, input, A, bookkeeping, nrunning, Q, Qback, r, M)">
+							  function="function_init(started_indices, runtime, time_offset, base_filename, library_name, input, Q, Qback, r, M, nworkers, balNF, blacklist)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -60,221 +60,155 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-						boost::this_thread::sleep_for(boost::chrono::milliseconds(SLEEP_TIME_MS));
-						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time=0;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
-						std::list<GpiVariant> innerinnertestlist = {6, 9, (std::string)("fourty-two")};
-						std::list<GpiVariant> innertestlist = {6, 9, innerinnertestlist};
-						std::list<GpiVariant> testlist = {0, 1, innertestlist};
-						long testint = 42;
-						std::string teststring = "abc";
+						// all timings will be offset by this amount (necessary since SINGULAR integers only range from -2^31 to 2^31-1 and time since epoch is too big).
+						// should NOT be LARGER than runtime_start (or timings won't display properly in SINGULAR)
+						time_offset = runtime_start;
 
-						long d;
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						runtime_start -= time_offset;
 						std::string singular_function_name = "init";
-						args_read  = {base_filename};
-						args_in    = {input, testlist, testint, teststring};
-						args_inout = {};
-						out        = {&s_time, &d, &A, &r, &M};
-						out_many   = {};
-						bool delete_files = false;
-						bool silent = false;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-						std::cout << "    current_degree after init: " << d << std::endl;
-						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
-						std::cout << "                                                                                                                                                                                         " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() << " ms (time since epoch)" << std::endl;
+
+						#ifdef DEBUG_BBA
+						std::cout << "start time (= time since epoch in ms minus "<< time_offset <<"ms): " << runtime_start << std::endl;
+						std::cout << runtime_start << ": entering " << singular_function_name << std::endl;
+						#endif
+
+						std::vector<std::vector<int>> Mvec = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_M_and_init_F) (library_name, base_filename, input, time_offset, &runtime);
+
+						r = Mvec.size();
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": r=" << r << std::endl;
+						//print_variant(M);
+						#endif
 
 
-						////  QUEUE  //////////
-						std::cout << "entering " << singular_function_name << std::endl;
-						std::cout << "    r=" << r << std::endl;
-						std::cout << "    M:" << std::endl;
-						/*
-						int ii=0;
-						for(GpiList::iterator it=M.begin(); it!=M.end(); ++it)
+						long prodcrit_counter  = 0L;
+						long chaincrit_counter = 0L;
+
+						int j=1;
+						for (std::vector<std::vector<int>>::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
 						{
-							ii++; std::cout << "   M" << ii <<":" << std::endl;
-							GpiList expvec = get_list(get_list(*it).front());
-							for(GpiList::iterator itit=expvec.begin(); itit!=expvec.end(); ++itit)
+							int i=1;
+							for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
 							{
-								std::cout << "     " << boost::get<long>(*itit) << std::endl;
-							}
-						}*/
-						print_variant(M,1);
-
-
-						int i=1;
-						for (GpiList::iterator Mi=M.begin(); i<=r; ++Mi, i++)
-						{
-							int j=1;
-							for (GpiList::iterator Mj=M.begin(); j<i; ++Mj, j++)
-							{
-								std::cout << "    (i,j)=(" << i << "," << j << ")" << std::endl;
-
-								std::cout << "    M"<<i<<":" << std::endl; print_variant(*Mi,1);
-								std::cout << "    M"<<j<<":" << std::endl; print_variant(*Mj,1);
-								GpiList lcm_i_j = lcm(*Mi, *Mj);
-								int state =  product_criterion(get_list(*Mi), get_list(*Mj));
-								bookkeeping[GpiSet({i,j})] = GpiList({state, lcm_i_j, deg(lcm_i_j)}); // A, B, D  --> B,D only needed if leads in same component!
-								std::cout << "  state=" << state << std::endl;
-								if(state==0)
+								bool add_to_Q = true;
+								std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
+								if (test_PC(*Mi,*Mj)) // apply PC
+									{add_to_Q = false; prodcrit_counter++;}
+								else // apply CC
 								{
-									std::cout << "   inserting (i,j)=(" << i << "," << j << ") in Q" << std::endl;
-									queue_insert(Q, GpiList({i, j, state, lcm_i_j}));
-									std::cout << "    Q.size()=" << Q.size() << std::endl;
+									int k=1;
+									for (std::vector<std::vector<int>>::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
+									{
+										if(k!=i && k!=j)
+										{
+											if (test_CC(lcm_i_j, *Mi, *Mj, *Mk))
+											{
+												if(k<i)
+													{add_to_Q = false; chaincrit_counter++; break;}
+												else { if(k<j)
+												{
+													std::vector<int> lcm_k_j = lcm(*Mk, *Mj);
+													if(!equal(lcm_k_j,lcm_i_j)) {add_to_Q = false; chaincrit_counter++; break;}
+												}
+												else // (k>j)
+												{
+													std::vector<int> lcm_i_k = lcm(*Mi, *Mk);
+													std::vector<int> lcm_j_k = lcm(*Mj, *Mk);
+													if(!equal(lcm_i_k,lcm_i_j) && !equal(lcm_j_k,lcm_i_j)) {add_to_Q = false; chaincrit_counter++; break;}
+												} }
+											}
+										}
+									}
+								}
+
+								if(add_to_Q)
+								{
+									GpiStruct si;
+									si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+									si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
+									si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+
+									#ifdef DEBUG_BBA
+									std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
+									#endif
+									started_indices.push_back(si);                       // add (i,j) to started indices
+									queue_insert(Q, i, j, deg(lcm_i_j), vec2list(lcm_i_j)); // add (i,j) and information about lcm(fi,fj) to the queue
 								}
 							}
-							// maybe use entries (i,i) for some bookkeeping about the f_i ?
 						}
-						std::cout <<    "Q: " << std::endl; print_variant(Q,1);
 
-						nrunning = 0L;
-
-						Qback = GpiList({get_list(Q.back()).front(), *std::next(get_list(Q.back()).begin())}); // list(i,j) where (i,j)=spoly at end of Queue
-
-						std::cout << "exiting " << singular_function_name << std::endl;
-						///////////////////////
-
-
-						runtime.transition = singular_function_name;
-						runtime.singular = s_time;
-						runtime.chaincrit = 0L;
-						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-					]]></code>
-				</module>
-			</defun>
-			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
-			<connect-in port="input" place="place_input"/>
-			<connect-out port="A" place="place_A"/>
-			<connect-out port="bookkeeping" place="place_bookkeeping"/>
-			<connect-out port="Q" place="place_Q"/>
-			<connect-out port="Qback" place="place_Qback"/>
-			<connect-out port="r" place="place_r"/>
-			<connect-out port="M" place="place_M"/>
-			<connect-out port="nrunning" place="place_nrunning"/>
-			<connect-out port="runtime" place="place_runtime"/>
-		</transition>
-
-
-		<transition name="list_indices">
-			<defun>
-				<require key="worker" mandatory="true"/>
-				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
-				<in name="nworkers" type="long"/>
-				<inout name="A" type="string"/>
-				<inout name="nrunning" type="long"/>
-				<inout name="bookkeeping" type="map"/>
-				<inout name="Q" type="list"/>
-				<out name="started_indices" type="list"/>
-				<out name="BB_finished" type="list"/>
-				<out name="runtime" type="runtimes"/>
-				<module name="singular_buchberger"
-							  require_function_unloads_without_rest="false"
-							  function="function_list_indices(runtime, base_filename, library_name, nworkers, A, nrunning, bookkeeping, Q, started_indices, BB_finished)">
-				  <cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
-					<cinclude href="boost/variant.hpp"/>
-					<cinclude href="iostream"/>
-					<cinclude href="chrono"/>
-					<cinclude href="boost/thread/thread.hpp"/>
-
-					<code><![CDATA[
-						boost::this_thread::sleep_for(boost::chrono::milliseconds(SLEEP_TIME_MS));
-						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time=0;
-						/*
-						long d;
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
-						*/std::string singular_function_name = "list_indices";/*
-						args_read  = {nworkers};
-						args_in    = {};
-						args_inout = {&A};
-						out        = {&s_time,&d};
-						out_many   = {&started_indices, &BB_finished};
-						bool delete_files = true;
-						bool silent = false;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-						std::cout << "current_degree after list_indices: " << d << std::endl;
-						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
-						*/
-
-						////  QUEUE  //////////
-						std::cout << "entering " << singular_function_name << std::endl;
-						//std::cout << "    Q before: " << std::endl; print_variant(Q,1);
-						for(GpiList::reverse_iterator it=Q.rbegin(); it!=Q.rend(); ++it)
+						// build M
+						for(std::vector<std::vector<int>>::iterator Mveci=Mvec.begin(); Mveci!=Mvec.end(); ++Mveci)
 						{
-							//std::cout << " ----------------------------- enterig loop -------------------------------- " << std::endl;
-							if(nrunning==nworkers) {break;}
-							//std::cout << " ----------------------------- 1 -------------------------------- " << std::endl;
-							GpiList& Q_entry = get_list(*it);
-							GpiList::iterator state = std::next(Q_entry.begin(),2);
-							//std::cout << "  (i,j)=(" << boost::get<int>(Q_entry.front()) << "," << boost::get<int>(*std::next(Q_entry.begin(),1)) << "), state:" << (*state).which() << ",  Qi.size() = " << Q_entry.size() << std::endl;
-							//std::cout << "   Qi.whiche's = " << (*Q_entry.begin()).which() << ", " << (*std::next(Q_entry.begin(),1)).which() << ", " << (*std::next(Q_entry.begin(),2)).which() << ", " << (*std::next(Q_entry.begin(),3)).which() << std::endl;
-							if(boost::get<int>(*state)==0)
-							{
-								GpiList& entry = get_list(*it);
-								int i = boost::get<int>(Q_entry.front());
-								int j = boost::get<int>(*std::next(Q_entry.begin()));
-								std::cout << "  put index (" << i << "," << j << ") on started_indices" << std::endl;
-								// add index (i,j) to job list and change states in Q and bookkeeping:
-								/*Q*/started_indices.emplace_back(GpiList({i,j,0}));
-								//*std::next(Q_entry.begin(),2) = STARTED;
-								boost::get<int>(*state) = STARTED;
-								get_list(bookkeeping[GpiSet({i,j})]).front() = STARTED;
-								nrunning++;
-								std::cout << "  set boost::get<int>(*state) to "                                       << boost::get<int>(*state) << " (should be " << STARTED << ")" << std::endl;
-								std::cout << "  set boost::get<int>(*std::next(Q_entry.begin(),2)) to "                << boost::get<int>(*std::next(Q_entry.begin(),2)) << " (should be " << STARTED << ")" << std::endl;
-								std::cout << "  set boost::get<int>(get_list(bookkeeping[GpiSet({i,j})]).front()) to " << boost::get<int>(get_list(bookkeeping[GpiSet({i,j})]).front()) << " (should be " << STARTED << ")" << std::endl;
-								break;
-							}
+							M.emplace_back(vec2list(*Mveci));
 						}
-						if(nrunning==0L)  // ASSUME that if all (i,j) are marked as finished, the Buchberger algorithm is finished (i.e. that there is no lag between writing to A and extending A, atm this is handled in the same transition)
-						{
-							std::cout << " ----------------------------- Buchberger finished! -------------------------------- " << std::endl;
-						/*Q*/	BB_finished.emplace_back(CONTROL_TOKEN);
-						}
-						//std::cout << "    Q after: " << std::endl; print_variant(Q,1);
-						std::cout << "exiting " << singular_function_name << std::endl;
-						///////////////////////
 
-						runtime.transition = singular_function_name;
-						runtime.singular = s_time;
-						runtime.chaincrit = 0L;
-						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						Qback.i = boost::get<int>(           get_list(Q.back()).front() );
+						Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": ----------------------------- Q.size() after init: " << Q.size() << std::endl;
+						std::cout << runtime_start << ": --------------- started_indices.size() after init: " << started_indices.size() << std::endl;
+						#endif
+
+						// init balNF to limit the number of workers dedicated to NF_of_spoly
+						for(int ii=0; ii<nworkers; ii++)
+						{
+							balNF.emplace_back(CONTROL_TOKEN);
+						}
+
+						// init the blcklist
+						blacklist = GpiSet({});
+
+
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
+						#endif
+
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
+						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="nworkers" place="place_nworkers"/>
-			<connect-inout port="A" place="place_A"/>
-			<connect-inout port="nrunning" place="place_nrunning"/>
-			<connect-inout port="bookkeeping" place="place_bookkeeping"/>
-			<connect-inout port="Q" place="place_Q"/>
+			<connect-in port="input" place="place_input"/>
+			<!--connect-out port="bookkeeping" place="place_bookkeeping"/-->
+			<connect-out port="Q" place="place_Q"/>
+			<connect-out port="Qback" place="place_Qback"/>
+			<connect-out port="blacklist" place="place_blacklist"/>
+			<connect-out port="r" place="place_r"/>
+			<connect-out port="M" place="place_M"/>
+			<connect-out port="runtime" place="place_runtime"/>
+			<connect-out port="time_offset" place="place_time_offset"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
-			<connect-out-many port="BB_finished" place="place_BB_finished"/>
-			<connect-out port="runtime" place="place_runtime"/>
+			<connect-out-many port="balNF" place="place_balNF"/>
 		</transition>
 
-	  <transition name="NF_of_spoly">
+
+
+		<transition name="NF_of_spoly" priority="1">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
-				<in name="r" type="long"/>
-				<in name="M" type="list"/>
-				<in name="Qback" type="list"/>
-				<in name="started_indices" type="list"/>
+				<in name="blacklist" type="set"/>
+				<in name="r" type="int"/>
+				<in name="Qback" type="index_pair"/>
+				<in name="started_indices" type="running_reduction"/>
+				<in name="time_offset" type="long"/>
+				<inout name="balNF" type="control"/>
 				<out name="started_indices_out" type="list"/>
 				<out name="finished_indices" type="list"/>
 				<out name="NF" type="list"/>
-				<out name="runtime" type="runtimes"/>
+				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(runtime, base_filename, library_name, r, M, Qback, started_indices, started_indices_out, finished_indices, NF)">
+							  function="function_NF_of_spoly(runtime, base_filename, library_name, r, Qback, started_indices, started_indices_out, finished_indices, NF, time_offset, balNF, blacklist)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -286,195 +220,230 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-						boost::this_thread::sleep_for(boost::chrono::milliseconds(SLEEP_TIME_MS));
-						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time=0;
-						long readF_time=0;
-/*
-						int i = boost::get<int>(started_indices.front());
-						int j = boost::get<int>(*std::next(started_indices.begin()));
-						int k = boost::get<int>(started_indices.back());
-						std::cout << "starting NF with indices =  (" << i << "," << j << "," << k << ")" << std::endl;
-*/
-						std::cout << "                 and r   = " << r << std::endl;
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
-						std::string singular_function_name = "NF_of_spoly";
-						args_read  = {base_filename, r, M, Qback};
-						args_in    = {started_indices};
-						args_inout = {};
-						out        = {&s_time, &readF_time};
-						out_many   = {&started_indices_out, &finished_indices, &NF};
-						bool delete_files = true;
-						bool silent = false;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
-
-						runtime.transition = singular_function_name;
-						runtime.singular = s_time;
-						runtime.chaincrit = readF_time;
-						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-					]]></code>
-				</module>
-			</defun>
-			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
-			<connect-read port="r" place="place_r"/>
-			<connect-read port="M" place="place_M"/>
-			<connect-read port="Qback" place="place_Qback"/>
-			<connect-in port="started_indices" place="place_started_indices"/>
-			<connect-out-many port="started_indices_out" place="place_started_indices"/>
-			<connect-out-many port="finished_indices" place="place_finished_indices"/>
-			<connect-out-many port="NF" place="place_NF"/>
-			<connect-out port="runtime" place="place_runtime"/>
-		</transition>
-
-
-		<!--transition name="NF_of_spoly">
-			<defun>
-				<require key="worker" mandatory="true"/>
-				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
-				<in name="r" type="long"/>
-				<in name="M" type="list"/>
-				<in name="Qback" type="list"/>
-				<in name="started_indices" type="list"/>
-				<out name="started_indices_out" type="list"/>
-				<out name="finished_indices" type="list"/>
-				<out name="NF" type="list"/>
-				<out name="runtime" type="runtimes"/>
-				<module name="singular_buchberger"
-							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(runtime, base_filename, library_name, r, M, Qback, started_indices, started_indices_out, finished_indices, NF)">
-					<eureka-group>${base_filename}</eureka-group>
-					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
-					<cinclude href="boost/variant.hpp"/>
-					<cinclude href="iostream"/>
-					<cinclude href="chrono"/>
-					<cinclude href="fstream"/>
-					<cinclude href="boost/archive/binary_iarchive.hpp"/>
-					<cinclude href="boost/archive/binary_oarchive.hpp"/>
-					<cinclude href="boost/thread/thread.hpp"/>
-
-					<code><![CDATA[
-
-						boost::this_thread::sleep_for(boost::chrono::milliseconds(SLEEP_TIME_MS));
-						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time=0;
-						long readF_time=0;
-
-						std::string singular_function_name = "NF_of_spoly";
-
-						// NEW //
-						std::string const filename (fhg::util::scoped_dlhandle
-																						(implementation, RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND)
-																						.sym<decltype (filename_gen)> ("filename_gen")
-																						 (base_filename));
-						bool cancelled (false) ;
-
-								_pnetc_context->execute_and_kill_on_cancel_DO_NOT_OUTPUT_TO_STANDARD_STREAMS_FROM_WITHIN
-										( [=]  // copy parameters
-										{
-												std::ofstream of (filename,std::ios::binary);
-												boost::archive::binary_oarchive oa (of);
-
-												long s_time_dummy, readF_time_dummy;
-												GpiList started_indices_out_dummy, finished_indices_dummy, NF_dummy;
-
-												std::cout << "starting NF with indices =  (" << boost::get<int>(started_indices.front()) << "," << boost::get<int>(started_indices.back()) << ")" << std::endl;
-												std::cout << "                 and r   = " << r << std::endl;
-												std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
-
-												args_read  = {base_filename, r, M, Qback};
-												args_in    = {started_indices};
-												args_inout = {};
-												out        = {&s_time_dummy, &readF_time_dummy};
-												out_many   = {&started_indices_out_dummy, &finished_indices_dummy, &NF_dummy};
-												bool delete_files = true;
-												bool silent = false;
-
-												(fhg::util::scoped_dlhandle
-														(implementation, RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND)
-														.sym<decltype (singular_buchberger_compute)> ("singular_buchberger_compute")
-														(library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent));
-												// save results:
-												oa << s_time_dummy;
-												oa << readF_time_dummy;
-												oa << started_indices_out_dummy;
-												oa << finished_indices_dummy;
-												oa << NF_dummy;
-										}
-										, [&]
-										{
-												cancelled = true;
-										}
-										, &drts::worker::on_signal_unexpected
-										, [] (int exit_code)
-										{
-												if (exit_code != 0)
-												{
-														drts::worker::on_exit_unexpected (exit_code);
-												}
-										}
-								);
-						if (!cancelled)
+						bool i_in_bl  = (blacklist.find((GpiVariant) started_indices.i)               !=blacklist.end());
+						bool j_in_bl  = (blacklist.find((GpiVariant) started_indices.j)               !=blacklist.end());
+						bool ij_in_bl = (blacklist.find(GpiSet({started_indices.i,started_indices.j}))!=blacklist.end());
+						if ( ((i_in_bl || j_in_bl) && !ij_in_bl) || blacklist.find(GpiList({started_indices.i,started_indices.j}))!=blacklist.end() )
 						{
-								std::ifstream is (filename,std::ios::binary);
-								boost::archive::binary_iarchive ia (is);
-								// read saved result:
-								ia >> s_time;
-								ia >> readF_time;
-								ia >> started_indices_out;
-								ia >> finished_indices;
-								ia >> NF;
+							return;
 						}
-						// // //
+						if (i_in_bl && j_in_bl && ij_in_bl)
+						{
+							GpiStruct fi;
+							fi.emplace_back(std::pair<std::string,GpiVariant>({"i"    , started_indices.i}));
+							fi.emplace_back(std::pair<std::string,GpiVariant>({"j"    , started_indices.j}));
 
-						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+							finished_indices.push_back(fi);
 
-						runtime.transition = singular_function_name;
-						runtime.singular = s_time;
-						runtime.chaincrit = readF_time;
-						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+							return;
+						}
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
 
+						GpiList si_out;
+						GpiList fi_out;
+
+						long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						std::list<poly> generators;
+						READ_GENERATORS_STATICALLY(generators, r);
+						long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
+
+						std::string singular_function_name = "NF_of_spoly";
+						bool delete_files = true;
+						bool silent = true;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (library_name, singular_function_name, base_filename, generators, r, Qback.i, Qback.j, started_indices.i, started_indices.j, started_indices.old_r, time_offset, &runtime, &si_out, &fi_out, &NF, delete_files, silent);
+
+
+						if(si_out.size()>0)
+						{
+							GpiStruct si;
+							si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , boost::get<int>(si_out.front())}));
+							si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , boost::get<int>(si_out.back())}));
+							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", r}));
+
+							started_indices_out.push_back(si);
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": 1 NF_of_spoly: adding ("<<boost::get<int>(si_out.front())<<","<<boost::get<int>(si_out.back())<<") to started_indices (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
+							#endif
+						}
+						if(fi_out.size()>0)
+						{
+							GpiStruct fi;
+							fi.emplace_back(std::pair<std::string,GpiVariant>({"i"    , boost::get<int>(fi_out.front())}));
+							fi.emplace_back(std::pair<std::string,GpiVariant>({"j"    , boost::get<int>(fi_out.back())}));
+
+							finished_indices.push_back(fi);
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": 2 NF_of_spoly: adding ("<<boost::get<int>(fi_out.front())<<","<<boost::get<int>(fi_out.back())<<") to finished_indices (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
+							#endif
+						}
+						if(NF.size()>0)
+						{
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": 3 NF_of_spoly: adding ("<<boost::get<int>(get_list(NF.front()).front())<<","<<boost::get<int>(*std::next(get_list(NF.front()).begin()))<<") to NF (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
+							#endif
+						}
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
-				<condition>
-														only need to call the singular proc if r_used<r or ..=.. and (i,j)==Qback
-				</condition>
 			</defun>
+			<condition>
+				(${r} :gt: ${started_indices.old_r})
+			</condition>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="library_name" place="place_library_name"/>
+			<connect-read port="blacklist" place="place_blacklist"/>
 			<connect-read port="r" place="place_r"/>
-			<connect-read port="M" place="place_M"/>
 			<connect-read port="Qback" place="place_Qback"/>
+			<connect-read port="time_offset" place="place_time_offset"/>
+			<connect-in port="started_indices" place="place_started_indices"/>
+			<connect-inout port="balNF" place="place_balNF"/>
+			<connect-out-many port="started_indices_out" place="place_started_indices"/>
+			<connect-out-many port="finished_indices" place="place_finished_indices"/>
+			<connect-out-many port="NF" place="place_NF"/>
+			<connect-out port="runtime" place="place_runtime"/>
+		</transition>
+
+
+
+	  <transition name="NF_of_spoly_Qback" priority="2">
+			<defun>
+				<require key="worker" mandatory="true"/>
+				<in name="base_filename" type="string"/>
+				<in name="library_name" type="string"/>
+				<in name="blacklist" type="set"/>
+				<in name="r" type="int"/>
+				<in name="Qback" type="index_pair"/>
+				<in name="started_indices" type="running_reduction"/>
+				<in name="time_offset" type="long"/>
+				<out name="started_indices_out" type="list"/>
+				<out name="finished_indices" type="list"/>
+				<out name="NF" type="list"/>
+				<out name="runtime" type="map"/>
+				<module name="singular_buchberger"
+							  require_function_unloads_without_rest="false"
+							  function="function_NF_of_spoly_Qback(runtime, base_filename, library_name, r, Qback, started_indices, started_indices_out, finished_indices, NF, time_offset, blacklist)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
+					<cinclude href="fstream"/>
+					<cinclude href="boost/archive/binary_iarchive.hpp"/>
+					<cinclude href="boost/archive/binary_oarchive.hpp"/>
+					<cinclude href="boost/thread/thread.hpp"/>
+
+					<code><![CDATA[
+						bool i_in_bl  = (blacklist.find((GpiVariant) started_indices.i)               !=blacklist.end());
+						bool j_in_bl  = (blacklist.find((GpiVariant) started_indices.j)               !=blacklist.end());
+						bool ij_in_bl = (blacklist.find(GpiSet({started_indices.i,started_indices.j}))!=blacklist.end());
+						if ( ((i_in_bl || j_in_bl) && !ij_in_bl) || blacklist.find(GpiList({started_indices.i,started_indices.j}))!=blacklist.end() )
+						{
+							return;
+						}
+						if (i_in_bl && j_in_bl && ij_in_bl)
+						{
+							GpiStruct fi;
+							fi.emplace_back(std::pair<std::string,GpiVariant>({"i"    , started_indices.i}));
+							fi.emplace_back(std::pair<std::string,GpiVariant>({"j"    , started_indices.j}));
+
+							finished_indices.push_back(fi);
+
+							return;
+						}
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+
+						GpiList si_out;
+						GpiList fi_out;
+
+						long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						std::list<poly> generators;
+						READ_GENERATORS_STATICALLY(generators, r);
+						long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
+
+						std::string singular_function_name = "NF_of_spoly_Qback";
+						bool delete_files = true;
+						bool silent = true;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (library_name, singular_function_name, base_filename, generators, r, Qback.i, Qback.j, started_indices.i, started_indices.j, started_indices.old_r, time_offset, &runtime, &si_out, &fi_out, &NF, delete_files, silent);
+
+
+						if(si_out.size()>0)
+						{
+							GpiStruct si;
+							si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , boost::get<int>(si_out.front())}));
+							si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , boost::get<int>(si_out.back())}));
+							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", r}));
+
+							started_indices_out.push_back(si);
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": 1 NF_of_spoly_Qback: adding ("<<boost::get<int>(si_out.front())<<","<<boost::get<int>(si_out.back())<<") to started_indices (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
+							#endif
+						}
+						if(fi_out.size()>0)
+						{
+							GpiStruct fi;
+							fi.emplace_back(std::pair<std::string,GpiVariant>({"i"    , boost::get<int>(fi_out.front())}));
+							fi.emplace_back(std::pair<std::string,GpiVariant>({"j"    , boost::get<int>(fi_out.back())}));
+
+							finished_indices.push_back(fi);
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": 2 NF_of_spoly_Qback: adding ("<<boost::get<int>(fi_out.front())<<","<<boost::get<int>(fi_out.back())<<") to finished_indices (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
+							#endif
+						}
+						if(NF.size()>0)
+						{
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": 3 NF_of_spoly_Qback: adding ("<<boost::get<int>(get_list(NF.front()).front())<<","<<boost::get<int>(*std::next(get_list(NF.front()).begin()))<<") to NF (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
+							#endif
+						}
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+					]]></code>
+				</module>
+			</defun>
+			<condition>
+				((${started_indices.i} :eq: ${Qback.i}) :and: (${started_indices.j} :eq: ${Qback.j}))
+			</condition>
+			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="library_name" place="place_library_name"/>
+			<connect-read port="blacklist" place="place_blacklist"/>
+			<connect-read port="r" place="place_r"/>
+			<connect-read port="Qback" place="place_Qback"/>
+			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="started_indices_out" place="place_started_indices"/>
 			<connect-out-many port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="NF" place="place_NF"/>
 			<connect-out port="runtime" place="place_runtime"/>
-		</transition-->
+		</transition>
 
 
-		<transition name="increment">
+
+		<transition name="increment" priority="43">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
 				<in name="NF" type="list"/>
-				<inout name="A" type="string"/>
-				<inout name="bookkeeping" type="map"/>
+				<in name="time_offset" type="long"/>
+				<!--inout name="bookkeeping" type="map"/-->
 				<inout name="Q" type="list"/>
-				<inout name="Qback" type="list"/>
-				<inout name="r" type="long"/>
+				<inout name="Qback" type="index_pair"/>
+				<inout name="blacklist" type="set"/>
+				<inout name="r" type="int"/>
 				<inout name="M" type="list"/>
-				<out name="element_index" type="long"/>
-				<out name="finished_indices" type="list"/>
-				<out name="kill_indices" type="list"/>
-				<out name="runtime" type="runtimes"/>
+				<out name="started_indices" type="list"/>
+				<out name="runtime" type="map"/>
+				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_increment(runtime, base_filename, library_name, NF, A, bookkeeping, Q, Qback, r, M, element_index, finished_indices, kill_indices)">
+							  function="function_increment(runtime, base_filename, library_name, NF, Q, Qback, r, M, started_indices, BB_finished, time_offset, blacklist)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -483,129 +452,193 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-						boost::this_thread::sleep_for(boost::chrono::milliseconds(SLEEP_TIME_MS));
-						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time=0;
-						long ccruntime=0;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						std::string singular_function_name = "increment";
 
-
-						/*
-						long d;
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
-						*/std::string singular_function_name = "increment";/*
-						args_read  = {base_filename};
-						args_in    = {NF};
-						args_inout = {&A, &r, &M};
-						out        = {&s_time, &ccruntime, &element_index, &d, &finished_indices};
-						out_many   = {&kill_indices};
-						bool delete_files = true;
-						bool silent = false;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-						std::cout << "current_degree after increment: " << d << std::endl;
-						std::cout << "r after increment: " << r << std::endl;
-						std::cout << "                                                                                                                                                                                     " << s_time << " ms (" << singular_function_name << ")" << std::endl;
-						std::cout << "                                                                                                                                                                                         " << ccruntime << " ms (c/p criterion)" << std::endl;
-						std::cout << "                                                                                                                                                                                         " << s_time-ccruntime << " ms (everything else)" << std::endl;
-						*/
-
-						////  QUEUE  //////////
-						std::cout << "entering " << singular_function_name << std::endl;
-
-						/*Q*/r++;
 						GpiList::const_iterator it = NF.begin();
-					  //std::string m_temp = boost::get<std::string>(*it); ++it;
-					  //std::string f_temp = boost::get<std::string>(*it); ++it;
-						GpiVariant index_i = *it; ++it;
-					  GpiVariant index_j = *it; ++it;
+						int index_i = boost::get<int>(*it); ++it;
+					  int index_j = boost::get<int>(*it); ++it;
 						GpiVariant m = *it;
 
-						std::cout << "increasing r from " << r-1 << " to " << r << " due to spoly (" << boost::get<long>(index_i) << "," << boost::get<long>(index_j) << ")"<< std::endl;
+						long prodcrit_counter  = 0L;
+						long chaincrit_counter = 0L;
+						long cancelled_element_counter = 0L;
+						long cancelled_s_pair_counter  = 0L;
 
-						/*Q*/M.push_back(m);
-						//change filenames:
-					  //std::rename((base_filename + m_temp).c_str(), (base_filename+"m"+std::to_string(r)).c_str());
-					  //std::rename((base_filename + f_temp).c_str(), (base_filename+"f"+std::to_string(r)).c_str());
 
-					  //update bookkeeping matrix using product + chain criterion
-						int j=1;
-						for (GpiList::iterator Mj=M.begin(); j<r; ++Mj, j++)
+						bool i_in_bl  = (blacklist.find((GpiVariant) index_i)     !=blacklist.end());
+						bool j_in_bl  = (blacklist.find((GpiVariant) index_j)     !=blacklist.end());
+						bool ij_in_bl = (blacklist.find(GpiSet({index_i,index_j}))!=blacklist.end());
+						if (!(((i_in_bl || j_in_bl) && !ij_in_bl) || (i_in_bl && j_in_bl)))
 						{
-							//std::cout << " ----------------------------- 0 -------------------------------- " << std::endl;
-							GpiList lcm_r_j = lcm(m, *Mj);
-							int state =  product_criterion(get_list(m), get_list(*Mj));
-							bookkeeping[GpiSet({(int)r,j})] = GpiList({state, lcm_r_j, deg(lcm_r_j)}); // A, B, D  --> B,D only needed if leads in same component!
-							if(state==0)
+							r++;
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": increasing r from " << r-1 << " to " << r << " due to spoly (" << index_i << "," << index_j << ")"<< std::endl;
+							#endif
+
+							M.push_back(m);
+
+							std::vector<std::vector<int>> Mvec;
+							for(GpiList::iterator Mi=M.begin(); Mi!=M.end(); ++Mi)
 							{
-								//std::cout << " ----------------------------- 1 -------------------------------- " << std::endl;
-								queue_insert(Q, GpiList({(int)r, j, state, lcm_r_j}));
-								//std::cout << " ----------------------------- 2 -------------------------------- " << std::endl;
+								Mvec.emplace_back(list2vec(*Mi));
+							}
+
+
+							std::vector<int> Mr = Mvec.back();
+							int i=1;
+							for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
+							{
+								bool add_to_Q = true;
+								std::vector<int> lcm_i_r;
+
+								if (blacklist.find((GpiVariant) i) != blacklist.end())
+								{
+									add_to_Q = false;
+								}
+								else
+								{
+									lcm_i_r = lcm(*Mi, Mr);
+									if (test_PC(*Mi,Mr)) // apply PC
+									{add_to_Q = false; prodcrit_counter++;}
+									else // apply CC
+									{
+										int k=1;
+										for (std::vector<std::vector<int>>::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
+										{
+											if(k!=i && k!=r)
+											{
+												if (test_CC(lcm_i_r, *Mi, Mr, *Mk))
+												{
+													if(k<i)
+													{add_to_Q = false; chaincrit_counter++; break;}
+													else // thus i<k<r  (k>r is not possible)
+													{
+														std::vector<int> lcm_k_r = lcm(*Mk, Mr);
+														if(!equal(lcm_k_r,lcm_i_r)) {add_to_Q = false; chaincrit_counter++; break;}
+													}
+												}
+											}
+										}
+									}
+								}
+
+								if (divides_monom(Mr,*Mi) &&  (blacklist.find((GpiVariant) i)==blacklist.end()))
+								{
+									// new found lead monomial divides i-th lead monomial ==> put i in blacklist
+									// (and Set(i,r) as the (i,r)-th spoly has to be reduced, it is not eliminated through CC!)
+									blacklist.emplace(i);
+									blacklist.emplace(GpiSet({i,r}));
+									// remove (i,j) for all j from Q:
+									queue_delete_i(Q, i);
+									cancelled_element_counter++;
+								}
+
+								if(add_to_Q)
+								{
+									GpiStruct si;
+									si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+									si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , r}));
+									si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+
+									#ifdef DEBUG_BBA
+									std::cout << runtime_start << ": increment: adding ("<<i<<","<<r<<") to started_indices" << std::endl;
+									#endif
+									started_indices.push_back(si);                          // add (i,r) to started indices
+									queue_insert(Q, i, r, deg(lcm_i_r), vec2list(lcm_i_r)); // add (i,r) and information about lcm(fi,fr) to the queue
+								}
+							}
+
+							for (GpiList::iterator Qk=Q.begin(); Qk!=Q.end(); )
+							{
+								int ii = boost::get<int>(get_list(*Qk).front());
+								int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
+
+								std::vector<int> lcm_i_j = lcm(Mvec[ii-1],Mvec[jj-1]);
+
+								if(test_CC(lcm_i_j, Mvec[ii-1], Mvec[jj-1], Mvec[r-1]))
+								{
+									std::vector<int> lcm_i_r = lcm(Mvec[ii-1], Mvec[r-1]);
+									std::vector<int> lcm_j_r = lcm(Mvec[jj-1], Mvec[r-1]);
+									if(!equal(lcm_i_r,lcm_i_j) && !equal(lcm_j_r,lcm_i_j))
+									{
+										blacklist.emplace(GpiList({ii,jj}));
+										Qk = Q.erase(Qk);
+										chaincrit_counter++;
+										cancelled_s_pair_counter++;
+									}
+									else {++Qk;}
+								}
+								else {++Qk;}
 							}
 						}
-						j=1;
-						for (GpiList::iterator Mj=M.begin(); j<r; ++Mj, j++)
+
+						queue_delete_i_j(Q, index_i, index_j);
+
+
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": increment: set size of Q(ueue) to " << Q.size() <<std::endl;
+						#endif
+
+						std::cout << "s(" << Q.size() << ")" << std::endl;
+
+						if(Q.size()>0)
 						{
-							//std::cout << " ----------------------------- 0 -------------------------------- " << std::endl;
-							int state =  boost::get<int>(get_list(bookkeeping[GpiSet({(int)r,j})]).front());
-							if(state!=0) // spoly(f_r,f_j) can be excluded
-							{
-								//std::cout << " ----------------------------- 3 -------------------------------- " << std::endl;
-								chain_criterion((int)r, j, bookkeeping, kill_indices, M, get_list(m), get_list(*Mj));
-							}
+							Qback.i = boost::get<int>(           get_list(Q.back()).front() );
+							Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": current Qback:  " << Qback.i << "," << Qback.j << std::endl;
+							#endif
 						}
-						//std::cout << " ----------------------------- after cc -------------------------------- " << std::endl;
-						update_queue(Q, bookkeeping, Qback);
-						//std::cout << " ----------------------------- after updating Q -------------------------------- " << std::endl;
-						//std::cout << " ----------------------------- 5 -------------------------------- " << std::endl;
+						else // queue empty
+						{
+							std::cout << runtime_start << ": ########################################## Buchberger Algorithm finished (in 'increment'!) ##########################################" << std::endl;
+							BB_finished.emplace_back(CONTROL_TOKEN);
+						}
 
 
-					  finished_indices = GpiList({index_i, index_j, r});
-
-						std::cout << "exiting " << singular_function_name << std::endl;
-
-						//kill_indices = {};
-
-						///////////////////////
-
-						runtime.transition = singular_function_name;
-						runtime.singular = s_time;
-						runtime.chaincrit = ccruntime;
-						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
+						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
+						runtime[(std::string) "CANCELLED ELEMENTS"] = GpiList({-1L, -1L, -1L,  cancelled_element_counter});
+						runtime[(std::string) "CANCELLED S-PAIRS"] = GpiList({-1L, -1L, -1L,  cancelled_s_pair_counter});
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="library_name" place="place_library_name"/>
+			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="NF" place="place_NF"/>
-			<connect-inout port="A" place="place_A"/>
-			<connect-inout port="bookkeeping" place="place_bookkeeping"/>
+			<!--connect-inout port="bookkeeping" place="place_bookkeeping"/-->
 			<connect-inout port="Q" place="place_Q"/>
 			<connect-inout port="Qback" place="place_Qback"/>
+			<connect-inout port="blacklist" place="place_blacklist"/>
 			<connect-inout port="r" place="place_r"/>
 			<connect-inout port="M" place="place_M"/>
-			<connect-out port="element_index" place="place_element_index"/>
-			<connect-out port="finished_indices" place="place_finished_indices"/>
-			<connect-out-many port="kill_indices" place="place_kill_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
+			<connect-out-many port="started_indices" place="place_started_indices"/>
+			<connect-out-many port="BB_finished" place="place_BB_finished"/>
 		</transition>
 
 
-		<transition name="write_finished_indices_to_A">
+
+		<transition name="remove_from_Q" priority="42">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
 				<in name="M" type="list"/>
-				<in name="finished_indices" type="list"/>
-				<inout name="A" type="string"/>
-				<inout name="nrunning" type="long"/>
-				<inout name="bookkeeping" type="map"/>
+				<in name="finished_indices" type="index_pair"/>
+				<in name="time_offset" type="long"/>
 				<inout name="Q" type="list"/>
-				<inout name="Qback" type="list"/>
-				<out name="kill_indices" type="list"/>
-				<out name="runtime" type="runtimes"/>
+				<inout name="Qback" type="index_pair"/>
+				<out name="runtime" type="map"/>
+				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_write_finished_indices_to_A(runtime, base_filename, library_name, M, finished_indices, A, nrunning, bookkeeping, Q, Qback, kill_indices)">
+							  function="function_remove_from_Q(runtime, base_filename, library_name, M, finished_indices, Q, Qback, BB_finished, time_offset)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -614,85 +647,80 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-						boost::this_thread::sleep_for(boost::chrono::milliseconds(SLEEP_TIME_MS));
-						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time=0;
-						long ccruntime=0;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						std::string singular_function_name = "remove_from_Q";
 
-						/*
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
-						*/std::string singular_function_name = "write_finished_indices_to_A";/*
-						args_read  = {base_filename, M};
-						args_in    = {finished_indices};
-						args_inout = {&A};
-						out        = {&s_time, &ccruntime};
-						out_many   = {&kill_indices};
-						bool delete_files = true;
-						bool silent = false;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-						std::cout << "                                                                                                                                                                                     " << s_time << " ms (" << singular_function_name << ")" << std::endl;
-						std::cout << "                                                                                                                                                                                         " << ccruntime << " ms (c/p criterion)" << std::endl;
-						std::cout << "                                                                                                                                                                                         " << s_time-ccruntime << " ms (everything else)" << std::endl;
-						*/
-
-						////  QUEUE  //////////
-						std::cout << "entering " << singular_function_name << std::endl;
-
+/*
 						GpiList::const_iterator it = finished_indices.begin();
-						int i = (int) boost::get<long>(*it); ++it;
-						int j = (int) boost::get<long>(*it); ++it;
-						int new_state = (int) boost::get<long>(*it);
+						int i = boost::get<int>(*it); ++it;
+						int j = boost::get<int>(*it);
+						*/
+						//int new_state = (int) boost::get<long>(*it);
 
-						get_list(bookkeeping[GpiSet({i,j})]).front() = new_state;
+           	//get_list(bookkeeping[GpiSet({i,j})]).front() = new_state;
 
-						chain_criterion(i, j, bookkeeping, kill_indices, M, get_list(*std::next(M.begin(), i-1)), get_list(*std::next(M.begin(), j-1)));
+						//update_queue(Q, bookkeeping, Qback);
 
-						update_queue(Q, bookkeeping, Qback);
+						queue_delete_i_j(Q, finished_indices.i, finished_indices.j);
 
-						nrunning--;
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": remove_from_Q: removed element (" << finished_indices.i << "," << finished_indices.j << ") from Q(ueue) as it reduced to 0, size of Q: " << Q.size() <<std::endl;
+						#endif
+						int Q_size = Q.size();
+						if (Q_size%100==0 || (Q_size<100 && Q_size%10==0))
+						{
+							std::cout << "(" << Q_size << ")" << std::endl;
+						}
+						if(Q.size()>0)
+						{
+							Qback.i = boost::get<int>(           get_list(Q.back()).front() );
+					    Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": current Qback:  " << Qback.i << "," << Qback.j << std::endl;
+							#endif
+						}
+						else // queue empty
+						{
+							std::cout << runtime_start << ": ########################################## Buchberger Algorithm finished ##########################################" << std::endl;
+							BB_finished.emplace_back(CONTROL_TOKEN);
+						}
 
-						//kill_indices = {};
 
-						std::cout << "exiting " << singular_function_name << std::endl;
-						///////////////////////
-
-						runtime.transition = singular_function_name;
-						runtime.singular = s_time;
-						runtime.chaincrit = ccruntime;
-						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="M" place="place_M"/>
+			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="finished_indices" place="place_finished_indices"/>
-			<connect-inout port="A" place="place_A"/>
-			<connect-inout port="nrunning" place="place_nrunning"/>
-			<connect-inout port="bookkeeping" place="place_bookkeeping"/>
 			<connect-inout port="Q" place="place_Q"/>
 			<connect-inout port="Qback" place="place_Qback"/>
-			<connect-out-many port="kill_indices" place="place_kill_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
+			<connect-out-many port="BB_finished" place="place_BB_finished"/>
 		</transition>
 
 
-		<transition name="minimize_GB">
+		<transition name="minimize_GB" priority="42">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
 				<in name="BB_finished" type="control"/>
-				<in name="A" type="string"/>
-				<in name="r" type="long"/>
+				<in name="r" type="int"/>
 				<in name="M" type="list"/>
-				<out name="needed_indices_list" type="string"/>
-				<out name="output" type="string"/>
+				<in name="Q" type="list"/>
+				<in name="time_offset" type="long"/>
+				<!--inout name="bookkeeping" type="map"/-->
+				<out name="needed_indices_list" type="list"/>
 				<out name="needed_indices" type="list"/>
-				<out name="runtime" type="runtimes"/>
+				<out name="output" type="string"/>
+				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_minimize_GB(runtime, base_filename, library_name, A, r, M, needed_indices_list, needed_indices, output)">
+							  function="function_minimize_GB(runtime, base_filename, library_name, r, M, needed_indices_list, needed_indices, output, time_offset)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -701,35 +729,102 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-						boost::this_thread::sleep_for(boost::chrono::milliseconds(SLEEP_TIME_MS));
-						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": minimizing Gröbner basis with initially " << r << " elements" << std::endl;
+						#endif
+
+						std::vector<std::vector<int>> Mvec;
+						for (GpiList::const_iterator Mj=M.begin(); Mj!=M.end(); ++Mj)
+						{
+							std::vector<int> Mjvec = list2vec(get_list(*Mj));
+							Mvec.emplace_back(Mjvec);
+						}
+
+						bool needed;
+						for(int i=0; i<r; i++)
+						{
+							needed = true;
+							for(int j=0; j<r; j++) {
+								if(j!=i) {
+								if(divides_monom(Mvec[j],Mvec[i])) {
+									if(i<j || !(equal(Mvec[i],Mvec[j]))) {
+										needed = false; break;
+								}}}
+							}
+							if(needed)
+							{
+								needed_indices_list.emplace_back((long) (i+1));
+								needed_indices.emplace_back((long) (i+1));
+							}
+						}
+						int final_r = size(needed_indices);
+
+/*
+						list lexp;
+						if(M[1][2]==0) { // ideals
+							ideal L;
+							for(i=1; i<=final_r; i++) {
+								lexp = M[indices[i]][1];
+								L[i] = monomial(intvec(lexp[1..size(lexp)]));
+							}
+						}
+						else { // modules
+							module L;
+							for(i=1; i<=final_r; i++) {
+								lexp = M[indices[i]][1];
+								L[i] = monomial(intvec(lexp[1..size(lexp)])) * gen(M[indices[i]][2]);
+							}
+						}
+
+						GpiList M_SINGULAR;
+						for (GpiList::const_iterator it=M.begin(); it!=M.end(); ++it)
+						{
+							GpiList entry = get_list(*it);
+							GpiList new_entry;
+							int i=1;
+							GpiList::iterator it2=entry.begin();
+							for (; it2!=entry.end(); ++it2)
+							{
+								if (i<entry.size()) {new_entry.emplace_back((long) boost::get<int>(*it2));}
+								else {break;}
+								i++;
+							}
+						  M_SINGULAR.emplace_back(GpiList({new_entry, (long) boost::get<int>(*it2)}));
+						}
+						*/
 
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
 						args_read  = {base_filename};
-						args_in    = {A, r, M};
+						args_in    = {(long) r,(long) final_r, needed_indices_list};
 						args_inout = {};
-						out        = {&s_time, &needed_indices_list, &output};
-						out_many   = {&needed_indices};
+						out        = {&output};
+						out_many   = {};
 						bool delete_files = true;
-						bool silent = false;
+						bool silent = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
 
-						runtime.transition = singular_function_name;
-						runtime.singular = s_time;
-						runtime.chaincrit = 0L;
-						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": " << needed_indices.size() << " elements left" << std::endl;
+						#endif
+
+
+
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="library_name" place="place_library_name"/>
-			<connect-in port="BB_finished" place="place_BB_finished"/>
-			<connect-in port="A" place="place_A"/>
+			<connect-read port="BB_finished" place="place_BB_finished"/>
+			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="r" place="place_r"/>
 			<connect-in port="M" place="place_M"/>
+			<connect-in port="Q" place="place_Q"/>
+			<!--connect-inout port="bookkeeping" place="place_bookkeeping"/-->
 			<connect-out port="needed_indices_list" place="place_needed_indices_list"/>
 			<connect-out port="output" place="place_output"/>
 			<connect-out-many port="needed_indices" place="place_needed_indices"/>
@@ -737,46 +832,49 @@
 		</transition>
 
 
-		<transition name="reduce_GB">
+		<transition name="reduce_GB" priority="42">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="library_name" type="string"/>
 				<in name="redSB" type="long"/>
-				<in name="needed_indices_list" type="string"/>
+				<in name="needed_indices_list" type="list"/>
 				<in name="needed_indices" type="long"/>
-				<out name="runtime" type="runtimes"/>
+				<in name="time_offset" type="long"/>
+				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
-								function="function_reduce_GB(runtime, base_filename, library_name, redSB, needed_indices_list, needed_indices)">
+								function="function_reduce_GB(runtime, base_filename, library_name, redSB, needed_indices_list, needed_indices, time_offset)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
 					<cinclude href="chrono"/>
 					<cinclude href="boost/thread/thread.hpp"/>
-
 					<code><![CDATA[
-						boost::this_thread::sleep_for(boost::chrono::milliseconds(SLEEP_TIME_MS));
-						runtime.start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						long s_time;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
 
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						int final_r = needed_indices_list.size();
+						std::vector<int> needed_indices_vec = list2vec_long(needed_indices_list);
+
+						std::list<poly> generators;
+						if (redSB) // if no reduced GB os required, we don't need the generators
+						{
+							long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+							READ_GENERATORS_STATICALLY_WITH_PERMUTATION(generators, final_r, needed_indices_vec);
+							long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+							runtime[(std::string) "reading generators in reduce_GB (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
+						}
+						int current_index = (int) std::distance( needed_indices_vec.begin(), std::find(needed_indices_vec.begin(), needed_indices_vec.end(), needed_indices) ); // GET_INDEX(needed_indices_vec, needed_indices); // index in generators that has to be reduced w.r.t. the other generators
+
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": reduce_GB: processing " << current_index+1 << "-th element of the Gröbner basis" << std::endl;
+						#endif
 						std::string singular_function_name = "reduce_GB";
-						args_read  = {base_filename, redSB, needed_indices_list};
-						args_in    = {needed_indices};
-						args_inout = {};
-						out        = {&s_time};
-						out_many   = {};
-						bool delete_files = true;
-						bool silent = false;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-						std::cout << "                                                                                                                                                                                         " << s_time << " ms (" << singular_function_name << ")" << std::endl;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_reduce_GB) (base_filename, library_name, generators, needed_indices, current_index, final_r, redSB, time_offset, &runtime);
 
-						runtime.transition = singular_function_name;
-						runtime.singular = s_time;
-						runtime.chaincrit = 0L;
-						runtime.stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
@@ -784,43 +882,9 @@
 			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="redSB" place="place_redSB"/>
 			<connect-read port="needed_indices_list" place="place_needed_indices_list"/>
+			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="needed_indices" place="place_needed_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
-		</transition>
-
-		<transition name="summarize_runtimes">
-			<defun>
-				<require key="worker" mandatory="true"/>
-				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
-				<in name="runtime" type="runtimes"/>
-				<inout name="output" type="string"/>
-				<module name="singular_buchberger"
-								require_function_unloads_without_rest="false"
-								function="function_summarize_runtimes(runtime, base_filename, library_name, output)">
-					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
-					<cinclude href="boost/variant.hpp"/>
-					<cinclude href="iostream"/>
-					<cinclude href="chrono"/>
-					<code><![CDATA[
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
-						std::string singular_function_name = "summarize_runtimes";
-						args_read  = {};
-						args_in    = {runtime.transition, runtime.start, runtime.stop, runtime.singular, runtime.chaincrit};
-						args_inout = {&output};
-						out        = {};
-						out_many   = {};
-						bool delete_files = true;
-						bool silent = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-					]]></code>
-				</module>
-			</defun>
-			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
-			<connect-in port="runtime" place="place_runtime"/>
-			<connect-inout port="output" place="place_output"/>
 		</transition>
 	</net>
 </defun>

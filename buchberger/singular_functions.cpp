@@ -11,6 +11,36 @@
 const std::string STRUCT_NAME = "token";
 const std::string STRUCT_DESC = "list fieldnames, list data";
 
+void writePolySSI(poly P, std::string out_filename)
+{
+  si_link f  = ssi_open_for_write (out_filename);
+  sleftv data;
+  data.Init();
+  if (p_GetComp(P,currRing)==0)
+    data.rtyp = POLY_CMD;
+  else
+    data.rtyp = VECTOR_CMD;
+  data.data = (void*) P;
+  if (ssiWrite(f,&data))
+  {
+    throw std::runtime_error ("saving polynomial to ssi failed");
+  }
+  ssi_close_and_remove (f);
+}
+
+poly readPolySSI(std::string filename, BOOLEAN delete_file)
+{
+  si_link f  = ssi_open_for_read (filename);
+  leftv data = ssiRead1(f);
+  if (data->rtyp != POLY_CMD && data->rtyp != VECTOR_CMD)
+  {
+    throw std::runtime_error ("reading polynomial from ssi failed");
+  }
+  ssi_close_and_remove (f);
+  if(delete_file) {std::remove(filename.c_str());}
+  return (poly) data->data;
+}
+
 
 int get_struct_cmd()
 {
@@ -215,6 +245,7 @@ lists ssi_read_newstruct (si_link l, std::string const& struct_name)
 
 std::pair<int, lists> deserialize (std::string const& filename, std::string const& ids, bool delete_file)
 {
+  //std::cout << "deserializing " << filename << std::endl;
 	if (!(register_struct (STRUCT_NAME, STRUCT_DESC)))
 	{
 		 throw std::runtime_error (ids + ": could not register structs");
