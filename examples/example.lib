@@ -109,14 +109,15 @@ proc testSTD(def I)
   return(G);
 }
 
-proc testParallelBB(def I, nworkers)
+proc testParallelBB(def I, int ncores, int nworkers)
 {
+  setcores(ncores);
   def GB;
   int r_all;
   def F;
   list indices;
   list runtimes;
-  GB, r_all, F, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers);
+  GB, r_all, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers);
 
   if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
   else {printf("%nI (%s elements): ...",size(I));}
@@ -146,16 +147,16 @@ proc testParallelBB(def I, nworkers)
       {printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);}
   }
 
-  export(GB,F,indices,runtimes);
+  export(GB,r_all,indices,runtimes);
 }
 
-proc testBB(def I, nworkers)
+proc testBB(def I, int ncores, int nworkers)
 {
 
   def G = testSTD(I);
   print("parallelStd:");
 
-  testParallelBB(I, nworkers);
+  testParallelBB(I, ncores, nworkers);
 
   if(comp(G, GB)) {printf("%nEQUAL to std(I) !!!",0);}
   else                     {printf("%nNOT equal to std(I) !!!",0);}
@@ -174,7 +175,8 @@ proc testSystem(ideal II)
 
 //system("--random", 42); ring r = 0,x(1..7),dp; ideal I = std(randomid(maxideal(2),5)); testBB(I, 1000000);
 //system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
-//system("--random", 42); ring r = 0,x(1..8),dp; ideal I = std(randomid(maxideal(2),6));
+//system("--random", 42); ring r = 0,x(1..10),dp; ideal I = randomid(maxideal(2),8);
+system("--random", 42); ring r = 0,x(1..8),dp; ideal I = randomid(maxideal(2),6);
 
 
 //def I = read("ssi:r bigGB.ssi");
@@ -185,7 +187,7 @@ proc testSystem(ideal II)
 //setcores(6);
 
 //testBB(I, 46);
-//testBB(I, 4);
+testParallelBB(I, 6, 4);
 
 //testParallelBB(I);
 //testSystem(I);
@@ -193,6 +195,9 @@ proc testSystem(ideal II)
 
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
+/*
 ring r = (0,s,t),z(1..15),dp;
 
 matrix M1_mat_T[18][15] = (-z(1) + z(2), -z(1) + z(2), -z(1) + z(2) - z(8) + z(11), -z(1) + z(2) - z(6) + z(14), 0, 0, 0, 0, 0, 0, 0, -s - z(1) + z(2), -t - z(1) + z(2), 0, 0), (0, 0, z(1) - z(2) + z(8) - z(11), 0, -z(6) + z(8) - z(11) + z(14), 0, 0, z(8) - z(11), s + z(8) - z(11), s + t + z(8) - z(11), z(8) - z(11), 0, 0, 0, 0), (0, 0, 0, z(1) - z(2) + z(6) - z(14), z(6) - z(8) + z(11) - z(14), z(6) - z(14), s + t + z(6) - z(14), 0, 0, 0, 0, 0, 0, z(6) - z(14), -s + z(6) - z(14)), (z(1) - z(12), s + z(1) - z(12), s + z(1) + z(8) - z(9) - z(12), z(1) - z(6) - z(12) + z(15), 0, 0, 0, 0, 0, 0, 0, z(1) - z(12), s + t + z(1) - z(12), 0, 0), (0, 0, -s - z(1) - z(8) + z(9) + z(12), 0, -s - z(6) - z(8) + z(9) + z(15), 0, 0, -z(8) + z(9), -z(8) + z(9), -s - t - z(8) + z(9), -s - z(8) + z(9), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(6) + z(12) - z(15), s + z(6) + z(8) - z(9) - z(15), z(6) - z(15), -t + z(6) - z(15), 0, 0, 0, 0, 0, 0, -s + z(6) - z(15), z(6) - z(15)), (z(1) - z(13), t + z(1) - z(13), -s + z(1) + z(9) - z(10) - z(13), z(1) + 3*z(6) - z(7) - z(13) - z(14) - z(15), 0, 0, 0, 0, 0, 0, 0, s + t + z(1) - z(13), z(1) - z(13), 0, 0), (0, 0, s - z(1) - z(9) + z(10) + z(13), 0, s + 3*z(6) - z(7) - z(9) + z(10) - z(14) - z(15), 0, 0, s + t - z(9) + z(10), -z(9) + z(10), -z(9) + z(10), s - z(9) + z(10), 0, 0, 0, 0), (0, 0, 0, -z(1) - 3*z(6) + z(7) + z(13) + z(14) + z(15), -s - 3*z(6) + z(7) + z(9) - z(10) + z(14) + z(15), -3*z(6) + z(7) + z(14) + z(15), -s - 3*z(6) + z(7) + z(14) + z(15), 0, 0, 0, 0, 0, 0, -t - 3*z(6) + z(7) + z(14) + z(15), s + t - 3*z(6) + z(7) + z(14) + z(15)), (2*z(1), z(1) + z(2), z(1) + z(3) - z(11), z(1) + z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) + z(12), z(1) + z(13), 0, 0), (0, 0, -z(1) - z(3) + z(11), 0, -z(3) + z(4) - z(6) + z(11), 0, 0, z(2) - z(3) + z(11), z(1) + z(2) - z(3) + z(11) - z(12), 2*z(1) + z(2) - z(3) + z(11) - z(12) - z(13), z(1) - z(3) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) - z(4) + z(6), z(3) - z(4) + z(6) - z(11), z(1) - z(4) + z(6), 2*z(1) + z(2) - z(4) + z(6) - z(12) - z(13), 0, 0, 0, 0, 0, 0, 2*z(1) - z(2) - z(4) + z(6), -z(4) + z(6) + z(12)), (z(1) - z(3) + z(11), z(1) - z(3) + z(8), z(1) - z(3) - z(11), z(1) - z(3) + z(5) - z(6), 0, 0, 0, 0, 0, 0, 0, s + z(1) - z(3) + z(8) - z(9) + z(11), -s + z(1) - z(3) + z(9) - z(10) + z(11), 0, 0), (0, 0, -z(1) + z(3) + z(11), 0, z(5) - z(6) + z(11), 0, 0, z(8) + z(11), -s + z(9) + z(11), z(10) + z(11), 2*z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(3) - z(5) + z(6), -z(5) + z(6) - z(11), -z(5) + z(6) + z(11), -z(5) + z(6) + z(10), 0, 0, 0, 0, 0, 0, -z(5) + z(6) - z(8) + 2*z(11), s - z(5) + z(6) + z(8) - z(9) + z(11)), (z(1) - z(4) + z(6), z(1) - z(4) + 2*z(6) - z(14), z(1) - z(4) + z(5) - z(11), z(1) - z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) - z(4) + z(15), z(1) - z(4) + 4*z(6) - z(7) - z(14) - z(15), 0, 0), (0, 0, -z(1) + z(4) - z(5) + z(11), 0, -z(5) - z(6) + z(11), 0, 0, -z(5) + 2*z(6) + z(11) - z(14), -z(5) + 3*z(6) + z(11) - z(14) - z(15), -z(5) + z(7) + z(11), -z(5) + z(6) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(4) + z(6), z(5) + z(6) - z(11), 2*z(6), z(6) + z(7), 0, 0, 0, 0, 0, 0, z(6) + z(14), z(6) + z(15));
@@ -215,3 +220,5 @@ module M1 = module(M1_mat);
 module M2 = module(M2_mat);
 module M = M1+M2;
 ;
+
+*/

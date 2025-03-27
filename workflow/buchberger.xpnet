@@ -56,6 +56,7 @@
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="fstream"/>
 					<cinclude href="chrono"/>
 					<cinclude href="boost/thread/thread.hpp"/>
 
@@ -161,6 +162,9 @@
 						// init the blcklist
 						blacklist = GpiSet({});
 
+						std::ofstream outFile(base_filename+"SIZE_OF_GB.txt");
+						outFile << r;
+						outFile.close();
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
@@ -243,8 +247,16 @@
 						GpiList fi_out;
 
 						long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
-						std::list<poly> generators;
-						READ_GENERATORS_STATICALLY(generators, r);
+
+						//std::list<poly> generators;
+						//READ_GENERATORS_STATICALLY(generators, r);
+
+						static std::list<poly> generators;
+						for (int k=generators.size()+1; k<=r; k++)
+						{
+							generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, k));
+						}
+
 						long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
 						runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 
@@ -287,6 +299,7 @@
 						}
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						if(NF.size()>0) {runtime[(std::string) "min serial runtime"] = GpiList({-1L, runtime_stop, runtime_stop-runtime_start, 1L});}
 					]]></code>
 				</module>
 			</defun>
@@ -360,8 +373,16 @@
 						GpiList fi_out;
 
 						long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
-						std::list<poly> generators;
-						READ_GENERATORS_STATICALLY(generators, r);
+
+						//std::list<poly> generators;
+						//READ_GENERATORS_STATICALLY(generators, r);
+
+						static std::list<poly> generators;
+						for (int k=generators.size()+1; k<=r; k++)
+						{
+							generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, k));
+						}
+
 						long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
 						runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 
@@ -404,6 +425,7 @@
 						}
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						if(NF.size()>0) {runtime[(std::string) "min serial runtime"] = GpiList({-1L, runtime_stop, runtime_stop-runtime_start, 1L});}
 					]]></code>
 				</module>
 			</defun>
@@ -448,6 +470,7 @@
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="fstream"/>
 					<cinclude href="chrono"/>
 					<cinclude href="boost/thread/thread.hpp"/>
 
@@ -583,6 +606,14 @@
 
 						std::cout << "s(" << Q.size() << ")" << std::endl;
 
+						std::ofstream outFile(base_filename+"SIZE_OF_Q.txt");
+						outFile << (Q.size());
+						outFile.close();
+
+						std::ofstream outFileGB(base_filename+"SIZE_OF_GB.txt");
+						outFileGB << r;
+						outFileGB.close();
+
 						if(Q.size()>0)
 						{
 							Qback.i = boost::get<int>(           get_list(Q.back()).front() );
@@ -643,6 +674,7 @@
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
+					<cinclude href="fstream"/>
 					<cinclude href="chrono"/>
 					<cinclude href="boost/thread/thread.hpp"/>
 
@@ -670,7 +702,14 @@
 						if (Q_size%100==0 || (Q_size<100 && Q_size%10==0))
 						{
 							std::cout << "(" << Q_size << ")" << std::endl;
+
 						}
+
+						std::ofstream outFile(base_filename+"SIZE_OF_Q.txt");
+		        outFile << (Q.size());
+		        outFile.close();
+
+		        std::cout << "Integer written to file." << std::endl;
 						if(Q.size()>0)
 						{
 							Qback.i = boost::get<int>(           get_list(Q.back()).front() );
@@ -857,11 +896,18 @@
 						int final_r = needed_indices_list.size();
 						std::vector<int> needed_indices_vec = list2vec_long(needed_indices_list);
 
-						std::list<poly> generators;
+						static std::list<poly> generators;
 						if (redSB) // if no reduced GB os required, we don't need the generators
 						{
 							long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
-							READ_GENERATORS_STATICALLY_WITH_PERMUTATION(generators, final_r, needed_indices_vec);
+
+							//READ_GENERATORS_STATICALLY_WITH_PERMUTATION(generators, final_r, needed_indices_vec);
+
+							for (int k=generators.size()+1; k<=final_r; k++)
+							{
+								generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, needed_indices_vec[k-1]));
+							}
+
 							long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
 							runtime[(std::string) "reading generators in reduce_GB (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 						}

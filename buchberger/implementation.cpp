@@ -620,10 +620,10 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F( [[maybe_unus
 
 NO_NAME_MANGLING
 
-poly read_generator (std::string const& base_filename, int k, std::vector<int> permutation)
+poly read_generator (std::string const& base_filename, int k)
 {
   init_singular (config::singularLibrary().string());
-  return readPolySSI(base_filename+"f"+std::to_string(permutation[k-1]),false);
+  return readPolySSI(base_filename+"f"+std::to_string(k),false);
 }
 
 NO_NAME_MANGLING
