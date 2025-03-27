@@ -302,7 +302,7 @@ std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_a
   ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data = (void*) F;
   std::string GB = serialize((lists) input_ideal.second, base_filename, (std::string) "init_GB");
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "reading ideal for Buchberger test (init)"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+  (*runtime)[(std::string) "reading ideal for Buchberger test (init)"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   std::vector<std::vector<int>> Mvec;
@@ -317,6 +317,7 @@ std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_a
     Mvec.emplace_back(Mjvec);
   }
 
+/*
   kStrategy strat=new skStrategy;
   strat->ak = id_RankFreeModule(F,currRing);
   strat->kModW=kModW=NULL;
@@ -350,6 +351,7 @@ std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_a
   initS(F, currRing->qideal,strat); //sets also S, ecartS, fromQ
   strat->fromT = FALSE;
   strat->noTailReduction = FALSE;
+  */
   // build pairs
   /*
   if (strat->fromQ!=NULL)
@@ -368,7 +370,7 @@ std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_a
   }*/
 
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "building kStrategy object for Buchberger test (init)"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+  (*runtime)[(std::string) "building kStrategy object for Buchberger test (init)"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
   return std::make_pair(Mvec,GB);
 }
@@ -393,7 +395,7 @@ std::pair<ideal,kStrategy> singular_buchberger_get_Fstrat([[maybe_unused]] std::
   std::pair<int,void*> input_ideal = deserialize(GB, ids, false);
   ideal F = (ideal) ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data;
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "reading ideal for Buchberger test"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+  (*runtime)[(std::string) "reading ideal for Buchberger test (static)"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   kStrategy strat=new skStrategy;
@@ -446,7 +448,7 @@ std::pair<ideal,kStrategy> singular_buchberger_get_Fstrat([[maybe_unused]] std::
     }
   }*/
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "building kStrategy object for Buchberger test"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+  (*runtime)[(std::string) "building kStrategy object for Buchberger test (static)"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
   return std::make_pair(F,strat);
 }
@@ -495,7 +497,7 @@ void singular_buchberger_compute_NF( [[maybe_unused]] std::string const& singula
   }*/
 
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "building s-polynomial"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+  (*runtime)[(std::string) "building s-polynomial"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   poly NF_spoly;
@@ -515,7 +517,7 @@ void singular_buchberger_compute_NF( [[maybe_unused]] std::string const& singula
     if (NF_spoly==NULL) red_result=0;
   }
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "reduction of s-polynomial"] = GpiList({0L, stop_time, stop_time-start_time, 1L});
+  (*runtime)[(std::string) "reduction of s-polynomial"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
   if (red_result!=0) // reduction to non-zero polynomial ==> Buchberger Test fails
   {

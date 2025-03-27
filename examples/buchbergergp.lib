@@ -18,7 +18,6 @@ OVERVIEW:
 proc mod_init()
 {
     LIB "polylib.lib";
-    //LIB "teachstd.lib";
     LIB "general.lib"; // for sort
 
     system("--ticks-per-sec", 1000);
@@ -34,62 +33,15 @@ proc init(string DIR, input)
 RETURN: token out_A, token out_r
 "
 {
-/*
-  def F_in = input.data[1];
-  list m;
-  intvec e;
-  int i,j;
-  list M;
-
-  if(intStrategy()) // make coefficients integers
-  {
-    number c;
-    for(int i=1; i<=size(F_in); i++)
-    {
-      c = content(F_in[i]);
-      if (c!=1)
-      {
-        F_in[i] = F_in[i]/c;
-      }
-    }
-  }
-
-  def F = sort(F_in)[1];
-
-  int out_r = size(F);
-
-  int n = nvars(basering);
-  if(typeof(F) == "module") { // module
-    for(i=1; i<=out_r; i++)
-    {
-      e = leadexp(F[i]);
-      m[1] = list(e[1..n]); // lead monomial as poly
-      m[2] = e[n+1];        // the lead monomials component as int (0 in case of polynomials & ideals)
-      M[i] = m;
-    }
-  }
-  else { // ideal
-    for(i=1; i<=out_r; i++)
-    {
-      e = leadexp(F[i]);
-      m[1] = list(e[1..n]);   // lead monomial as poly
-      m[2] = 0;               // the lead monomials component as int (0 in case of polynomials & ideals)
-      M[i] = m;
-    }
-  }*/
-
-
-  //write("ssi:w "+DIR+"GB_for_BB_test.ssi", F);
-
   token output;
   output.fieldnames[1] = "test_result";
   output.data[1] = 1;
 
   // This output is just for debugging and analysing the algorithm:
     output.fieldnames[2] = "transition_names";
-    output.data[2] = list("total_start_stop", "total_time",   "TRANSITION init TOTAL", "applying criteria in init transition (Buchberger test)", "TRANSITION NF_of_spoly TOTAL", "reading ideal and kStrategy object (static)", "building s-polynomial", "reduction of s-polynomial", "reading ideal for Buchberger test (init)", "reading ideal for Buchberger test", "building kStrategy object for Buchberger test (init)", "building kStrategy object for Buchberger test", "Singular init");
+    output.data[2] = list("total_start_stop", "total_time",   "TRANSITION init TOTAL", "TRANSITION NF_of_spoly TOTAL", "Singular init", "reading ideal for Buchberger test (init)", "building kStrategy object for Buchberger test (init)", "applying criteria in init transition (Buchberger test)", "reading ideal for Buchberger test (static)", "building kStrategy object for Buchberger test (static)", "building s-polynomial", "reduction of s-polynomial", "PRODUCT CRITERION", "CHAIN CRITERION");
     output.fieldnames[3] = "runtimes_per_transition";
-    output.data[3] = list(list(0,-2^31),list(0,0,0),          list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0));
+    output.data[3] = list(list(0,-2^31),list(0,0,0),          list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0));
     output.fieldnames[4]="spoly_that_did_not_reduce_to_zero";
     output.data[4] = list(-1,-1);
 

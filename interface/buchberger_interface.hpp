@@ -377,71 +377,10 @@ inline bool test_CC(std::vector<int> const& lcm_i_j, std::vector<int> const& Mi,
 //    //
 
 
-// call like: chain_criterion(i, j, A, kill_indices, M, get_list(*std::next(M.begin(),i)), get_list(*std::next(M.begin(),j)));
-
-/*
-inline void chain_criterion(int const& i, int const& j, GpiMap& A, GpiList& kill_indices, GpiList const& M, GpiList const& Mi, GpiList const& Mj)
-{
-  long Mi_comp = boost::get<long>(*std::next(Mi.begin()));
-  long Mj_comp = boost::get<long>(*std::next(Mj.begin()));
-  if(Mi_comp==Mj_comp)
-  {
-    int r = M.size();
-    int entry;
-    GpiList::const_iterator it = M.begin();
-    for(int k=1; k<=r; k++, ++it)
-    {
-      GpiList Mk = get_list(*it);
-      long Mk_comp = boost::get<long>(*std::next(Mk.begin()));
-      if(k!=i && k!=j && Mi_comp==Mk_comp)
-      {
-        //row
-        entry = boost::get<int>(get_list(A[GpiSet({i,k})]).front());  // A[i,k]
-        if(EARLY_CHAIN_CRIT || entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
-        {
-          if(divides_monom(Mi.front(), get_list(*std::next(get_list(A[GpiSet({k,j})]).begin())).front()))  // chain-criterion: if (i,k) finished as well and mi divides lcm(mj,mk) then (k,j) can be discarded
-          {
-            entry = boost::get<int>(get_list(A[GpiSet({k,j})]).front()); // A[k,j]
-            if(entry == STARTED)
-            {
-              if(k>j) {kill_indices.emplace_back(std::to_string(k)+","+std::to_string(j));}
-              else    {kill_indices.emplace_back(std::to_string(j)+","+std::to_string(k));}
-            }
-            if(entry == STARTED || entry == 0) // DEBUG!
-            {
-              get_list(A[GpiSet({k,j})]).front() = CHAIN_CRITERION;
-              chain_criterion(k, j, A, kill_indices, M, Mk, Mj);
-            }
-          }
-        }
-        //column
-        entry = boost::get<int>(get_list(A[GpiSet({k,j})]).front()); // A[k,j]
-        if(EARLY_CHAIN_CRIT || entry>=2 || entry==NF_IS_ZERO || entry==PRODUCT_CRITERION || entry==CHAIN_CRITERION || entry==DIFFERENT_COMPONENTS)
-        {
-          if(divides_monom(Mj.front(), get_list(*std::next(get_list(A[GpiSet({i,k})]).begin())).front()))  // chain-criterion: if (k,j) finished as well and mi divides lcm(mj,mk) then (i,k) can be discarded
-          {
-            entry = boost::get<int>(get_list(A[GpiSet({i,k})]).front()); // A[i,k]
-            if(entry == STARTED)
-            {
-              if(i>k) {kill_indices.emplace_back(std::to_string(i)+","+std::to_string(k));}
-              else    {kill_indices.emplace_back(std::to_string(k)+","+std::to_string(i));}
-            }
-            if(entry == STARTED || entry == 0) // DEBUG!
-            {
-              get_list(A[GpiSet({i,k})]).front() = CHAIN_CRITERION;
-              chain_criterion(i, k, A, kill_indices, M, Mi, Mk);
-            }
-          }
-        }
-      }
-    }
-  }
-}
-*/
-
 // call like: chain_criterion(i, j, A, M, get_list(*std::next(M.begin(),i)), get_list(*std::next(M.begin(),j)));
 // with i<j, will test if s-pair (i,j) can be skipped due to a third index k<max(i,j), k!=i, k!=j;
 
+/*
 inline int chain_criterion(int const& i, int const& j, GpiVariant const& lcm_i_j, GpiList const& M, GpiList const& Mi, GpiList const& Mj, long& chaincrit_counter)
 {
   long Mi_comp = boost::get<long>(*std::next(Mi.begin()));
@@ -503,8 +442,8 @@ inline int apply_criteria(int const& i, int const& j, GpiVariant const& lcm_i_j,
 }
 
 
-
-
+*/
+/*
 inline bool test_PC(GpiList const& Mi, GpiList const& Mj)
 {
   long Mi_comp = boost::get<long>(*std::next(Mi.begin()));
@@ -547,7 +486,7 @@ inline bool test_CC(GpiVariant const& lcm_i_j, GpiList const& Mi, GpiList const&
   return false;
 }
 
-
+*/
 
 
 inline void queue_insert(GpiList& Q, GpiList const& data)

@@ -82,7 +82,8 @@ namespace buchberger_module
 	int i {0};
 	std::pair<int, lists> entry;
     auto& valuesOnPortsMap = results.buchberger_module::ValuesOnPorts::map();
-	for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
+
+  for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
 	{
 		if( boost::get<std::string>(it->first ) == "output")
 		{
@@ -92,6 +93,32 @@ namespace buchberger_module
 			i = i + 1;
 		}
 	}
+
+  // summarize runtimes.
+
+  lists transition_list = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[1].data;
+  lists runtimes_list   = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[2].data;
+  lists times_start_stop = (lists) (runtimes_list->m[0].data);
+  lists times_sum_total  = (lists) (runtimes_list->m[1].data);
+
+  long algorithm_starttime = 0L;
+  for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
+	{
+		if( boost::get<std::string>(it->first ) == "runtime")
+		{
+			GpiMap runtime = get_map(it->second);
+
+      GpiMap::const_iterator time_it;
+			for (time_it = runtime.begin(); time_it != runtime.end(); time_it++)
+			{
+				std::string transition = boost::get<std::string>(time_it->first);
+        if(transition==((std::string) "TRANSITION init TOTAL"))
+        {
+          algorithm_starttime = boost::get<long>(get_list(time_it->second).front()); // count start of init transition as beginning of the algorithm
+        }
+      }
+    }
+  }
 
   for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
 	{
@@ -110,34 +137,34 @@ namespace buchberger_module
         long duration = boost::get<long>(*list_it); list_it++;
         long count    = boost::get<long>(*list_it);
 
-        lists transition_list = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[1].data;
-        lists runtimes_list   = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[2].data;
         for(int ii=2; ii<=lSize(transition_list); ii++)
         {
           std::string transition_name = reinterpret_cast<char*> (transition_list->m[ii].data);
           if(transition_name==transition)
           {
-            lists times_start_stop = (lists) (runtimes_list->m[0].data);
-            lists times_sum_total  = (lists) (runtimes_list->m[1].data);
-            lists times_sum        = (lists) (runtimes_list->m[ii].data);
+            lists times_sum = (lists) (runtimes_list->m[ii].data);
 
-            times_sum->m[0].data = (void*) (char*)        ( ((long) times_sum->m[0].data) + duration);
-            times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
-            times_sum->m[2].data = (void*) (char*) std::max(((long) times_sum->m[2].data) , duration);
-
-            if(start!=0)
+            if(stop>=0) // for all timings:
             {
-              times_sum_total->m[0].data = (void*) (char*)        ( ((long) times_sum_total->m[0].data) + duration);
-              times_sum_total->m[1].data = (void*) (char*)        ( ((long) times_sum_total->m[1].data) + count);
-              times_sum_total->m[2].data = (void*) (char*) std::max(((long) times_sum_total->m[2].data) , duration);
+              times_sum->m[0].data = (void*) (char*)        ( ((long) times_sum->m[0].data) + duration);
+              times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
+              times_sum->m[2].data = (void*) (char*) std::max(((long) times_sum->m[2].data) , duration);
 
-              times_start_stop->m[1].data = (void*) (char*) std::max(((long) times_start_stop->m[1].data) , stop); // count end of last activated transition as ending of the algorithm
+              if(start>=0) // total timings of transitions:
+              {
+                times_sum_total->m[0].data = (void*) (char*)        ( ((long) times_sum_total->m[0].data) + duration);
+                times_sum_total->m[1].data = (void*) (char*)        ( ((long) times_sum_total->m[1].data) + count);
+                times_sum_total->m[2].data = (void*) (char*) std::max(((long) times_sum_total->m[2].data) , duration);
 
-              if(transition==((std::string) "TRANSITION init TOTAL")) {
-                times_start_stop->m[0].data = (void*) (char*) start; // count start of init transition as beginning of the algorithm
+                times_start_stop->m[1].data = (void*) (char*) std::max(((long) times_start_stop->m[1].data) , stop-algorithm_starttime); // count end of last activated transition as ending of the algorithm
               }
             }
-
+            else // for counts, like PC, CC
+            {
+              times_sum->m[0].data = (void*) (char*)        (-1L);
+              times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
+              times_sum->m[2].data = (void*) (char*)        (-1L);
+            }
             break;
           }
         }

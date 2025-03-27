@@ -56,37 +56,19 @@
 						bool silent = false;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
 						long runtime_stop_singular = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						runtime[(std::string) "Singular init"] = GpiList({0L, runtime_stop_singular, runtime_stop_singular-runtime_start_singular, 1L});
+						runtime[(std::string) "Singular init"] = GpiList({-1L, runtime_stop_singular, runtime_stop_singular-runtime_start_singular, 1L});
 
 						std::pair<std::vector<std::vector<int>>,std::string> res = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_M_and_F) (library_name, base_filename, input, &runtime);
 						std::vector<std::vector<int>> Mvec = res.first;
 						GB = res.second;
 
 						long runtime_start_criteria = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						// use M to test PC/CC
 
-						//GpiMap bookkeeping;
+						// use M to test PC/CC:
+
 						long prodcrit_counter  = 0L;
 						long chaincrit_counter = 0L;
 
-/*
-						std::vector<std::vector<int>> Mvec;
-						int j=1;
-						for (GpiList::iterator Mj=M.begin(); j<=r; ++Mj, j++)
-						{
-							GpiList Mj_exp_vec = get_list(get_list(*Mj).front());
-							int component = boost::get<long>(get_list(*Mj).back());
-
-							std::vector<int> Mjvec;
-							for (GpiList::iterator ex=Mj_exp_vec.begin(); ex!=Mj_exp_vec.end(); ++ex)
-							{
-								Mjvec.emplace_back((int) boost::get<long>(*ex));
-							}
-							Mjvec.emplace_back(component); // last entry = component
-
-							Mvec.emplace_back(Mjvec);
-						}
-*/
 						int r = Mvec.size();
 						int j=1;
 						for (std::vector<std::vector<int>>::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
@@ -94,10 +76,10 @@
 							int i=1;
 							for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
 							{
-								int state = 0;
+								bool state = true;
 								std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
 								if (test_PC(*Mi,*Mj)) // apply PC
-									{state = PRODUCT_CRITERION; prodcrit_counter++;}
+									{state = false; prodcrit_counter++;}
 								else // apply CC
 								{
 									int k=1;
@@ -108,45 +90,38 @@
 											if (test_CC(lcm_i_j, *Mi, *Mj, *Mk))
 											{
 												if(k<i)
-													{state = CHAIN_CRITERION; chaincrit_counter++; break;}
+													{state = false; chaincrit_counter++; break;}
 												else { if(k<j)
 												{
 													std::vector<int> lcm_k_j = lcm(*Mk, *Mj);
-													if(!equal(lcm_k_j,lcm_i_j)) {state = CHAIN_CRITERION; chaincrit_counter++; break;}
+													if(!equal(lcm_k_j,lcm_i_j)) {state = false; chaincrit_counter++; break;}
 												}
 												else // (k>j)
 												{
 													std::vector<int> lcm_i_k = lcm(*Mi, *Mk);
 													std::vector<int> lcm_j_k = lcm(*Mj, *Mk);
-													if(!equal(lcm_i_k,lcm_i_j) && !equal(lcm_j_k,lcm_i_j)) {state = CHAIN_CRITERION; chaincrit_counter++; break;}
+													if(!equal(lcm_i_k,lcm_i_j) && !equal(lcm_j_k,lcm_i_j)) {state = false; chaincrit_counter++; break;}
 												} }
 											}
 										}
 									}
 								}
-								//bookkeeping[GpiSet({i,j})] = GpiList({state/*, lcm_i_j, deg(lcm_i_j)*/});
-								if(state==0)
+								if(state==true)
 								{
 									started_indices.emplace_back(GpiList({(long) i, (long) j}));
-									//queue_insert(Q, GpiList({i, j, state, lcm_i_j}));
 								}
 							}
-							//GpiList lcm_j_j = lcm(*Mj, *Mj);
-							//bookkeeping[GpiSet({j,j})] = GpiList({j/*, lcm_j_j, deg(lcm_j_j)*/});
 						}
 
 						long runtime_stop_criteria = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						runtime[(std::string) "applying criteria in init transition (Buchberger test)"] = GpiList({0L, runtime_stop_criteria, runtime_stop_criteria-runtime_start_criteria, 1L});
-/*
-						for(int i=max_i; i>=0; i--)
-						{
-							started_indices.emplace_back(i);
-						}
-*/
+						runtime[(std::string) "applying criteria in init transition (Buchberger test)"] = GpiList({-1L, runtime_stop_criteria, runtime_stop_criteria-runtime_start_criteria, 1L});
+
 						std::cout << "STARTED " << started_indices.size() << " S-POLYNOMIAL REDUCTIONS, PRODUCT CRITERION:" << prodcrit_counter << ", CHAIN CRITERION: " << chaincrit_counter << ", TOTAL: " << started_indices.size() + prodcrit_counter + chaincrit_counter << "  (r=" << r << ")" << std::endl;
 
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
+						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
 					]]></code>
 				</module>
 			</defun>
@@ -193,8 +168,8 @@
 						long runtime_start_static = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						static std::pair<ideal,kStrategy> Fstrat = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_Fstrat) (library_name, base_filename, GB, &runtime);
 						long runtime_stop_static = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						runtime[(std::string) "reading ideal and kStrategy object (static)"] = GpiList({0L, runtime_stop_static, runtime_stop_static-runtime_start_static, 1L});
-
+						runtime[(std::string) "reading ideal and kStrategy object (static)"] = GpiList({-1L, runtime_stop_static, runtime_stop_static-runtime_start_static, 1L});
+/*
 						std::string filename = base_filename+"IO_"+std::to_string(boost::get<long>(started_indices.front()))+"_"+std::to_string(boost::get<long>(started_indices.back()));
 
 						bool cancelled (false) ;
@@ -207,13 +182,14 @@
 
 									GpiList BB_test_fail_inner;
 									GpiMap runtime_inner;
+*/
 									bool silent = true;
 
 									fhg::util::scoped_dlhandle
 						                            (config::implementation(), RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND)
 						                            .sym<decltype (singular_buchberger_compute_NF)> ("singular_buchberger_compute_NF")
-						                            (library_name, base_filename, Fstrat, started_indices, &BB_test_fail_inner, &runtime_inner);
-
+						                            (library_name, base_filename, Fstrat, started_indices, &BB_test_fail, &runtime);
+/*
 									int k=0;
 									for (GpiList::iterator it=get_list(runtime_inner[(std::string) "building s-polynomial"]).begin(); k<4; ++it, k++) {oa << boost::get<long>(*it);}
 									k=0;
@@ -259,13 +235,15 @@
 									BB_test_fail.emplace_back(started_indices);
 									eureka.insert(eureka_group); // immediately cancel all other NF(spoly)-calculations using eureka
 								}
-
+*/
+								if (BB_test_fail.size()>0) {eureka.insert(eureka_group);} // immediately cancel all other NF(spoly)-calculations using eureka
 								long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 								runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+/*
             }
 
 						std::remove(filename.c_str());
-
+*/
 					]]></code>
 				</module>
 			</defun>
@@ -328,50 +306,5 @@
 			<connect-inout port="output" place="place_output"/>
 			<connect-eureka port="eureka"/>
 		</transition>
-
-
-
-		<!--transition name="summarize_runtimes">
-			<defun>
-				<require key="worker" mandatory="true"/>
-				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
-				<in name="runtime" type="map"/>
-				<inout name="output" type="string"/>
-				<module name="singular_buchberger"
-								require_function_unloads_without_rest="false"
-								function="function_summarize_runtimes(runtime, base_filename, library_name, output)">
-					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
-					<cinclude href="boost/variant.hpp"/>
-					<cinclude href="iostream"/>
-					<cinclude href="chrono"/>
-					<code><![CDATA[
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
-						std::string singular_function_name = "summarize_runtimes";
-						GpiList times;
-						GpiMap::const_iterator it;
-
-						for (it = runtime.begin(); it != runtime.end(); it++)
-						{
-							times.emplace_back(GpiList({it->first, boost::get<long>(get_list(it->second).front()), boost::get<long>(*(std::next(get_list(it->second).begin(),1))), *(std::next(get_list(it->second).begin(),2)), *(std::next(get_list(it->second).begin(),3))}));
-						}
-						args_read  = {};
-						args_in    = {times};
-						args_inout = {&output};
-						out        = {};
-						out_many   = {};
-						bool delete_files = true;
-						bool silent = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
-
-					]]></code>
-				</module>
-			</defun>
-			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
-			<connect-in port="runtime" place="place_runtime"/>
-			<connect-inout port="output" place="place_output"/>
-		</transition-->
 	</net>
 </defun>

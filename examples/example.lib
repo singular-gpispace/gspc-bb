@@ -5,16 +5,16 @@ option(redSB); // if option redSB is set: gspc_buchberger will calculate a uniqu
 
 configToken gc = configure_gspc();
 
-gc.options.tmpdir = "tempdir";
 gc.options.tmpdir = "/dev/shm/marcel/buchberger/tempdir";
+gc.options.tmpdir = "tempdir";
 
 gc.options.nodefile = "nodefile";
 gc.options.procspernode = 3;
 gc.options.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
 
 // only needed if you use gspc-monitor:
-//gc.options.loghostfile = "loghostfile";
-//gc.options.logport = 3217;
+gc.options.loghostfile = "loghostfile";
+gc.options.logport = 3217;
 
 proc setcores(int n)
 {
@@ -61,24 +61,22 @@ proc verifyGB(def I)
   list s_pair;
   test_result, runtimes, s_pair = gspc_buchberger(I, gc);
 
+  int i,j;
   bigint irl_time = runtimes[2][1][2]-runtimes[2][1][1];
   print("TIMINGS (in ms):");
-  printf("starttime:                                  %s ms",  runtimes[2][1][1]);
-  printf("stoptime:                                   %s ms",  runtimes[2][1][2]);
-  printf("runtime (stoptime - starttime):             %s ms",  irl_time);       bigint runtimes_times_100 = runtimes[2][2][1]*100;
+  printf("runtime BB test (stoptime - starttime):     %s ms",  irl_time);       bigint runtimes_times_100 = runtimes[2][2][1]*100;
   printf("cputime (added up over parallel processes): %s ms (%s%)", runtimes[2][2][1], runtimes_times_100 div irl_time);
   printf("total number of transitions:                %s %n",       runtimes[2][2][2],0);
   printf("max time of a single transition:            %s ms%n",     runtimes[2][2][3],0);
   int j_max=0;
-  int i,j;
   for(i=3; i<=size(runtimes[1]); i++) {j_max = max(j_max,size(runtimes[1][i]));}
   string s;
   for(i=3; i<=size(runtimes[1]); i++) {
     s="";
     for(j=size(runtimes[1][i]); j<=j_max; j++) {runtimes[1][i] = " "+runtimes[1][i];}
     for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
-    if (runtimes[2][i][1]==runtimes[2][i][2] && runtimes[2][i][2]==runtimes[2][i][3]) //count
-      {printf(runtimes[1][i]+": %s"+s+" times", runtimes[2][i][1]);}
+    if (runtimes[2][i][1]==runtimes[2][i][3] && runtimes[2][i][1]==-1) //count
+      {printf(runtimes[1][i]+": %s"+s, runtimes[2][i][2]);}
     else // timing
       {printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);}
   }
@@ -107,7 +105,7 @@ proc testSystem(ideal II)
 
 list ncores_list = 64,48,32,16,8,4,2,1;
 int ncores;
-
+/*
 def J = read("ssi:r bigGB.ssi");
 for(int i=1; i<=size(ncores_list); i++)
 {
@@ -147,5 +145,11 @@ for(int i=1; i<=size(ncores_list); i++)
   verifyGB(J);
   option(noprot); testSystem(J);
 }
+*/
+
+def J = read("ssi:r bigGB.ssi");
+setcores(6);
+verifyGB(J);
+option(noprot); testSystem(J);
 
 ////////////////////////////////////////////////////////////////////////////////
