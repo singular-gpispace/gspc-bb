@@ -522,6 +522,10 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F( [[maybe_unus
       F->m[i] = p_Cleardenom(F->m[i], currRing);
     }
   }
+  else
+  {
+    p_Norm(F->m[i], currRing);
+  }
 
   //writeIdealSSI(F, base_filename+"GB_for_BB_test.ssi");
   //((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data = (void*) F;
@@ -620,10 +624,10 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F( [[maybe_unus
 
 NO_NAME_MANGLING
 
-poly read_generator (std::string const& base_filename, int k)
+poly read_generator (std::string const& base_filename, int k, std::vector<int> permutation)
 {
   init_singular (config::singularLibrary().string());
-  return readPolySSI(base_filename+"f"+std::to_string(k),false);
+  return readPolySSI(base_filename+"f"+std::to_string(permutation[k-1]),false);
 }
 
 NO_NAME_MANGLING
