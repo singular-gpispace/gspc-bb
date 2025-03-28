@@ -524,7 +524,10 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F( [[maybe_unus
   }
   else
   {
-    p_Norm(F->m[i], currRing);
+    for(int i=0; i<F->ncols; i++)
+    {
+      p_Norm(F->m[i], currRing);
+    }
   }
 
   //writeIdealSSI(F, base_filename+"GB_for_BB_test.ssi");
@@ -602,6 +605,13 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F( [[maybe_unus
       FF->m[i] = p_Cleardenom(FF->m[i], currRing);
     }
   }
+  else
+  {
+    for(int i=0; i<FF->ncols; i++)
+    {
+      p_Norm(FF->m[i], currRing);
+    }
+  }
 
   //building Mvec
   std::vector<std::vector<int>> Mvec;
@@ -624,10 +634,10 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F( [[maybe_unus
 
 NO_NAME_MANGLING
 
-poly read_generator (std::string const& base_filename, int k, std::vector<int> permutation)
+poly read_generator (std::string const& base_filename, int k)
 {
   init_singular (config::singularLibrary().string());
-  return readPolySSI(base_filename+"f"+std::to_string(permutation[k-1]),false);
+  return readPolySSI(base_filename+"f"+std::to_string(k),false);
 }
 
 NO_NAME_MANGLING
@@ -730,6 +740,10 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   if (TEST_OPT_INTSTRATEGY)
   {
     f = p_Cleardenom(f, currRing);
+  }
+  else
+  {
+    p_Norm(f, currRing);
   }
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
   (*runtime)[(std::string) "clearing denominators in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
