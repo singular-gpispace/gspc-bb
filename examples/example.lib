@@ -148,8 +148,8 @@ for(int i=1; i<=size(ncores_list); i++)
 */
 
 def J = read("ssi:r bigGB.ssi");
+//def J = read("ssi:r RI_5_4_5_LP_GB.ssi");
 setcores(6);
 verifyGB(J);
 option(noprot); testSystem(J);
-
 ////////////////////////////////////////////////////////////////////////////////

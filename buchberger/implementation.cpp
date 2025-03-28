@@ -508,11 +508,16 @@ void singular_buchberger_compute_NF( [[maybe_unused]] std::string const& singula
   }
   else
   {
-    int sl=strat->sl;
     sPair.GetP();
 
     // the actual reduction:
-    NF_spoly=redNF(sPair.p,sl,TRUE,strat);
+    NF_spoly=redNF(sPair.p,strat->sl,TRUE,strat);
+
+    //std::cout << "ring order id: " << (int) (currRing->order[0]) << std::endl;
+
+    //alternative:
+    //if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,sPair.p,0,4);}
+    //else                      {NF_spoly = kNF(F,currRing->qideal,sPair.p);}
 
     if (NF_spoly==NULL) red_result=0;
   }
