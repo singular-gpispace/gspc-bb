@@ -109,14 +109,14 @@ proc testSTD(def I)
   return(G);
 }
 
-proc testParallelBB(def I, nworkers)
+proc testParallelBB(def I, ncores, nworkers)
 {
+  setcores(ncores);
   def GB;
   int r_all;
-  def F;
   list indices;
   list runtimes;
-  GB, r_all, F, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers);
+  GB, r_all, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers);
 
   if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
   else {printf("%nI (%s elements): ...",size(I));}
@@ -146,19 +146,19 @@ proc testParallelBB(def I, nworkers)
       {printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);}
   }
 
-  export(GB,F,indices,runtimes);
+  export(GB,indices,runtimes);
 }
 
-proc testBB(def I, nworkers)
+proc testBB(def I, ncores, nworkers)
 {
-
+  setcores(ncores);
   def G = testSTD(I);
   print("parallelStd:");
 
-  testParallelBB(I, nworkers);
+  testParallelBB(I, ncores, nworkers);
 
   if(comp(G, GB)) {printf("%nEQUAL to std(I) !!!",0);}
-  else                     {printf("%nNOT equal to std(I) !!!",0);}
+  else            {printf("%nNOT equal to std(I) !!!",0);}
 
   export(G);
 }

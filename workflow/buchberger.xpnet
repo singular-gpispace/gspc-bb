@@ -161,10 +161,19 @@
 
 						// init the blcklist
 						blacklist = GpiSet({});
-
+/*
 						std::ofstream outFile(base_filename+"SIZE_OF_GB.txt");
 						outFile << r;
 						outFile.close();
+
+						std::ofstream outFile2(base_filename+"SIZE_OF_Q.txt");
+						outFile2 << 0;
+						outFile2.close();
+*/
+						std::ofstream logFile(base_filename+"LOG.txt");
+						logFile << r << '\n';
+						logFile << 0;
+						logFile.close();
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
@@ -605,7 +614,7 @@
 						#endif
 
 						std::cout << "s(" << Q.size() << ")" << std::endl;
-
+/*
 						std::ofstream outFile(base_filename+"SIZE_OF_Q.txt");
 						outFile << (Q.size());
 						outFile.close();
@@ -613,6 +622,12 @@
 						std::ofstream outFileGB(base_filename+"SIZE_OF_GB.txt");
 						outFileGB << r;
 						outFileGB.close();
+*/
+						std::ofstream logFile(base_filename+"LOG.txt");
+						logFile << r << '\n';
+						logFile << (Q.size());
+						logFile.close();
+
 
 						if(Q.size()>0)
 						{
@@ -704,12 +719,22 @@
 							std::cout << "(" << Q_size << ")" << std::endl;
 
 						}
-
+/*
 						std::ofstream outFile(base_filename+"SIZE_OF_Q.txt");
-		        outFile << (Q.size());
-		        outFile.close();
+						outFile << (Q.size());
+						outFile.close();
+*/
+						std::ifstream logFileIn(base_filename+"LOG.txt");
+						std::string oldLine1, oldLine2;
+						std::getline(logFileIn, oldLine1);
+						std::getline(logFileIn, oldLine2);
+						logFileIn.close();
 
-		        std::cout << "Integer written to file." << std::endl;
+						std::ofstream logFile(base_filename+"LOG.txt",std::ios::trunc);
+						logFile << oldLine1 << '\n';
+						logFile << (Q.size());
+						logFile.close();
+
 						if(Q.size()>0)
 						{
 							Qback.i = boost::get<int>(           get_list(Q.back()).front() );

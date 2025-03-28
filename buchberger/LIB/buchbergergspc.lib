@@ -200,18 +200,20 @@ proc gspc_buchberger_extraData(def I, configToken gc, list #)
     }
     printf("reading GB elements from files: %s ms",rtimer-T);
 
+    /*
     system("--ticks-per-sec",1000); int TT = rtimer;
     for(i=1; i<=r_all; i++)
     {
       F[i] = read("ssi:r "+DIR+"f"+string(i));
     }
     printf("reading all intermediate elements from files: %s ms",rtimer-TT);
+    */
 
     system("--ticks-per-sec",1000); int TTT = rtimer;
     GB = sort(GB)[1];
     printf("sorting GB by user specified monomial ordering: %s ms",rtimer-TTT);
 
-    return(GB, r_all, F, indices, list(output[1].data[2],output[1].data[3]));
+    return(GB, r_all, indices, list(output[1].data[2],output[1].data[3]));
 }
 
 
