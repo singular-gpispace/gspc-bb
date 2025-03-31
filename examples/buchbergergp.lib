@@ -1,5 +1,5 @@
 ///////////////////////////////////////
-version="version buchbergergp.lib 0.2 Mar 2023 ";
+version="version buchbergergp.lib 0.1 Mar 2025 ";
 category="Commutative algebra";
 info="
 LIBRARY: buchbergergp.lib  procedures for Buchbergers algorithm
@@ -10,9 +10,7 @@ OVERVIEW:
     The newstruct type token  must be defined.
 
     PROCEDURES:
-    init(string,token)                           Initialize (NOT including checking product and chain criterion)
-    minimize_GB(string, token, int)              compute, which elements can be deleted to get a minimal Groebner Basis (GB)
-    reduce_GB(string,int,token,int)              reduce one element of the minimal GB by all the others to compute a reduced GB
+    minimize_GB(string DIR, int in_r, int final_r, list needed_indices)     initialize the output token for the minimize_GB transition
 ";
 
 
@@ -30,85 +28,7 @@ proc mod_init()
 // for inputs:  read  - in  - inout
 // for outputs: inout - out - out_many
 
-proc init(string DIR, token input)
-"USAGE: init(token input)
-RETURN: token out_A, token out_r
-"
-{
-  def F_in = input.data[1];
-  list m;
-  intvec e;
-  int i,j;
-  list M;
-
-  if(typeof(F_in) == "module")
-  {
-    for(i=2; i<=size(F_in); i++)   {F_in[i] = NF(F_in[i], module(F_in[1..(i-1)]));}
-    for(i=1; i<=size(F_in)-1; i++) {F_in[i] = NF(F_in[i], module(F_in[(i+1)..(size(F_in))]));}
-    module F;
-    j = 1;
-    for(i=1; i<=size(F_in); i++)
-    {
-      if(F_in[i]!=0) {F[j] = F_in[i]; j++;}
-    }
-  }
-  else
-  {
-    for(i=2; i<=size(F_in); i++)   {F_in[i] = NF(F_in[i], ideal(F_in[1..(i-1)]));}
-    for(i=1; i<=size(F_in)-1; i++) {F_in[i] = NF(F_in[i], ideal(F_in[(i+1)..(size(F_in))]));}
-    ideal F;
-    j = 1;
-    for(i=1; i<=size(F_in); i++)
-    {
-      if(F_in[i]!=0) {F[j] = F_in[i]; j++;}
-    }
-  }
-
-  F = sort(F)[1];
-
-  int out_r = size(F);
-
-
-  int n = nvars(basering);
-  if(typeof(F) == "module") { // module
-    for(i=1; i<=out_r; i++)
-    {
-      write("ssi:w "+DIR+"f"+string(i), F[i]);
-
-      e = leadexp(F[i]);
-      m[1] = list(e[1..n]); // lead monomial as poly
-      m[2] = e[n+1];        // the lead monomials component as int (0 in case of polynomials & ideals)
-      m[3] = deg(F[i]);     // degree
-      m[4] = size(F[i]);    // number of terms
-      m[5] = ecart(F[i]);   // ecart
-      write("ssi:w "+DIR+"m"+string(i), m);
-      M[i] = m;
-    }
-  }
-  else { // ideal
-    for(i=1; i<=out_r; i++)
-    {
-      write("ssi:w "+DIR+"f"+string(i), F[i]);
-
-      e = leadexp(F[i]);
-      m[1] = list(e[1..n]);   // lead monomial as poly
-      m[2] = 0;               // the lead monomials component as int (0 in case of polynomials & ideals)
-      m[3] = deg(F[i]);       // degree
-      m[4] = size(F[i]);      // number of terms
-      m[5] = ecart(F[i]);     // ecart
-      write("ssi:w "+DIR+"m"+string(i), m);
-      M[i] = m;
-    }
-  }
-
-
-  return(out_r, M);
-}
-
 proc minimize_GB(string DIR, int in_r, int final_r, list needed_indices)
-"USAGE: minimize_GB(token in_A, token in_r)
-RETURN: token needed_indices_list, token output, int out_reduced_indices_counter, list out_many_needed_indices
-"
 {
   token output;
   output.fieldnames[1] = "final_r";
@@ -116,7 +36,7 @@ RETURN: token needed_indices_list, token output, int out_reduced_indices_counter
 
   // This output is just for debugging and analysing the algorithm:
   output.fieldnames[2] = "transition_names";
-  output.data[2] = list("total_start_stop", "total_time",     "TRANSITION init TOTAL", "TRANSITION NF_of_spoly TOTAL", "TRANSITION increment TOTAL", "TRANSITION remove_from_Q TOTAL", "TRANSITION minimize_GB TOTAL", "TRANSITION reduce_GB TOTAL", "reading input ideal in init", "saving initial ideal elements in init", "reading generators in NF_of_spoly (static)", "reading generators in NF_of_spoly", "applying NF in NF_of_spoly", "saving partially reduced poly in NF_of_spoly", "reading partially reduced poly in NF_of_spoly", "min serial runtime", "reading generators in reduce_GB (static)", "applying NF in reduce_GB", "clearing denominators in reduce_GB", "saving GB in files in reduce_GB", "PRODUCT CRITERION", "CHAIN CRITERION", "CANCELLED S-PAIRS", "CANCELLED ELEMENTS");
+  output.data[2] = list("total_start_stop", "total_time",     "TRANSITION init TOTAL", "TRANSITION NF_of_spoly TOTAL", "TRANSITION NF_of_spoly_Qback TOTAL", "TRANSITION increment TOTAL", "TRANSITION remove_from_Q TOTAL", "TRANSITION minimize_GB TOTAL", "TRANSITION reduce_GB TOTAL", "reading input ideal in init", "saving initial ideal elements in init", "reading generators in NF_of_spoly (static)", "reading generators in NF_of_spoly", "applying NF in NF_of_spoly", "saving partially reduced poly in NF_of_spoly", "reading partially reduced poly in NF_of_spoly", "min serial runtime", "reading generators in reduce_GB (static)", "applying NF in reduce_GB", "clearing denominators in reduce_GB", "saving GB in files in reduce_GB", "PRODUCT CRITERION", "CHAIN CRITERION", "CANCELLED S-PAIRS", "CANCELLED ELEMENTS");
   output.fieldnames[3] = "runtimes_per_transition";
   output.data[3] = list(list(0,-2^31));
   for(int k=2; k<=size(output.data[2]); k++) {output.data[3][k]=list(0,0,0);}
@@ -125,115 +45,6 @@ RETURN: token needed_indices_list, token output, int out_reduced_indices_counter
   output.fieldnames[5] = "needed_indices";
   output.data[5] = needed_indices;
   return(output);
-}
-
-proc reduce_GB(string DIR, int read_redSB, token read_needed_indices_list, int in_needed_indices)
-"USAGE: reduce_GB(token read_needed_indices_list, token in_needed_indices)
-RETURN: nothing (GB will be written in files called g1, g2, g3, ...)
-"
-{
-  intvec indices = read_needed_indices_list.data[1];
-  int r = size(indices);
-
-  int k;
-  int n=1;
-  if(read_redSB) { // calculate a reduced GB
-    def f = read("ssi:r "+DIR+"f"+string(in_needed_indices)); // element to reduce
-    if(typeof(f)=="poly") {ideal F;}
-    else                  {module F;}
-
-    for(k=1; k<=r; k++)
-    {
-      if(indices[k]==in_needed_indices) {n = k;}
-      else {F[size(F)+1] = read("ssi:r "+DIR+"f"+string(indices[k]));}
-    }
-    if((option(get) % 2^27) >= 2^26) { // if option(intStrategy) is activated: dont create denominators
-      def g = NF(f,F,4);
-    }
-    else {
-      def g = NF(f,F);
-    }
-  }
-  else {
-    for(k=1; k<=r; k++) { if(indices[k]==in_needed_indices) {n = k; break;} }
-    def g = read("ssi:r "+DIR+"f"+string(in_needed_indices));
-  }
-  if((option(get)[1] % 2^27) >= 2^26) { // if option(intStrategy) is activated: dont create denominators
-    write("ssi:w "+DIR+"g"+string(n), g/content(g));
-  }
-  else {
-    write("ssi:w "+DIR+"g"+string(n), g/leadcoef(g));
-  }
-}
-
-proc summarize_runtimes(list times, token output)
-"USAGE: summarize_runtimes(list times, token output)
-RETURN: token output
-"
-{
-  int B0 = 0;
-  for(int l=1; l<=size(times); l++)
-  {
-    string transition = times[l][1];
-    int start = times[l][2];
-    int stop  = times[l][3];
-    int duration  = times[l][4];
-    int count  = times[l][5];
-
-    int k=0;
-    int ntransitions = size(output.data[2]);
-    for(int i=1; i<=ntransitions; i++)
-    {
-      if(transition==output.data[2][i]) {k=i; break;}
-    }
-    if(k==0) {
-      k = ntransitions+1;
-      output.data[2][k] = transition;
-      output.data[3][k] = list(B0,B0,B0);
-    }
-    output.data[3][k][1] = output.data[3][k][1] + duration;
-    output.data[3][k][2] = output.data[3][k][2] + count;
-    output.data[3][k][3] = max(output.data[3][k][3], duration);
-    if (start != 0) { // only for runtimes of transitions, not extra measurements:
-      output.data[3][2][1] = output.data[3][2][1] + duration; // add to total time
-      output.data[3][2][2] = output.data[3][2][2] + count; // add to total
-      output.data[3][2][3] = max(output.data[3][2][3], duration); // add to total
-
-      output.data[3][1][2] = max(stop, output.data[3][1][2]); // count end of last activated transition as ending of the algorithm
-    }
-    if(transition=="TRANSITION init TOTAL") {
-      output.data[3][1][1] = start; // count start of init transition as beginning of the algorithm
-    }
-  }
-  return(output);
-}
-
-
-proc divides_monom(list m1, list m2)
-{
-  int n=size(m1);
-  for(int i=1; i<=n; i++)
-  {
-    if(m1[i]<m2[i]) {return (0);}
-  }
-  return (1);
-}
-
-proc comp(def I, def J) // compare-function for indexed types
-{
-  string t = typeof(I);
-  int i,n;
-  if(t!=typeof(J)) {return(0);}
-  if(t=="ideal" || t=="list" || t=="intvec" || t=="module")
-  {
-    n = size(I);
-    if(n != size(J)) {return(0);}
-    else {
-      for(i=1; i<=n; i++) {if(!comp(I[i],J[i])) {return(0);}}
-      return(1);
-    }
-  }
-  else {return (I==J);}
 }
 
 // for debugging as error messages wont be pushed to gspc-monitor:

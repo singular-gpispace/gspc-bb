@@ -12,7 +12,6 @@ namespace buchberger_module
     workflow_opts.add_options()("N", po::value<int>()->required());
     workflow_opts.add_options()("basefilename", po::value<std::string>()->required());
     workflow_opts.add_options()("input", po::value<std::string>()->required());
-    workflow_opts.add_options()("libraryname", po::value<std::string>()->required());
     workflow_opts.add_options()("deleteoutputfiles", po::value<bool>()->required());
     workflow_opts.add_options()("nworkers", po::value<long>()->required());
     workflow_opts.add_options()("redSB", po::value<long>()->required());
@@ -24,7 +23,6 @@ namespace buchberger_module
     : _N (args.at ("N").as<int>())
     , _input (args.at ("input").as<std::string>())
     , _basefilename (args.at ("basefilename").as<std::string>())
-    , _libraryname (args.at ("libraryname").as<std::string>())
     , _nworkers (args.at ("nworkers").as<long>())
     , _redSB (args.at ("redSB").as<long>())
     {}
@@ -36,14 +34,12 @@ namespace buchberger_module
     {
 	    values_on_ports.emplace ("input", _basefilename + _input + std::to_string(i));
     }
-    values_on_ports.emplace("library_name", _libraryname);
     values_on_ports.emplace("base_filename", _basefilename);
     values_on_ports.emplace("nworkers", _nworkers);
     values_on_ports.emplace("redSB", _redSB);
 
     return values_on_ports;
   }
-
 
   // types used by GPI-Space if you set the type of a place (or an "out-many" port) to "list", "set" or "map":
   using GpiVariant = pnet::type::value::value_type;
@@ -83,83 +79,101 @@ namespace buchberger_module
   {
     results.buchberger_module::WorkflowResult::assert_key_count("output",parameters.at("N").as<int>());
     lists out_list =  static_cast<lists> (omAlloc0Bin (slists_bin));
-	out_list->Init (parameters.at("N").as<int>());
-	int i {0};
-	std::pair<int, lists> entry;
+  	out_list->Init (parameters.at("N").as<int>());
+  	int i {0};
+  	std::pair<int, lists> entry;
     auto& valuesOnPortsMap = results.buchberger_module::ValuesOnPorts::map();
-	for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
-	{
-		if( boost::get<std::string>(it->first ) == "output")
-		{
-			entry = deserialize(boost::get<std::string>(it->second),"Result extraction", parameters.at("deleteoutputfiles").as<bool>());
-			out_list->m[i].rtyp = entry.first;
-			out_list->m[i].data = entry.second;
-			i = i + 1;
-		}
-	}
+  	for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
+  	{
+  		if( boost::get<std::string>(it->first ) == "output")
+  		{
+  			entry = deserialize(boost::get<std::string>(it->second),"Result extraction", parameters.at("deleteoutputfiles").as<bool>());
+  			out_list->m[i].rtyp = entry.first;
+  			out_list->m[i].data = entry.second;
+  			i = i + 1;
+  		}
+  	}
 
-  for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
-  {
-    if( boost::get<std::string>(it->first ) == "runtime")
-    {
-      GpiMap runtime = get_map(it->second);
 
-      GpiMap::const_iterator time_it;
-      for (time_it = runtime.begin(); time_it != runtime.end(); time_it++)
-      {
-        std::string transition = boost::get<std::string>(time_it->first);
-        GpiList times = get_list(time_it->second);
-        GpiList::const_iterator list_it = times.begin();
-        long start    = boost::get<long>(*list_it); list_it++;
-        long stop     = boost::get<long>(*list_it); list_it++;
-        long duration = boost::get<long>(*list_it); list_it++;
-        long count    = boost::get<long>(*list_it);
+    // summarize runtimes
 
-        lists transition_list = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[1].data;
-        lists runtimes_list   = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[2].data;
-        for(int ii=2; ii<=lSize(transition_list); ii++)
-        {
-          std::string transition_name = reinterpret_cast<char*> (transition_list->m[ii].data);
-          if(transition_name==transition)
+    lists transition_list = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[1].data;
+    lists runtimes_list   = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[2].data;
+    lists times_start_stop = (lists) (runtimes_list->m[0].data);
+    lists times_sum_total  = (lists) (runtimes_list->m[1].data);
+
+    long algorithm_starttime = 0L;
+    for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
+  	{
+  		if( boost::get<std::string>(it->first ) == "runtime")
+  		{
+  			GpiMap runtime = get_map(it->second);
+
+        GpiMap::const_iterator time_it;
+  			for (time_it = runtime.begin(); time_it != runtime.end(); time_it++)
+  			{
+  				std::string transition = boost::get<std::string>(time_it->first);
+          if(transition==((std::string) "TRANSITION init TOTAL"))
           {
-            lists times_start_stop = (lists) (runtimes_list->m[0].data);
-            lists times_sum_total  = (lists) (runtimes_list->m[1].data);
-            lists times_sum        = (lists) (runtimes_list->m[ii].data);
-
-            if(stop>=0) // for all timings:
-            {
-              times_sum->m[0].data = (void*) (char*)        ( ((long) times_sum->m[0].data) + duration);
-              times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
-              times_sum->m[2].data = (void*) (char*) std::max(((long) times_sum->m[2].data) , duration);
-
-              if(start>=0) // total timings of transitions:
-              {
-                times_sum_total->m[0].data = (void*) (char*)        ( ((long) times_sum_total->m[0].data) + duration);
-                times_sum_total->m[1].data = (void*) (char*)        ( ((long) times_sum_total->m[1].data) + count);
-                times_sum_total->m[2].data = (void*) (char*) std::max(((long) times_sum_total->m[2].data) , duration);
-
-                times_start_stop->m[1].data = (void*) (char*) std::max(((long) times_start_stop->m[1].data) , stop); // count end of last activated transition as ending of the algorithm
-
-                if(transition==((std::string) "TRANSITION init TOTAL")) {
-                  times_start_stop->m[0].data = (void*) (char*) start; // count start of init transition as beginning of the algorithm
-                }
-              }
-            }
-            else // for counts, like PC, CC
-            {
-              times_sum->m[0].data = (void*) (char*)        (-1L);
-              times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
-              times_sum->m[2].data = (void*) (char*)        (-1L);
-            }
-
-            break;
+            algorithm_starttime = boost::get<long>(get_list(time_it->second).front()); // count start of init transition as beginning of the algorithm
           }
         }
       }
     }
-  }
 
-	res->rtyp = LIST_CMD;
-	res->data = out_list;
+    for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
+    {
+      if( boost::get<std::string>(it->first ) == "runtime")
+      {
+        GpiMap runtime = get_map(it->second);
+
+        GpiMap::const_iterator time_it;
+        for (time_it = runtime.begin(); time_it != runtime.end(); time_it++)
+        {
+          std::string transition = boost::get<std::string>(time_it->first);
+          GpiList times = get_list(time_it->second);
+          GpiList::const_iterator list_it = times.begin();
+          long start    = boost::get<long>(*list_it); list_it++;
+          long stop     = boost::get<long>(*list_it); list_it++;
+          long duration = boost::get<long>(*list_it); list_it++;
+          long count    = boost::get<long>(*list_it);
+
+          for(int ii=2; ii<=lSize(transition_list); ii++)
+          {
+            std::string transition_name = reinterpret_cast<char*> (transition_list->m[ii].data);
+            if(transition_name==transition)
+            {
+              lists times_sum        = (lists) (runtimes_list->m[ii].data);
+
+              if(stop>=0) // for all timings:
+              {
+                times_sum->m[0].data = (void*) (char*)        ( ((long) times_sum->m[0].data) + duration);
+                times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
+                times_sum->m[2].data = (void*) (char*) std::max(((long) times_sum->m[2].data) , duration);
+
+                if(start>=0) // total timings of transitions:
+                {
+                  times_sum_total->m[0].data = (void*) (char*)        ( ((long) times_sum_total->m[0].data) + duration);
+                  times_sum_total->m[1].data = (void*) (char*)        ( ((long) times_sum_total->m[1].data) + count);
+                  times_sum_total->m[2].data = (void*) (char*) std::max(((long) times_sum_total->m[2].data) , duration);
+
+                  times_start_stop->m[1].data = (void*) (char*) std::max(((long) times_start_stop->m[1].data) , stop-algorithm_starttime); // count end of last activated transition as ending of the algorithm
+                }
+              }
+              else // for counts, like PC, CC
+              {
+                times_sum->m[0].data = (void*) (char*)        (-1L);
+                times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
+                times_sum->m[2].data = (void*) (char*)        (-1L);
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+
+  	res->rtyp = LIST_CMD;
+  	res->data = out_list;
   }
 }

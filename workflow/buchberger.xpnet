@@ -2,7 +2,6 @@
 	<include-structs href="structures.xpnet"/>
 
 	<in name="base_filename" type="string" place="place_base_filename"/>
-	<in name="library_name" type="string" place="place_library_name"/>
 	<in name="redSB" type="long" place="place_redSB"/>
 	<in name="input" type="string" place="place_input"/>
 	<in name="nworkers" type="long" place="place_nworkers"/>
@@ -10,7 +9,6 @@
 	<out name="runtime" type="map" place="place_runtime"/>
 	<net>
 		<place name="place_base_filename" type="string"/>
-		<place name="place_library_name" type="string"/>
 		<place name="place_redSB" type="long"/>
 		<place name="place_input" type="string"/>
 		<place name="place_output" type="string"/>
@@ -19,8 +17,6 @@
 		<place name="place_M" type="list"/>
 		<place name="place_nworkers" type="long"/>
 		<place name="place_balNF" type="control"/>
-		<!--place name="place_Mvec" type="bytearray"/-->
-		<!--place name="place_bookkeeping" type="map"/-->
 		<place name="place_Q" type="list"/>
 		<place name="place_Qback" type="index_pair"/>
 		<place name="place_started_indices" type="running_reduction"/>
@@ -28,30 +24,28 @@
 		<place name="place_NF" type="list"/>
 		<place name="place_needed_indices" type="long"/>
 		<place name="place_needed_indices_list" type="list"/>
-		<place name="place_runtime" type="map"/>
-		<place name="place_time_offset" type="long"/>
 		<place name="place_blacklist" type="set"/>
+		<place name="place_runtime" type="map"/>
 
-		<transition name="init" priority="42">
+
+		<transition name="init" priority="3">
 			<defun>
 				<require key="worker" mandatory="true"/>
        	<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="input" type="string"/>
 				<in name="nworkers" type="long"/>
-				<!--out name="bookkeeping" type="map"/-->
-				<out name="Q" type="list"/>
 				<out name="started_indices" type="list"/>
+				<out name="Q" type="list"/>
 				<out name="Qback" type="index_pair"/>
 				<out name="blacklist" type="set"/>
 				<out name="r" type="int"/>
 				<out name="M" type="list"/>
 				<out name="runtime" type="map"/>
-				<out name="time_offset" type="long"/>
 				<out name="balNF" type="list"/>
+				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(started_indices, runtime, time_offset, base_filename, library_name, input, Q, Qback, r, M, nworkers, balNF, blacklist)">
+							  function="function_init(started_indices, runtime, base_filename, input, Q, Qback, r, M, nworkers, balNF, blacklist, BB_finished)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -63,24 +57,18 @@
 					<code><![CDATA[
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
-						// all timings will be offset by this amount (necessary since SINGULAR integers only range from -2^31 to 2^31-1 and time since epoch is too big).
-						// should NOT be LARGER than runtime_start (or timings won't display properly in SINGULAR)
-						time_offset = runtime_start;
-
-						runtime_start -= time_offset;
 						std::string singular_function_name = "init";
 
 						#ifdef DEBUG_BBA
-						std::cout << "start time (= time since epoch in ms minus "<< time_offset <<"ms): " << runtime_start << std::endl;
+						std::cout << "start time (time since epoch in ms): " << runtime_start << std::endl;
 						std::cout << runtime_start << ": entering " << singular_function_name << std::endl;
 						#endif
 
-						std::vector<std::vector<int>> Mvec = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_M_and_init_F) (library_name, base_filename, input, time_offset, &runtime);
+						std::vector<std::vector<int>> Mvec = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_M_and_init_F) (base_filename, input, &runtime);
 
 						r = Mvec.size();
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": r=" << r << std::endl;
-						//print_variant(M);
 						#endif
 
 
@@ -146,8 +134,15 @@
 							M.emplace_back(vec2list(*Mveci));
 						}
 
-						Qback.i = boost::get<int>(           get_list(Q.back()).front() );
-						Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+						if(Q.size()>0)
+						{
+							Qback.i = boost::get<int>(           get_list(Q.back()).front() );
+							Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+						}
+						else
+						{
+							BB_finished.emplace_back(CONTROL_TOKEN);
+						}
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": ----------------------------- Q.size() after init: " << Q.size() << std::endl;
 						std::cout << runtime_start << ": --------------- started_indices.size() after init: " << started_indices.size() << std::endl;
@@ -161,15 +156,8 @@
 
 						// init the blcklist
 						blacklist = GpiSet({});
-/*
-						std::ofstream outFile(base_filename+"SIZE_OF_GB.txt");
-						outFile << r;
-						outFile.close();
 
-						std::ofstream outFile2(base_filename+"SIZE_OF_Q.txt");
-						outFile2 << 0;
-						outFile2.close();
-*/
+						// init LOG file
 						std::ofstream logFile(base_filename+"LOG.txt");
 						logFile << r << '\n';
 						logFile << 0;
@@ -179,7 +167,7 @@
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
 						#endif
 
-						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
 						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
@@ -187,19 +175,17 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="nworkers" place="place_nworkers"/>
 			<connect-in port="input" place="place_input"/>
-			<!--connect-out port="bookkeeping" place="place_bookkeeping"/-->
 			<connect-out port="Q" place="place_Q"/>
 			<connect-out port="Qback" place="place_Qback"/>
 			<connect-out port="blacklist" place="place_blacklist"/>
 			<connect-out port="r" place="place_r"/>
 			<connect-out port="M" place="place_M"/>
 			<connect-out port="runtime" place="place_runtime"/>
-			<connect-out port="time_offset" place="place_time_offset"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="balNF" place="place_balNF"/>
+			<connect-out-many port="BB_finished" place="place_BB_finished"/>
 		</transition>
 
 
@@ -208,12 +194,10 @@
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="blacklist" type="set"/>
 				<in name="r" type="int"/>
 				<in name="Qback" type="index_pair"/>
 				<in name="started_indices" type="running_reduction"/>
-				<in name="time_offset" type="long"/>
 				<inout name="balNF" type="control"/>
 				<out name="started_indices_out" type="list"/>
 				<out name="finished_indices" type="list"/>
@@ -221,7 +205,7 @@
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(runtime, base_filename, library_name, r, Qback, started_indices, started_indices_out, finished_indices, NF, time_offset, balNF, blacklist)">
+							  function="function_NF_of_spoly(runtime, base_filename, r, Qback, started_indices, started_indices_out, finished_indices, NF, balNF, blacklist)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -250,29 +234,25 @@
 
 							return;
 						}
-						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						GpiList si_out;
 						GpiList fi_out;
 
-						long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
-						//std::list<poly> generators;
-						//READ_GENERATORS_STATICALLY(generators, r);
-
+						// add generators to a static variable, so each element will be read in only once per worker
 						static std::list<poly> generators;
 						for (int k=generators.size()+1; k<=r; k++)
 						{
 							generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, k));
 						}
 
-						long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 
 						std::string singular_function_name = "NF_of_spoly";
-						bool delete_files = true;
-						bool silent = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (library_name, singular_function_name, base_filename, generators, r, Qback.i, Qback.j, started_indices.i, started_indices.j, started_indices.old_r, time_offset, &runtime, &si_out, &fi_out, &NF, delete_files, silent);
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, Qback.i, Qback.j, started_indices.i, started_indices.j, started_indices.old_r, &runtime, &si_out, &fi_out, &NF);
 
 
 						if(si_out.size()>0)
@@ -306,7 +286,7 @@
 							std::cout << runtime_start << ": 3 NF_of_spoly: adding ("<<boost::get<int>(get_list(NF.front()).front())<<","<<boost::get<int>(*std::next(get_list(NF.front()).begin()))<<") to NF (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
 							#endif
 						}
-						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 						if(NF.size()>0) {runtime[(std::string) "min serial runtime"] = GpiList({-1L, runtime_stop, runtime_stop-runtime_start, 1L});}
 					]]></code>
@@ -316,11 +296,9 @@
 				(${r} :gt: ${started_indices.old_r})
 			</condition>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
 			<connect-read port="r" place="place_r"/>
 			<connect-read port="Qback" place="place_Qback"/>
-			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-inout port="balNF" place="place_balNF"/>
 			<connect-out-many port="started_indices_out" place="place_started_indices"/>
@@ -335,19 +313,17 @@
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="blacklist" type="set"/>
 				<in name="r" type="int"/>
 				<in name="Qback" type="index_pair"/>
 				<in name="started_indices" type="running_reduction"/>
-				<in name="time_offset" type="long"/>
 				<out name="started_indices_out" type="list"/>
 				<out name="finished_indices" type="list"/>
 				<out name="NF" type="list"/>
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly_Qback(runtime, base_filename, library_name, r, Qback, started_indices, started_indices_out, finished_indices, NF, time_offset, blacklist)">
+							  function="function_NF_of_spoly_Qback(runtime, base_filename, r, Qback, started_indices, started_indices_out, finished_indices, NF, blacklist)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -376,29 +352,25 @@
 
 							return;
 						}
-						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						GpiList si_out;
 						GpiList fi_out;
 
-						long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
-						//std::list<poly> generators;
-						//READ_GENERATORS_STATICALLY(generators, r);
-
+						// add generators to a static variable, so each element will be read in only once per worker
 						static std::list<poly> generators;
 						for (int k=generators.size()+1; k<=r; k++)
 						{
 							generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, k));
 						}
 
-						long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 
 						std::string singular_function_name = "NF_of_spoly_Qback";
-						bool delete_files = true;
-						bool silent = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (library_name, singular_function_name, base_filename, generators, r, Qback.i, Qback.j, started_indices.i, started_indices.j, started_indices.old_r, time_offset, &runtime, &si_out, &fi_out, &NF, delete_files, silent);
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, Qback.i, Qback.j, started_indices.i, started_indices.j, started_indices.old_r, &runtime, &si_out, &fi_out, &NF);
 
 
 						if(si_out.size()>0)
@@ -432,7 +404,7 @@
 							std::cout << runtime_start << ": 3 NF_of_spoly_Qback: adding ("<<boost::get<int>(get_list(NF.front()).front())<<","<<boost::get<int>(*std::next(get_list(NF.front()).begin()))<<") to NF (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
 							#endif
 						}
-						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 						if(NF.size()>0) {runtime[(std::string) "min serial runtime"] = GpiList({-1L, runtime_stop, runtime_stop-runtime_start, 1L});}
 					]]></code>
@@ -442,11 +414,9 @@
 				((${started_indices.i} :eq: ${Qback.i}) :and: (${started_indices.j} :eq: ${Qback.j}))
 			</condition>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
 			<connect-read port="r" place="place_r"/>
 			<connect-read port="Qback" place="place_Qback"/>
-			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="started_indices_out" place="place_started_indices"/>
 			<connect-out-many port="finished_indices" place="place_finished_indices"/>
@@ -456,14 +426,11 @@
 
 
 
-		<transition name="increment" priority="43">
+		<transition name="increment" priority="4">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="NF" type="list"/>
-				<in name="time_offset" type="long"/>
-				<!--inout name="bookkeeping" type="map"/-->
 				<inout name="Q" type="list"/>
 				<inout name="Qback" type="index_pair"/>
 				<inout name="blacklist" type="set"/>
@@ -474,7 +441,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_increment(runtime, base_filename, library_name, NF, Q, Qback, r, M, started_indices, BB_finished, time_offset, blacklist)">
+							  function="function_increment(runtime, base_filename, NF, Q, Qback, r, M, started_indices, BB_finished, blacklist)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -484,7 +451,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::string singular_function_name = "increment";
 
 						GpiList::const_iterator it = NF.begin();
@@ -614,15 +581,7 @@
 						#endif
 
 						std::cout << "s(" << Q.size() << ")" << std::endl;
-/*
-						std::ofstream outFile(base_filename+"SIZE_OF_Q.txt");
-						outFile << (Q.size());
-						outFile.close();
 
-						std::ofstream outFileGB(base_filename+"SIZE_OF_GB.txt");
-						outFileGB << r;
-						outFileGB.close();
-*/
 						std::ofstream logFile(base_filename+"LOG.txt");
 						logFile << r << '\n';
 						logFile << (Q.size());
@@ -644,7 +603,7 @@
 						}
 
 
-						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
 						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
 						runtime[(std::string) "CANCELLED ELEMENTS"] = GpiList({-1L, -1L, -1L,  cancelled_element_counter});
@@ -654,10 +613,7 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
-			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="NF" place="place_NF"/>
-			<!--connect-inout port="bookkeeping" place="place_bookkeeping"/-->
 			<connect-inout port="Q" place="place_Q"/>
 			<connect-inout port="Qback" place="place_Qback"/>
 			<connect-inout port="blacklist" place="place_blacklist"/>
@@ -670,21 +626,19 @@
 
 
 
-		<transition name="remove_from_Q" priority="42">
+		<transition name="remove_from_Q" priority="3">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="M" type="list"/>
 				<in name="finished_indices" type="index_pair"/>
-				<in name="time_offset" type="long"/>
 				<inout name="Q" type="list"/>
 				<inout name="Qback" type="index_pair"/>
 				<out name="runtime" type="map"/>
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_remove_from_Q(runtime, base_filename, library_name, M, finished_indices, Q, Qback, BB_finished, time_offset)">
+							  function="function_remove_from_Q(runtime, base_filename, M, finished_indices, Q, Qback, BB_finished)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -694,19 +648,8 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::string singular_function_name = "remove_from_Q";
-
-/*
-						GpiList::const_iterator it = finished_indices.begin();
-						int i = boost::get<int>(*it); ++it;
-						int j = boost::get<int>(*it);
-						*/
-						//int new_state = (int) boost::get<long>(*it);
-
-           	//get_list(bookkeeping[GpiSet({i,j})]).front() = new_state;
-
-						//update_queue(Q, bookkeeping, Qback);
 
 						queue_delete_i_j(Q, finished_indices.i, finished_indices.j);
 
@@ -719,11 +662,7 @@
 							std::cout << "(" << Q_size << ")" << std::endl;
 
 						}
-/*
-						std::ofstream outFile(base_filename+"SIZE_OF_Q.txt");
-						outFile << (Q.size());
-						outFile.close();
-*/
+
 						std::ifstream logFileIn(base_filename+"LOG.txt");
 						std::string oldLine1, oldLine2;
 						std::getline(logFileIn, oldLine1);
@@ -749,16 +688,13 @@
 							BB_finished.emplace_back(CONTROL_TOKEN);
 						}
 
-
-						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="M" place="place_M"/>
-			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="finished_indices" place="place_finished_indices"/>
 			<connect-inout port="Q" place="place_Q"/>
 			<connect-inout port="Qback" place="place_Qback"/>
@@ -767,24 +703,22 @@
 		</transition>
 
 
-		<transition name="minimize_GB" priority="42">
+
+		<transition name="minimize_GB" priority="3">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="BB_finished" type="control"/>
 				<in name="r" type="int"/>
 				<in name="M" type="list"/>
 				<in name="Q" type="list"/>
-				<in name="time_offset" type="long"/>
-				<!--inout name="bookkeeping" type="map"/-->
 				<out name="needed_indices_list" type="list"/>
 				<out name="needed_indices" type="list"/>
 				<out name="output" type="string"/>
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_minimize_GB(runtime, base_filename, library_name, r, M, needed_indices_list, needed_indices, output, time_offset)">
+							  function="function_minimize_GB(runtime, base_filename, r, M, needed_indices_list, needed_indices, output)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -793,7 +727,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": minimizing Gröbner basis with initially " << r << " elements" << std::endl;
@@ -825,42 +759,9 @@
 						}
 						int final_r = size(needed_indices);
 
-/*
-						list lexp;
-						if(M[1][2]==0) { // ideals
-							ideal L;
-							for(i=1; i<=final_r; i++) {
-								lexp = M[indices[i]][1];
-								L[i] = monomial(intvec(lexp[1..size(lexp)]));
-							}
-						}
-						else { // modules
-							module L;
-							for(i=1; i<=final_r; i++) {
-								lexp = M[indices[i]][1];
-								L[i] = monomial(intvec(lexp[1..size(lexp)])) * gen(M[indices[i]][2]);
-							}
-						}
-
-						GpiList M_SINGULAR;
-						for (GpiList::const_iterator it=M.begin(); it!=M.end(); ++it)
-						{
-							GpiList entry = get_list(*it);
-							GpiList new_entry;
-							int i=1;
-							GpiList::iterator it2=entry.begin();
-							for (; it2!=entry.end(); ++it2)
-							{
-								if (i<entry.size()) {new_entry.emplace_back((long) boost::get<int>(*it2));}
-								else {break;}
-								i++;
-							}
-						  M_SINGULAR.emplace_back(GpiList({new_entry, (long) boost::get<int>(*it2)}));
-						}
-						*/
-
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
+						std::string library_name = base_filename.substr(0, base_filename.find_last_of('/', base_filename.size() - 2) + 1) + "buchbergergp.lib";
 						args_read  = {base_filename};
 						args_in    = {(long) r,(long) final_r, needed_indices_list};
 						args_inout = {};
@@ -874,21 +775,16 @@
 						std::cout << runtime_start << ": " << needed_indices.size() << " elements left" << std::endl;
 						#endif
 
-
-
-						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="BB_finished" place="place_BB_finished"/>
-			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="r" place="place_r"/>
 			<connect-in port="M" place="place_M"/>
 			<connect-in port="Q" place="place_Q"/>
-			<!--connect-inout port="bookkeeping" place="place_bookkeeping"/-->
 			<connect-out port="needed_indices_list" place="place_needed_indices_list"/>
 			<connect-out port="output" place="place_output"/>
 			<connect-out-many port="needed_indices" place="place_needed_indices"/>
@@ -896,19 +792,18 @@
 		</transition>
 
 
-		<transition name="reduce_GB" priority="42">
+
+		<transition name="reduce_GB" priority="3">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="redSB" type="long"/>
 				<in name="needed_indices_list" type="list"/>
 				<in name="needed_indices" type="long"/>
-				<in name="time_offset" type="long"/>
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
-								function="function_reduce_GB(runtime, base_filename, library_name, redSB, needed_indices_list, needed_indices, time_offset)">
+								function="function_reduce_GB(runtime, base_filename, redSB, needed_indices_list, needed_indices)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -916,7 +811,7 @@
 					<cinclude href="chrono"/>
 					<cinclude href="boost/thread/thread.hpp"/>
 					<code><![CDATA[
-						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						int final_r = needed_indices_list.size();
 						std::vector<int> needed_indices_vec = list2vec_long(needed_indices_list);
@@ -924,16 +819,15 @@
 						static std::list<poly> generators;
 						if (redSB) // if no reduced GB os required, we don't need the generators
 						{
-							long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+							long read_poly_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
-							//READ_GENERATORS_STATICALLY_WITH_PERMUTATION(generators, final_r, needed_indices_vec);
-
+							// add generators to a static variable, so each element will be read in only once per worker
 							for (int k=generators.size()+1; k<=final_r; k++)
 							{
 								generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, needed_indices_vec[k-1]));
 							}
 
-							long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+							long read_poly_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 							runtime[(std::string) "reading generators in reduce_GB (static)"] = GpiList({-1L, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 						}
 						int current_index = (int) std::distance( needed_indices_vec.begin(), std::find(needed_indices_vec.begin(), needed_indices_vec.end(), needed_indices) ); // GET_INDEX(needed_indices_vec, needed_indices); // index in generators that has to be reduced w.r.t. the other generators
@@ -942,18 +836,16 @@
 						std::cout << runtime_start << ": reduce_GB: processing " << current_index+1 << "-th element of the Gröbner basis" << std::endl;
 						#endif
 						std::string singular_function_name = "reduce_GB";
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_reduce_GB) (base_filename, library_name, generators, needed_indices, current_index, final_r, redSB, time_offset, &runtime);
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_reduce_GB) (base_filename, generators, needed_indices, current_index, final_r, redSB, &runtime);
 
-						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() - time_offset;
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="redSB" place="place_redSB"/>
 			<connect-read port="needed_indices_list" place="place_needed_indices_list"/>
-			<connect-read port="time_offset" place="place_time_offset"/>
 			<connect-in port="needed_indices" place="place_needed_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>

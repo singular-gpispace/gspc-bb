@@ -1,11 +1,13 @@
 #include "singular_functions.hpp"
 
-
 #include <stdexcept>
 #include <iostream>
 #include <unistd.h>
 #include <chrono>
 #include <vector>
+//#include <iostream>
+//#include <boost/archive/binary_iarchive.hpp>
+//#include <boost/archive/binary_oarchive.hpp>
 
 
 const std::string STRUCT_NAME = "token";
@@ -41,6 +43,36 @@ poly readPolySSI(std::string filename, BOOLEAN delete_file)
   return (poly) data->data;
 }
 
+void writeIdealSSI(ideal I, std::string out_filename)
+{
+  si_link f  = ssi_open_for_write (out_filename);
+  sleftv data;
+  data.Init();
+  if (p_GetComp(I->m[0],currRing)==0)
+    data.rtyp = IDEAL_CMD;
+  else
+    data.rtyp = MODUL_CMD;
+  data.data = (void*) I;
+  if (ssiWrite(f,&data))
+  {
+    throw std::runtime_error ("saving ideal/module to ssi failed");
+  }
+  ssi_close_and_remove (f);
+}
+
+ideal readIdealSSI(std::string filename, BOOLEAN delete_file)
+{
+  si_link f  = ssi_open_for_read (filename);
+  leftv data = ssiRead1(f);
+
+  if (data->rtyp != IDEAL_CMD && data->rtyp != MODUL_CMD)
+  {
+    throw std::runtime_error ("reading ideal/module from ssi failed");
+  }
+  ssi_close_and_remove (f);
+  if(delete_file) {std::remove(filename.c_str());}
+  return (ideal) data->data;
+}
 
 int get_struct_cmd()
 {
