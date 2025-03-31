@@ -1,29 +1,19 @@
 LIB "buchbergergspc.lib";
 LIB "random.lib";
 
-option(redSB); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis
-
 configToken gc = configure_gspc();
 
-gc.options.tmpdir = "/dev/shm/marcel/buchberger/tempdir";
 gc.options.tmpdir = "tempdir";
 
 gc.options.nodefile = "nodefile";
-gc.options.procspernode = 3;
+gc.options.procspernode = 6;
 gc.options.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
 
 // only needed if you use gspc-monitor:
-gc.options.loghostfile = "loghostfile";
-gc.options.logport = 3217;
-
-proc setcores(int n)
+proc monitorON()
 {
-  gc.options.procspernode = n;
-}
-
-proc getcores()
-{
-  return(gc.options.procspernode);
+  gc.options.loghostfile = "loghostfile";
+  gc.options.logport = 3217;
 }
 
 proc comp(def I, def J) // compare-function for indexed types
@@ -36,7 +26,13 @@ proc comp(def I, def J) // compare-function for indexed types
     n = size(I);
     if(n != size(J)) {return(0);}
     else {
-      for(i=1; i<=n; i++) {if(!comp(I[i],J[i])) {return(0);}}
+      for(i=1; i<=n; i++)
+      {
+        if(t=="ideal" || t=="module") {
+          if(!comp(I[i],J[i]) && !comp(I[i],-J[i])) {return(0);}
+        }
+        else {if(!comp(I[i],J[i])) {return(0);}}
+      }
       return(1);
     }
   }
@@ -54,12 +50,14 @@ proc testSTD(def I)
   return(G);
 }
 
-proc verifyGB(def I)
+proc verifyGB(def I, int ncores, list #)
 {
+  gc.options.procspernode = ncores;
   int test_result;
   list runtimes;
   list s_pair;
-  test_result, runtimes, s_pair = gspc_buchberger(I, gc);
+  test_result, runtimes, s_pair = gspc_buchberger_extraData(I, gc);
+  if (size(#)>0) {write("ssi:w BBTEST_RESULT_"+#[1]+"_"+string(ncores)+"_cores.ssi",list(I, test_result, runtimes, s_pair));}
 
   int i,j;
   bigint irl_time = runtimes[2][1][2]-runtimes[2][1][1];
@@ -87,9 +85,15 @@ proc verifyGB(def I)
   export(runtimes);
 }
 
-proc testSystem(ideal II)
+proc testSystem(ideal I, int ncores, list #)
 {
-  system("--cpus",getcores()); system("--ticks-per-sec",1000); int TTT = rtimer; printf("%n%nsystem('verifyGB', ... ): %s", system("verifyGB", II)); printf("%ntime: %s ms", rtimer-TTT);
+  system("--cpus",ncores); system("--ticks-per-sec",1000);
+  int TTT = rtimer;
+  int singular_test_result = system("verifyGB", I);
+  printf("%n%nsystem('verifyGB', ... ): %s", singular_test_result);
+  TTT = rtimer-TTT;
+  printf("%ntime: %s ms", TTT);
+  if (size(#)>0) {write("ssi:w BBTEST_RESULT_"+#[1]+"_"+string(ncores)+"_cores_SINGULAR.ssi",list(singular_test_result, TTT));}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,9 +151,14 @@ for(int i=1; i<=size(ncores_list); i++)
 }
 */
 
-def J = read("ssi:r bigGB.ssi");
+//def J = read("ssi:r bigGB.ssi");
+//ideal JJ = J[1..66]; // not a GB (1 element missing)
+
 //def J = read("ssi:r RI_5_4_5_LP_GB.ssi");
-setcores(6);
-verifyGB(J);
-option(noprot); testSystem(J);
+
+ring r = 0,x(0..9),dp; ideal I = katsura(9); ideal IH = std(homog(I,x(9)));
+monitorON();
+verifyGB(IH, 6, "katsura8hom");
+option(noprot);
+testSystem(IH, 6, "katsura8hom");
 ////////////////////////////////////////////////////////////////////////////////

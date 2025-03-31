@@ -1,12 +1,12 @@
 ///////////////////////////////////////
-version="version buchbergergspc.lib 0.2 May_2024 ";
+version="version buchbergergspc.lib 0.1 Mar 2025 ";
 category="Algebraic geometry";
 info="
 LIBRARY: buchbergergspc.lib  buchberger library for  GPI-Space interface on Singular
 
 OVERVIEW:
-This library contains SINGULAR procedures for starting up a
-a Singular/GPI-Space implementation of Buchbergers algorithm.
+This library contains SINGULAR procedures for starting up a Singular/GPI-Space
+implementation of the Buchberger Test (testing if an ideal/module is a Groebner basis).
 
 TYPES:
 configToken            general configuration token type
@@ -14,11 +14,13 @@ gspcConfigToken        configuration token for GPI-Space
 buchbergerConfigToken  configuration token for the transition procedure
 
 PROCEDURES:
-configure_gspc()                               generates standard config token for GPI-Space
-configure_buchberger()                         generates standard config token for the transition procedure
-generateIOTokenTypes(configToken)              register the user-defined types for input and output
-gspc_buchberger(list,configToken,configToken)  interface of the buchberger framework in Singular
+configure_gspc()                                         generates standard config token for GPI-Space
+configure_buchberger()                                   generates standard config token for the transition procedure
+generateIOTokenTypes(configToken)                        register the user-defined types for input and output
+gspc_buchberger(list,configToken,configToken)            interface of the buchberger framework in Singular
+gspc_buchberger_extraData(list,configToken,configToken)  interface of the buchberger framework in Singular
 ";
+
 
 proc mod_init()
 {
@@ -29,7 +31,7 @@ proc mod_init()
     LIB "buchbergergp.lib";
     newstruct("configToken", "string tokentype, def options");
     newstruct("gspcConfigToken", "string tmpdir, string nodefile, int procspernode, string rifstrategy, string rifstrategyparameters, string loghost, int logport, string loghostfile, int deleteoutputfiles");
-    newstruct("buchbergerConfigToken", " string neededLibrary, string functionName");
+    newstruct("buchbergerConfigToken", "string functionName");
     newstruct("token", "list fieldnames, list data");
 }
 
@@ -138,18 +140,6 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
     }
     workflow_opts = workflow_opts + " --input " + "input";
 
-    //Parse libraryname
-    string loadlib;
-    if (pc.options.neededLibrary[1] == "/")
-    {
-        loadlib = pc.options.neededLibrary;
-    }
-    else
-    {
-        loadlib = system("getenv", "PWD") + "/" + pc.options.neededLibrary;
-    }
-    workflow_opts = workflow_opts + " --libraryname " + loadlib;
-
     // parse delete-output-files option (boolean)
     workflow_opts = workflow_opts + " --deleteoutputfiles " + string(gc.options.deleteoutputfiles);
 
@@ -158,10 +148,9 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
     return(sm_result);
 }
 
-proc gspc_buchberger(def I, configToken gc, list #)
+proc gspc_buchberger_extraData(def I, configToken gc, list #)
 {
     configToken ct = configure_buchberger();
-    ct.options.neededLibrary = "buchbergergp.lib";
     token t;
     t.fieldnames[1] = "ideal_generators";
     t.data[1] = I;
@@ -173,4 +162,20 @@ proc gspc_buchberger(def I, configToken gc, list #)
     int test_result = output[1].data[1];
 
     return(test_result, list(output[1].data[2],output[1].data[3]), output[1].data[4]);
+}
+
+proc gspc_buchberger(def I, configToken gc, list #)
+{
+    configToken ct = configure_buchberger();
+    token t;
+    t.fieldnames[1] = "ideal_generators";
+    t.data[1] = I;
+    list inputlists;
+    inputlists[1] = t;
+
+    def output = gspc_buchberger_static(inputlists, 1, gc, ct);
+
+    int test_result = output[1].data[1];
+
+    return(test_result);
 }

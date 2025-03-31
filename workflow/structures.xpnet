@@ -1,9 +1,0 @@
-<structs>
-
-  <struct name="runtimes">
-    <field name="transition" type="string"/>
-    <field name="start" type="long"/>
-    <field name="stop" type="long"/>
-	</struct>
-
-</structs>

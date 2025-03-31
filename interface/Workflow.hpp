@@ -25,6 +25,5 @@ namespace buchberger_module
     int _N;
     std::string _input;
     std::string _basefilename;
-    std::string _libraryname;
   };
 }

@@ -3,17 +3,16 @@
 #include <interface/buchberger_interface.hpp>
 
 #include <iostream>
-#include <fstream>
 #include <stdexcept>
 #include <unistd.h>
 #include <vector>
 #include <boost/variant.hpp>
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/binary_oarchive.hpp>
 #include <chrono>
 #include "config.hpp"
 #include "singular_functions.hpp"
-
+//#include <fstream>
+//#include <boost/archive/binary_iarchive.hpp>
+//#include <boost/archive/binary_oarchive.hpp>
 
 
 std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file);
@@ -79,9 +78,6 @@ public:
   }
 };
 
-
-
-
 std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file)
 {
   return std::make_pair(INT_CMD, (void*) (char*) (input));
@@ -93,7 +89,6 @@ std::pair<int,void*> make_singular_data(std::string const& input, std::string co
   else                                        // pass the string directly to SINGULAR
     {return std::make_pair(STRING_CMD, (void *)omStrDup(input.c_str()));}
 }
-
 std::pair<int,void*> make_singular_data(GpiVariant const& input, std::string const& ids, bool const& delete_file)
 {
   return boost::apply_visitor(return_singular_data(ids,delete_file), input);
@@ -130,7 +125,6 @@ std::pair<int,void*> make_singular_data(boost::variant<long*, std::string*, GpiL
   }
 	throw std::runtime_error ("Type not implemented!");
 }
-
 
 bool write_singular_output(std::pair<int, void*> const& res, long& out_var)
 {
@@ -192,19 +186,8 @@ bool write_singular_output(std::pair<int, void*> const& res, boost::variant<long
 }
 
 
-std::string filename_gen(std::string const& base_filename, std::string const& singular_function_name)
-{
-  init_singular (config::singularLibrary().string());
-  return base_filename+filename_generator(singular_function_name);
-}
-
-
-
-
-
 
 NO_NAME_MANGLING
-
 void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::string const& singular_function_name,
 															 	 std::string const& base_filename,
@@ -243,7 +226,6 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 		args.add_argument(make_singular_data(args_inout[i], ids, delete_files));
 	}
 
-
 	// call the SINGULAR procedure:
 	output = call_user_proc(singular_function_name, singular_library_name, args);
 
@@ -274,20 +256,17 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 }
 
 
-NO_NAME_MANGLING
 
-std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_and_F( [[maybe_unused]] std::string const& singular_library_name,
-                                                                                      [[maybe_unused]] std::string const& base_filename,
-                                                                                      [[maybe_unused]] std::string const& input,
-                                                                                      [[maybe_unused]] GpiMap* runtime )
+NO_NAME_MANGLING
+std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_and_F(std::string const& base_filename,
+                                                                                     std::string const& input,
+                                                                                     GpiMap* runtime)
 {
   std::string ids = worker();
   init_singular (config::singularLibrary().string());
-	//load_singular_library(singular_library_name);
 
   long start_time,stop_time;
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  //ideal F = readIdealSSI(base_filename+"GB_for_BB_test.ssi", false);
   std::pair<int,void*> input_ideal = deserialize(input, ids, false);
   ideal F = (ideal) ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data;
 
@@ -317,58 +296,6 @@ std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_a
     Mvec.emplace_back(Mjvec);
   }
 
-/*
-  kStrategy strat=new skStrategy;
-  strat->ak = id_RankFreeModule(F,currRing);
-  strat->kModW=kModW=NULL;
-  strat->kHomW=kHomW=NULL;
-  initBuchMoraCrit(strat);
-  initBuchMoraPos(strat);
-  initBba(strat);
-  initBuchMora(F, currRing->qideal,strat);
-  //initBuchMora:
-  strat->tail = pInit();
-  //- set s -
-  strat->sl = -1;
-  //- set L -
-  strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
-  strat->Ll = -1;
-  strat->L = initL(strat->Lmax);
-  //- set B -
-  strat->Bmax = setmaxL;
-  strat->Bl = -1;
-  strat->B = initL();
-  //- set T -
-  strat->tl = -1;
-  strat->tmax = setmaxT;
-  strat->T = initT();
-  strat->R = initR();
-  strat->sevT = initsevT();
-  //- init local data struct.----------------------------------------
-  strat->P.ecart=0;
-  strat->P.length=0;
-  strat->P.pLength=0;
-  initS(F, currRing->qideal,strat); //sets also S, ecartS, fromQ
-  strat->fromT = FALSE;
-  strat->noTailReduction = FALSE;
-  */
-  // build pairs
-  /*
-  if (strat->fromQ!=NULL)
-  {
-    for(int i=1; i<=strat->sl;i++)
-    {
-      initenterpairs(strat->S[i],i-1,0,strat->fromQ[i],strat);
-    }
-  }
-  else
-  {
-    for(int i=1; i<=strat->sl;i++)
-    {
-      initenterpairs(strat->S[i],i-1,0,FALSE,strat);
-    }
-  }*/
-
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "building kStrategy object for Buchberger test (init)"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
@@ -376,22 +303,15 @@ std::pair<std::vector<std::vector<int>>,std::string> singular_buchberger_get_M_a
 }
 
 
-
 NO_NAME_MANGLING
-
-std::pair<ideal,kStrategy> singular_buchberger_get_Fstrat([[maybe_unused]] std::string const& singular_library_name,
-                                                          [[maybe_unused]] std::string const& base_filename,
-                                                          [[maybe_unused]] std::string const& GB,
-                                                          [[maybe_unused]] GpiMap* runtime )
+std::pair<ideal,kStrategy> singular_buchberger_get_Fstrat(std::string const& GB,
+                                                          GpiMap* runtime)
 {
   std::string ids = worker();
-
   init_singular (config::singularLibrary().string());
-	//load_singular_library(singular_library_name);
 
   long start_time,stop_time;
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  //ideal F = readIdealSSI(base_filename+"GB_for_BB_test.ssi", false);
   std::pair<int,void*> input_ideal = deserialize(GB, ids, false);
   ideal F = (ideal) ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data;
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -424,29 +344,14 @@ std::pair<ideal,kStrategy> singular_buchberger_get_Fstrat([[maybe_unused]] std::
   strat->T = initT();
   strat->R = initR();
   strat->sevT = initsevT();
-  //- init local data struct.----------------------------------------
+  //- init local data struct -
   strat->P.ecart=0;
   strat->P.length=0;
   strat->P.pLength=0;
-  initS(F, currRing->qideal,strat); //sets also S, ecartS, fromQ
+  initS(F, currRing->qideal,strat);
   strat->fromT = FALSE;
   strat->noTailReduction = FALSE;
-  // build pairs
-  /*
-  if (strat->fromQ!=NULL)
-  {
-    for(int i=1; i<=strat->sl;i++)
-    {
-      initenterpairs(strat->S[i],i-1,0,strat->fromQ[i],strat);
-    }
-  }
-  else
-  {
-    for(int i=1; i<=strat->sl;i++)
-    {
-      initenterpairs(strat->S[i],i-1,0,FALSE,strat);
-    }
-  }*/
+
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "building kStrategy object for Buchberger test (static)"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
@@ -454,22 +359,17 @@ std::pair<ideal,kStrategy> singular_buchberger_get_Fstrat([[maybe_unused]] std::
 }
 
 
-
 NO_NAME_MANGLING
-
-void singular_buchberger_compute_NF( [[maybe_unused]] std::string const& singular_library_name,
-                                     [[maybe_unused]] std::string const& base_filename,
-                                     std::pair<ideal,kStrategy> Fstrat,
-                                     GpiList const& started_indices,
-                                     GpiList* BB_test_fail,
-                                     GpiMap* runtime)
+void singular_buchberger_compute_NF(std::pair<ideal,kStrategy> Fstrat,
+                                    GpiList const& started_indices,
+                                    GpiList* BB_test_fail,
+                                    GpiMap* runtime)
 {
   ideal F = Fstrat.first;
   kStrategy strat = Fstrat.second;
 
 	//// start Singular and load the specified library ////
   init_singular (config::singularLibrary().string());
-	//load_singular_library(singular_library_name);
 
   // calculate NF(spoly,F)
   long start_time,stop_time;
@@ -483,18 +383,6 @@ void singular_buchberger_compute_NF( [[maybe_unused]] std::string const& singula
   sPair.p1=F->m[i-1];
   sPair.p2=F->m[j-1];
   ksCreateSpoly(&sPair);
-
-  /*
-  LObject sPair = strat->L[started_indices];
-  if (pNext(sPair.p) == strat->tail)
-  {
-    pLmFree(sPair.p);
-    sPair.p = NULL;
-    poly m1 = NULL, m2 = NULL;
-    kCheckSpolyCreation(&(sPair), strat, m1, m2);
-    ksCreateSpoly(&(sPair), NULL, strat->use_buckets,
-                  strat->tailRing, m1, m2, strat->R);
-  }*/
 
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "building s-polynomial"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
@@ -510,14 +398,17 @@ void singular_buchberger_compute_NF( [[maybe_unused]] std::string const& singula
   {
     sPair.GetP();
 
-    // the actual reduction:
-    NF_spoly=redNF(sPair.p,strat->sl,TRUE,strat);
-
-    //std::cout << "ring order id: " << (int) (currRing->order[0]) << std::endl;
-
-    //alternative:
-    //if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,sPair.p,0,4);}
-    //else                      {NF_spoly = kNF(F,currRing->qideal,sPair.p);}
+    if(USE_KNF)
+    {
+      //alternative:
+      if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,sPair.p,0,4);}
+      else                      {NF_spoly = kNF(F,currRing->qideal,sPair.p);}
+    }
+    else
+    {
+      // the actual reduction:
+      NF_spoly=redNF(sPair.p,strat->sl,TRUE,strat);
+    }
 
     if (NF_spoly==NULL) red_result=0;
   }

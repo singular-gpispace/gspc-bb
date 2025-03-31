@@ -1,14 +1,13 @@
 #include "singular_functions.hpp"
 
-
 #include <stdexcept>
-#include <iostream>
 #include <fstream>
 #include <unistd.h>
 #include <chrono>
 #include <vector>
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/binary_oarchive.hpp>
+//#include <iostream>
+//#include <boost/archive/binary_iarchive.hpp>
+//#include <boost/archive/binary_oarchive.hpp>
 
 
 const std::string STRUCT_NAME = "token";
@@ -74,7 +73,6 @@ ideal readIdealSSI(std::string filename, BOOLEAN delete_file)
   if(delete_file) {std::remove(filename.c_str());}
   return (ideal) data->data;
 }
-
 
 int get_struct_cmd()
 {
@@ -279,7 +277,7 @@ lists ssi_read_newstruct (si_link l, std::string const& struct_name)
 
 std::pair<int, lists> deserialize (std::string const& filename, std::string const& ids, bool delete_file)
 {
-  std::cout << "deserializing " << filename << std::endl;
+  //std::cout << "deserializing " << filename << std::endl;
 	if (!(register_struct (STRUCT_NAME, STRUCT_DESC)))
 	{
 		 throw std::runtime_error (ids + ": could not register structs");

@@ -1,18 +1,17 @@
 ///////////////////////////////////////
-version="version buchbergergp.lib 0.2 Mar 2023 ";
+version="version buchbergergp.lib 0.1 Mar 2025 ";
 category="Commutative algebra";
 info="
-LIBRARY: buchbergergp.lib  procedures for Buchbergers algorithm
+LIBRARY: buchbergergp.lib  procedures for the Buchbergers Test
 
 OVERVIEW:
     This library contains SINGULAR procedures used in the parallel implementation
-    of Buchbergers algorithm in the Singular/GPI-Space framework.
+    of the Buchberger Test in the Singular/GPI-Space framework.
     The newstruct type token  must be defined.
 
     PROCEDURES:
-    init(string,token)                           Initialize (NOT including checking product and chain criterion)
-    minimize_GB(string, token, int)              compute, which elements can be deleted to get a minimal Groebner Basis (GB)
-    reduce_GB(string,int,token,int)              reduce one element of the minimal GB by all the others to compute a reduced GB
+    init(string)                initialize output token
+    abort_BB_test(list, token)  set the output to false if the test fails
 ";
 
 proc mod_init()
@@ -28,22 +27,19 @@ proc mod_init()
 // for inputs:  read  - in  - inout
 // for outputs: inout - out - out_many
 
-proc init(string DIR, input)
-"USAGE: init(token input)
-RETURN: token out_A, token out_r
-"
+proc init(string DIR)
 {
   token output;
   output.fieldnames[1] = "test_result";
   output.data[1] = 1;
 
   // This output is just for debugging and analysing the algorithm:
-    output.fieldnames[2] = "transition_names";
-    output.data[2] = list("total_start_stop", "total_time",   "TRANSITION init TOTAL", "TRANSITION NF_of_spoly TOTAL", "Singular init", "reading ideal for Buchberger test (init)", "building kStrategy object for Buchberger test (init)", "applying criteria in init transition (Buchberger test)", "reading ideal for Buchberger test (static)", "building kStrategy object for Buchberger test (static)", "building s-polynomial", "reduction of s-polynomial", "PRODUCT CRITERION", "CHAIN CRITERION");
-    output.fieldnames[3] = "runtimes_per_transition";
-    output.data[3] = list(list(0,-2^31),list(0,0,0),          list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0));
-    output.fieldnames[4]="spoly_that_did_not_reduce_to_zero";
-    output.data[4] = list(-1,-1);
+  output.fieldnames[2] = "transition_names";
+  output.data[2] = list("total_start_stop", "total_time",   "TRANSITION init TOTAL", "TRANSITION NF_of_spoly TOTAL", "Singular init", "reading ideal for Buchberger test (init)", "building kStrategy object for Buchberger test (init)", "applying criteria in init transition (Buchberger test)", "reading ideal for Buchberger test (static)", "building kStrategy object for Buchberger test (static)", "building s-polynomial", "reduction of s-polynomial", "PRODUCT CRITERION", "CHAIN CRITERION");
+  output.fieldnames[3] = "runtimes_per_transition";
+  output.data[3] = list(list(0,-2^31),list(0,0,0),          list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0),list(0,0,0));
+  output.fieldnames[4]="spoly_that_did_not_reduce_to_zero";
+  output.data[4] = list(-1,-1);
 
   return(output);
 }
@@ -55,53 +51,6 @@ proc abort_BB_test(list BB_test_fail, token output)
   output.data[4] = BB_test_fail;
 
   return(output);
-}
-
-proc summarize_runtimes(list times, token output)
-"USAGE: summarize_runtimes(list times, token output)
-RETURN: token output
-"
-{
-  int B0 = 0;
-  for(int l=1; l<=size(times); l++)
-  {
-    string transition = times[l][1];
-    int start = times[l][2];
-    int stop  = times[l][3];
-    int duration  = times[l][4];
-    int count  = times[l][5];
-
-    int k=0;
-    int ntransitions = size(output.data[2]);
-    for(int i=1; i<=ntransitions; i++)
-    {
-      if(transition==output.data[2][i]) {k=i; break;}
-    }
-    if(k==0) {
-      k = ntransitions+1;
-      output.data[2][k] = transition;
-      output.data[3][k] = list(B0,B0,B0);
-    }
-    output.data[3][k][1] = output.data[3][k][1] + duration;
-    output.data[3][k][2] = output.data[3][k][2] + count;
-    output.data[3][k][3] = max(output.data[3][k][3], duration);
-    if (start != 0) { // only for runtimes of transitions, not extra measurements:
-      output.data[3][2][1] = output.data[3][2][1] + duration; // add to total time
-      output.data[3][2][2] = output.data[3][2][2] + count; // add to total
-      output.data[3][2][3] = max(output.data[3][2][3], duration); // add to total
-
-      output.data[3][1][2] = max(stop, output.data[3][1][2]); // count end of last activated transition as ending of the algorithm
-    }
-    if(transition=="TRANSITION init TOTAL") {
-      output.data[3][1][1] = start; // count start of init transition as beginning of the algorithm
-    }
-  }
-  return(output);
-}
-
-proc intStrategy()
-{
-  return(option(get)[1] % 2^27>=2^26);
 }
 
 // for debugging as error messages wont be pushed to gspc-monitor:

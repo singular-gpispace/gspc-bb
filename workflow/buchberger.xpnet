@@ -1,13 +1,10 @@
 <defun name="buchberger">
 	<in name="base_filename" type="string" place="place_base_filename"/>
-	<in name="library_name" type="string" place="place_library_name"/>
-
 	<in name="input" type="string" place="place_input"/>
 	<out name="output" type="string" place="place_output"/>
 	<out name="runtime" type="map" place="place_runtime"/>
 	<net>
 		<place name="place_base_filename" type="string"/>
-		<place name="place_library_name" type="string"/>
 		<place name="place_input" type="string"/>
 		<place name="place_output" type="string"/>
 		<place name="place_GB" type="string"/>
@@ -25,7 +22,6 @@
 			<defun>
 				<require key="worker" mandatory="true"/>
        	<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="input" type="string"/>
 				<out name="started_indices" type="list"/>
 				<out name="GB" type="string"/>
@@ -33,7 +29,7 @@
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(runtime, base_filename, library_name, input, started_indices, output, GB)">
+							  function="function_init(runtime, base_filename, input, started_indices, output, GB)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -46,9 +42,10 @@
 
 						long runtime_start_singular = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::string library_name = base_filename.substr(0, base_filename.find_last_of('/', base_filename.size() - 2) + 1) + "buchbergergp.lib";
 						std::string singular_function_name = "init";
 						args_read  = {base_filename};
-						args_in    = {input};
+						args_in    = {};
 						args_inout = {};
 						out        = {&output};
 						out_many   = {};
@@ -58,7 +55,7 @@
 						long runtime_stop_singular = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "Singular init"] = GpiList({-1L, runtime_stop_singular, runtime_stop_singular-runtime_start_singular, 1L});
 
-						std::pair<std::vector<std::vector<int>>,std::string> res = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_M_and_F) (library_name, base_filename, input, &runtime);
+						std::pair<std::vector<std::vector<int>>,std::string> res = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_M_and_F) (base_filename, input, &runtime);
 						std::vector<std::vector<int>> Mvec = res.first;
 						GB = res.second;
 
@@ -126,7 +123,6 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-in port="input" place="place_input"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
 			<connect-out port="output" place="place_output"/>
@@ -139,7 +135,6 @@
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="GB" type="string"/>
 				<in name="started_indices" type="list"/>
 				<out name="BB_test_fail" type="list"/>
@@ -148,7 +143,7 @@
 				<out name="eureka" type="set"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(runtime, base_filename, library_name, started_indices, BB_test_fail, eureka_group, eureka, GB)"
+							  function="function_NF_of_spoly(runtime, base_filename, started_indices, BB_test_fail, eureka_group, eureka, GB)"
 								pass_context="true">
 					<eureka-group>${eureka_group}</eureka-group>
 					<cinclude href="interface/buchberger_interface.hpp"/>
@@ -166,9 +161,12 @@
 						std::string singular_function_name = "NF_of_spoly";
 
 						long runtime_start_static = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						static std::pair<ideal,kStrategy> Fstrat = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_Fstrat) (library_name, base_filename, GB, &runtime);
+						static std::pair<ideal,kStrategy> Fstrat = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_Fstrat) (GB, &runtime);
 						long runtime_stop_static = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "reading ideal and kStrategy object (static)"] = GpiList({-1L, runtime_stop_static, runtime_stop_static-runtime_start_static, 1L});
+
+// using 'execute_and_kill_on_cancel' creates too much overhead
+
 /*
 						std::string filename = base_filename+"IO_"+std::to_string(boost::get<long>(started_indices.front()))+"_"+std::to_string(boost::get<long>(started_indices.back()));
 
@@ -188,7 +186,7 @@
 									fhg::util::scoped_dlhandle
 						                            (config::implementation(), RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND)
 						                            .sym<decltype (singular_buchberger_compute_NF)> ("singular_buchberger_compute_NF")
-						                            (library_name, base_filename, Fstrat, started_indices, &BB_test_fail, &runtime);
+						                            (Fstrat, started_indices, &BB_test_fail, &runtime);
 /*
 									int k=0;
 									for (GpiList::iterator it=get_list(runtime_inner[(std::string) "building s-polynomial"]).begin(); k<4; ++it, k++) {oa << boost::get<long>(*it);}
@@ -248,7 +246,6 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="GB" place="place_GB"/>
 			<connect-read port="eureka_group" place="place_eureka_group"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
@@ -261,7 +258,6 @@
 		<transition name="abort_BB_test">
 			<defun>
 				<in name="base_filename" type="string"/>
-				<in name="library_name" type="string"/>
 				<in name="GB" type="string"/>
 				<in name="BB_test_fail" type="list"/>
 				<in name="eureka_group" type="string"/>
@@ -269,7 +265,7 @@
 				<inout name="output" type="string"/>
 				<module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
-								function="function_abortBB_test(base_filename, library_name, GB, BB_test_fail, output, eureka_group, eureka)">
+								function="function_abortBB_test(base_filename, GB, BB_test_fail, output, eureka_group, eureka)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -284,6 +280,7 @@
 						std::cout << "Buchberger Test FAILED as the ("<<boost::get<long>(BB_test_fail.front())<<","<<boost::get<long>(BB_test_fail.back())<<")-th s-polynomial did not reduce to 0" << std::endl;
 
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::string library_name = base_filename.substr(0, base_filename.find_last_of('/', base_filename.size() - 2) + 1) + "buchbergergp.lib";
 						std::string singular_function_name = "abort_BB_test";
 						args_read  = {};
 						args_in    = {BB_test_fail};
@@ -299,7 +296,6 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="library_name" place="place_library_name"/>
 			<connect-read port="eureka_group" place="place_eureka_group"/>
 			<connect-in port="GB" place="place_GB"/>
 			<connect-in port="BB_test_fail" place="place_BB_test_fail"/>
