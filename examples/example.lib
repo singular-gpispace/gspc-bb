@@ -158,7 +158,6 @@ for(int i=1; i<=size(ncores_list); i++)
 
 ring r = 0,x(0..9),dp; ideal I = katsura(9); ideal IH = std(homog(I,x(9)));
 monitorON();
-verifyGB(IH, 6, "katsura8hom");
-option(noprot);
-testSystem(IH, 6, "katsura8hom");
+verifyGB(IH, 6, "katsura9hom");
+//option(noprot); testSystem(IH, 6, "katsura8hom");
 ////////////////////////////////////////////////////////////////////////////////
