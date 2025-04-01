@@ -153,7 +153,7 @@ proc testSystem(ideal I)
 
 system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
 monitorON();
-testBB(I, 6, 4, "RANDOMID_7_2_5");
+testBB(I, 6, 5, "RANDOMID_7_2_5");
 
 //testParallelBB(I);
 //testSystem(I);

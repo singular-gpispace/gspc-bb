@@ -205,7 +205,7 @@
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(runtime, base_filename, r, Qback, started_indices, started_indices_out, finished_indices, NF, balNF, blacklist)">
+							  function="function_NF_of_spoly(runtime, base_filename, r, Qback, started_indices, started_indices_out, finished_indices, NF, blacklist)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -709,16 +709,14 @@
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="BB_finished" type="control"/>
-				<in name="r" type="int"/>
 				<in name="M" type="list"/>
-				<in name="Q" type="list"/>
 				<out name="needed_indices_list" type="list"/>
 				<out name="needed_indices" type="list"/>
 				<out name="output" type="string"/>
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_minimize_GB(runtime, base_filename, r, M, needed_indices_list, needed_indices, output)">
+							  function="function_minimize_GB(runtime, base_filename, M, needed_indices_list, needed_indices, output)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -740,6 +738,7 @@
 							Mvec.emplace_back(Mjvec);
 						}
 
+						int r=M.size();
 						bool needed;
 						for(int i=0; i<r; i++)
 						{
@@ -781,10 +780,8 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="BB_finished" place="place_BB_finished"/>
-			<connect-in port="r" place="place_r"/>
+			<connect-in port="BB_finished" place="place_BB_finished"/>
 			<connect-in port="M" place="place_M"/>
-			<connect-in port="Q" place="place_Q"/>
 			<connect-out port="needed_indices_list" place="place_needed_indices_list"/>
 			<connect-out port="output" place="place_output"/>
 			<connect-out-many port="needed_indices" place="place_needed_indices"/>
