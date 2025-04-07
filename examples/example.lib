@@ -5,22 +5,19 @@ option(redSB); // if option redSB is set: gspc_buchberger will calculate a uniqu
 
 configToken gc = configure_gspc();
 
+// directory used by GPI-Space to save temporary files
 gc.options.tmpdir = "tempdir";
 
-gc.options.nodefile = "nodefile";
-gc.options.procspernode = 6;
+gc.options.nodefile = "nodefile"; // file containing names of the nodes used in the compputation
+gc.options.procspernode = 6;      // number of cores used per node
 gc.options.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
 
-// only needed if you use gspc-monitor:
+// call once if you use gspc-monitor:
 proc monitorON()
+
 {
   gc.options.loghostfile = "loghostfile";
   gc.options.logport = 3217;
-}
-
-proc setcores(int n)
-{
-  gc.options.procspernode = n;
 }
 
 proc getcores()
@@ -51,19 +48,19 @@ proc comp(def I, def J) // compare-function for indexed types
   else {return (I==J);}
 }
 
-proc parallelStd(def I, list #)
+proc parallelStd(def I, list #) // test the parallel implementation of Buchberger's algorithm (gspc_buchberger)
 {
   int ncores, nworkers;
   if(size(#)>=1) {ncores   = #[1];}
   else           {ncores = getcores();}
   if(size(#)>=2) {nworkers = #[2];}
-  else           {nworkers = ncores-2;}
+  else           {nworkers = ncores-1;}
 
-  setcores(ncores);
+  gc.options.procspernode = ncores;
   return(gspc_buchberger(I, gc, nworkers));
 }
 
-proc testSTD(def I, list #)
+proc testSTD(def I, list #) // test Singular's implementation of Buchberger's algorithm (std)
 {
   system("--ticks-per-sec", 1000); option(prot);
   int time = rtimer;
@@ -74,9 +71,9 @@ proc testSTD(def I, list #)
   return(G);
 }
 
-proc testParallelBB(def I, int ncores, int nworkers, list #)
+proc testParallelBB(def I, int ncores, int nworkers, list #) // test the parallel implementation of Buchberger's algorithm (gspc_buchberger) + display runtimes
 {
-  setcores(ncores);
+  gc.options.procspernode = ncores;
   def GB;
   int r_all;
   list indices;
@@ -115,9 +112,9 @@ proc testParallelBB(def I, int ncores, int nworkers, list #)
   export(GB,indices,runtimes);
 }
 
-proc testBB(def I, int ncores, int nworkers, list #)
+proc testBB(def I, int ncores, int nworkers, list #) // compare both implementation
 {
-  setcores(ncores);
+  gc.options.procspernode = ncores;
 
   print("parallelStd:");
   testParallelBB(I, ncores, nworkers, #);
@@ -132,37 +129,22 @@ proc testBB(def I, int ncores, int nworkers, list #)
   export(G);
 }
 
-proc testSystem(ideal I)
-{
-  system("--cpus",getcores()); system("--ticks-per-sec",1000); int TTT = rtimer;
-  printf("%n%nsystem('verifyGB', ... ): %s", system("verifyGB", I));
-  printf("%ntime: %s ms", rtimer-TTT);
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// small example:
 
-//system("--random", 42); ring r = 0,x(1..7),dp; ideal I = std(randomid(maxideal(2),5)); testBB(I, 1000000);
 //system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
-
-
-//def I = read("ssi:r bigGB.ssi");
-//system("--random",42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
-//system("--random",42); ring r = 0,x(1..9),dp; ideal I = cyclic(5);
-
-system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
-monitorON();
-testBB(I, 6, 5, "RANDOMID_7_2_5");
-
-//testParallelBB(I);
-//testSystem(I);
-
+//monitorON();
+//testBB(I, 6, 5, "RANDOMID_7_2_5");
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/*
-ring r = (0,s,t),z(1..15),dp;
+
+// M1+M2 example
+
+ring r = (0,s,t),z(1..15),dp;             // rational function field
+ring R = 0,(z(1..15),s,t),(dp(15),dp(2)); // block ordering
 
 matrix M1_mat_T[18][15] = (-z(1) + z(2), -z(1) + z(2), -z(1) + z(2) - z(8) + z(11), -z(1) + z(2) - z(6) + z(14), 0, 0, 0, 0, 0, 0, 0, -s - z(1) + z(2), -t - z(1) + z(2), 0, 0), (0, 0, z(1) - z(2) + z(8) - z(11), 0, -z(6) + z(8) - z(11) + z(14), 0, 0, z(8) - z(11), s + z(8) - z(11), s + t + z(8) - z(11), z(8) - z(11), 0, 0, 0, 0), (0, 0, 0, z(1) - z(2) + z(6) - z(14), z(6) - z(8) + z(11) - z(14), z(6) - z(14), s + t + z(6) - z(14), 0, 0, 0, 0, 0, 0, z(6) - z(14), -s + z(6) - z(14)), (z(1) - z(12), s + z(1) - z(12), s + z(1) + z(8) - z(9) - z(12), z(1) - z(6) - z(12) + z(15), 0, 0, 0, 0, 0, 0, 0, z(1) - z(12), s + t + z(1) - z(12), 0, 0), (0, 0, -s - z(1) - z(8) + z(9) + z(12), 0, -s - z(6) - z(8) + z(9) + z(15), 0, 0, -z(8) + z(9), -z(8) + z(9), -s - t - z(8) + z(9), -s - z(8) + z(9), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(6) + z(12) - z(15), s + z(6) + z(8) - z(9) - z(15), z(6) - z(15), -t + z(6) - z(15), 0, 0, 0, 0, 0, 0, -s + z(6) - z(15), z(6) - z(15)), (z(1) - z(13), t + z(1) - z(13), -s + z(1) + z(9) - z(10) - z(13), z(1) + 3*z(6) - z(7) - z(13) - z(14) - z(15), 0, 0, 0, 0, 0, 0, 0, s + t + z(1) - z(13), z(1) - z(13), 0, 0), (0, 0, s - z(1) - z(9) + z(10) + z(13), 0, s + 3*z(6) - z(7) - z(9) + z(10) - z(14) - z(15), 0, 0, s + t - z(9) + z(10), -z(9) + z(10), -z(9) + z(10), s - z(9) + z(10), 0, 0, 0, 0), (0, 0, 0, -z(1) - 3*z(6) + z(7) + z(13) + z(14) + z(15), -s - 3*z(6) + z(7) + z(9) - z(10) + z(14) + z(15), -3*z(6) + z(7) + z(14) + z(15), -s - 3*z(6) + z(7) + z(14) + z(15), 0, 0, 0, 0, 0, 0, -t - 3*z(6) + z(7) + z(14) + z(15), s + t - 3*z(6) + z(7) + z(14) + z(15)), (2*z(1), z(1) + z(2), z(1) + z(3) - z(11), z(1) + z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) + z(12), z(1) + z(13), 0, 0), (0, 0, -z(1) - z(3) + z(11), 0, -z(3) + z(4) - z(6) + z(11), 0, 0, z(2) - z(3) + z(11), z(1) + z(2) - z(3) + z(11) - z(12), 2*z(1) + z(2) - z(3) + z(11) - z(12) - z(13), z(1) - z(3) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) - z(4) + z(6), z(3) - z(4) + z(6) - z(11), z(1) - z(4) + z(6), 2*z(1) + z(2) - z(4) + z(6) - z(12) - z(13), 0, 0, 0, 0, 0, 0, 2*z(1) - z(2) - z(4) + z(6), -z(4) + z(6) + z(12)), (z(1) - z(3) + z(11), z(1) - z(3) + z(8), z(1) - z(3) - z(11), z(1) - z(3) + z(5) - z(6), 0, 0, 0, 0, 0, 0, 0, s + z(1) - z(3) + z(8) - z(9) + z(11), -s + z(1) - z(3) + z(9) - z(10) + z(11), 0, 0), (0, 0, -z(1) + z(3) + z(11), 0, z(5) - z(6) + z(11), 0, 0, z(8) + z(11), -s + z(9) + z(11), z(10) + z(11), 2*z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(3) - z(5) + z(6), -z(5) + z(6) - z(11), -z(5) + z(6) + z(11), -z(5) + z(6) + z(10), 0, 0, 0, 0, 0, 0, -z(5) + z(6) - z(8) + 2*z(11), s - z(5) + z(6) + z(8) - z(9) + z(11)), (z(1) - z(4) + z(6), z(1) - z(4) + 2*z(6) - z(14), z(1) - z(4) + z(5) - z(11), z(1) - z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) - z(4) + z(15), z(1) - z(4) + 4*z(6) - z(7) - z(14) - z(15), 0, 0), (0, 0, -z(1) + z(4) - z(5) + z(11), 0, -z(5) - z(6) + z(11), 0, 0, -z(5) + 2*z(6) + z(11) - z(14), -z(5) + 3*z(6) + z(11) - z(14) - z(15), -z(5) + z(7) + z(11), -z(5) + z(6) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(4) + z(6), z(5) + z(6) - z(11), 2*z(6), z(6) + z(7), 0, 0, 0, 0, 0, 0, z(6) + z(14), z(6) + z(15));
 matrix M2_mat_T[15][15] = (z(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, z(2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, z(3), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, z(4), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, z(5), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, z(6), 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, z(7), 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, z(8), 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, z(9), 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, z(10), 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
@@ -184,4 +166,3 @@ module M1 = module(M1_mat);
 module M2 = module(M2_mat);
 module M = M1+M2;
 ;
-*/
