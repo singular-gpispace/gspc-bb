@@ -1,4 +1,4 @@
-# Massively parallel modular computations
+# A Massively Parallel Buchberer Algorithm
 
 This package provides a massively parallel implementation of Buchbergers algorithm.
 The application relies on the task-based workflow provided by [GPI-Space](http://www.gpi-space.de/) for task coordination, and uses the computer algebra  system [Singular](https://www.singular.uni-kl.de/) for computational tasks.
