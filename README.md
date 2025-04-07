@@ -1,4 +1,4 @@
-# A Massively Parallel Buchberer Test
+# A Massively Parallel Buchberger Test
 
 This package provides a massively parallel implementation of the Buchbergers test.
 The application relies on the task-based workflow provided by [GPI-Space](http://www.gpi-space.de/) for task coordination, and uses the computer algebra  system [Singular](https://www.singular.uni-kl.de/) for computational tasks.
