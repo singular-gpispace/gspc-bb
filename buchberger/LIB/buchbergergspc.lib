@@ -148,7 +148,7 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
     return(sm_result);
 }
 
-proc gspc_buchberger_extraData(def I, configToken gc, list #)
+proc gspc_verifyGB_extraData(def I, configToken gc, list #)
 {
     configToken ct = configure_buchberger();
     token t;
@@ -164,7 +164,7 @@ proc gspc_buchberger_extraData(def I, configToken gc, list #)
     return(test_result, list(output[1].data[2],output[1].data[3]), output[1].data[4]);
 }
 
-proc gspc_buchberger(def I, configToken gc, list #)
+proc gspc_verifyGB(def I, configToken gc, list #)
 {
     configToken ct = configure_buchberger();
     token t;

@@ -56,7 +56,7 @@ proc verifyGB(def I, int ncores, list #)
   int test_result;
   list runtimes;
   list s_pair;
-  test_result, runtimes, s_pair = gspc_buchberger_extraData(I, gc);
+  test_result, runtimes, s_pair = gspc_verifyGB_extraData(I, gc);
   if (size(#)>0) {write("ssi:w BBTEST_RESULT_"+#[1]+"_"+string(ncores)+"_cores.ssi",list(I, test_result, runtimes, s_pair));}
 
   int i,j;
