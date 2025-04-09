@@ -225,7 +225,7 @@ gc.options.tmpdir = "tempdir"; // directory used by GPI-Space to save temporary 
 gc.options.nodefile = "nodefile"; // file containing name(s) of the node(s) used in the computation
 gc.options.procspernode = 6;      // number of cores used per node
 
-// onle set these options if you run the Gpi-Space monitor:
+// only set these options if you run the Gpi-Space monitor:
 gc.options.loghostfile = "loghostfile"; // file containing the host of the gpi-space monitor
 gc.options.logport = 3217;              // port number the monitor was started with
 
