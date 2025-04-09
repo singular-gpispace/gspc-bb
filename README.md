@@ -246,4 +246,4 @@ SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular example.lib
 
 ```
 
-Be sure to always use the spack installation of Singular by loading it as described above with ```bash spack load singular```
+Be sure to always use the spack installation of Singular by loading it as described above with ```spack load singular```
