@@ -201,8 +201,49 @@ hostname > loghostfile
 
 ```
 
-Start the example script.
+##  Examples for using gspc_buchberger
+The following is a minimal example for using the parallel implementation of Buchberger's
+algorithm to compute a Gröbner basis.
+
+Start SINGULAR in install_dir...
 ```bash
+SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular
+
+```
+
+...and run
+```bash
+LIB "buchbergergspc.lib";
+LIB "random.lib";
+
+option(redSB); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis
+
+configToken gc = configure_gspc();
+
+gc.options.tmpdir = "tempdir"; // directory used by GPI-Space to save temporary files
+
+gc.options.nodefile = "nodefile"; // file containing name(s) of the node(s) used in the computation
+gc.options.procspernode = 6;      // number of cores used per node
+
+// onle set these options if you run the Gpi-Space monitor:
+gc.options.loghostfile = "loghostfile"; // file containing the host of the gpi-space monitor
+gc.options.logport = 3217;              // port number the monitor was started with
+
+// random example: 5 quadrics in 7 variables:
+ring r = 0,x(1..7),dp;
+ideal I = randomid(maxideal(2),5);   
+
+// start GPI-Space and compute the Gröbner basis:
+ideal G = gspc_buchberger(I, gc, 5); // last argument = number of NF_of_spoly transitions, just set to one less than the total number of cores (number nodes x procspernode - 1)
+
+```
+
+For more examples including procedures to display additional information about the algorithm refer to example.lib
+You can start the example script copied to install_dir with
+```bash
+cd $GPISpace_Singular_buchberger/install_dir
 SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular example.lib
 
 ```
+
+Be sure to always use the spack installation of Singular by loading it as described above with ```bash spack load singular```
