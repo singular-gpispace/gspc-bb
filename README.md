@@ -231,8 +231,10 @@ ideal G = gspc_buchberger(I, gc, 5);
 
 ```
 
-For more examples including procedures to display additional information about the algorithm refer to example.lib
-You can start the example script copied to install_dir with
+```gspc_buchberger``` takes an additional argument, here set to 5, that determines the maximal number of s-polynomial reductions running in parallel. We found it is best set to the total number of cores minus one, i.e. (number of nodes x procspernode - 1).
+
+For more examples including procedures to display timings and additional information about the algorithm refer to example.lib
+You can run example.lib with
 ```bash
 cd $GPISpace_Singular_buchberger/install_dir
 SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular example.lib
