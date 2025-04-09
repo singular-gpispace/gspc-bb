@@ -216,25 +216,18 @@ SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular
 LIB "buchbergergspc.lib";
 LIB "random.lib";
 
-option(redSB); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis
-
 configToken gc = configure_gspc();
 
-gc.options.tmpdir = "tempdir"; // directory used by GPI-Space to save temporary files
+gc.options.tmpdir = "tempdir"; 
+gc.options.nodefile = "nodefile"; 
+gc.options.procspernode = 6;
+gc.options.loghostfile = "loghostfile";
+gc.options.logport = 3217; 
 
-gc.options.nodefile = "nodefile"; // file containing name(s) of the node(s) used in the computation
-gc.options.procspernode = 6;      // number of cores used per node
-
-// only set these options if you run the Gpi-Space monitor:
-gc.options.loghostfile = "loghostfile"; // file containing the host of the gpi-space monitor
-gc.options.logport = 3217;              // port number the monitor was started with
-
-// random example: 5 quadrics in 7 variables:
 ring r = 0,x(1..7),dp;
 ideal I = randomid(maxideal(2),5);   
 
-// start GPI-Space and compute the Gröbner basis:
-ideal G = gspc_buchberger(I, gc, 5); // last argument = number of NF_of_spoly transitions, just set to one less than the total number of cores (number nodes x procspernode - 1)
+ideal G = gspc_buchberger(I, gc, 5); 
 
 ```
 
