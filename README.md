@@ -5,6 +5,8 @@ The application relies on the task-based workflow provided by [GPI-Space](http:/
 
 We also provide a massively parallel [Buchberger test](https://github.com/singular-gpispace/gspc-bb/blob/BB_TEST/README.md). Here we check that the given generating system is a Gröbner basis. Based on the verification, there is also a verified modular Buchberger algorithm, which builds on the generic modular framework for algebraic geometry, see [verified modular Buchberger](https://github.com/singular-gpispace/modular/tree/MODULAR_STD_WITH_VERIFICATION). Here both the Gröbner basis property as well as the key inclusion are tested, which yields a verification in the homogeneous case.
 
+Note that all of this is work in progress.
+
 This application builds on the Singular dynamical module implemented by Lukas Ristau from the repository
 [framework](https://github.com/singular-gpispace/framework).
 
