@@ -6,7 +6,7 @@ The application relies on the task-based workflow provided by [GPI-Space](http:/
 We also provide a massively parallel [Buchberger algorithm](https://github.com/singular-gpispace/gspc-bb/README.md). Here we compute from a given generating system a Gröbner basis.
 
 This application  uses the Singular dynamic module implemented by Lukas Ristau from  the repository
-[framework](https://github.com/singular-gpispace/framework)  
+[framework](https://github.com/singular-gpispace/framework).
 
 # Installation using Spack
 Spack is a package manager specifically aimed at handling software installations in supercomputing environments, but
