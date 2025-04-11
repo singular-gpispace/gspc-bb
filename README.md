@@ -3,6 +3,8 @@
 This package provides a massively parallel implementation of the Buchbergers test.
 The application relies on the task-based workflow provided by [GPI-Space](http://www.gpi-space.de/) for task coordination, and uses the computer algebra  system [Singular](https://www.singular.uni-kl.de/) for computational tasks.
 
+We also provide a massively parallel [Buchberger algorithm](https://github.com/singular-gpispace/gspc-bb/README.md). Here we compute from a given generating system a Gröbner basis.
+
 This application  uses the Singular dynamic module implemented by Lukas Ristau from  the repository
 [framework](https://github.com/singular-gpispace/framework)  
 
