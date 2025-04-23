@@ -206,8 +206,8 @@ hostname > loghostfile
 ```
 
 ##  Examples for using gspc_verifyGB
-The following is a minimal example for using the parallel implementation of Buchberger's
-algorithm to compute a Gröbner basis.
+The following is a minimal example for using the parallel implementation of the Buchberger
+Test to verify a Gröbner basis.
 
 Start SINGULAR in install_dir...
 ```bash
@@ -218,7 +218,6 @@ SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular
 ...and run
 ```bash
 LIB "buchbergergspc.lib";
-LIB "random.lib";
 
 configToken gc = configure_gspc();
 
@@ -229,14 +228,13 @@ gc.options.loghostfile = "loghostfile";
 gc.options.logport = 3217;
 
 ring r = 0,x(0..9),dp;
-ideal I = katsura(9);
-ideal IH = std(homog(I,x(9)));
+ideal I = std(katsura(9));
 
 int result = gspc_verifyGB(I, gc);
 
 ```
 
-```gspc_verifyGB``` returns 1 if the first argument (could be an ideal or a module) is a Gröbner basis and 0 else. 
+```gspc_verifyGB``` returns 1 if the first argument (could be an ideal or a module) is a Gröbner basis and 0 else.
 
 For more examples including procedures to display timings and additional information about the algorithm refer to example.lib
 You can run example.lib with
