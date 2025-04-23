@@ -1,10 +1,14 @@
-# A Massively Parallel Buchberer Test
+# A Massively Parallel Buchberger Test
 
 This package provides a massively parallel implementation of the Buchbergers test.
 The application relies on the task-based workflow provided by [GPI-Space](http://www.gpi-space.de/) for task coordination, and uses the computer algebra  system [Singular](https://www.singular.uni-kl.de/) for computational tasks.
 
+We also provide a massively parallel [Buchberger algorithm](https://github.com/singular-gpispace/gspc-bb/). Here we compute from a given generating system a Gröbner basis. Based on the verification, there is also a verified modular Buchberger algorithm, which builds on the generic modular framework for algebraic geometry, see [verified modular Buchberger](https://github.com/singular-gpispace/modular/tree/MODULAR_STD_WITH_VERIFICATION). Here both the Gröbner basis property as well as the key inclusion are tested, which yields a verification in the homogeneous case.
+
+Note that all of this is work in progress.
+
 This application  uses the Singular dynamic module implemented by Lukas Ristau from  the repository
-[framework](https://github.com/singular-gpispace/framework)  
+[framework](https://github.com/singular-gpispace/framework).
 
 # Installation using Spack
 Spack is a package manager specifically aimed at handling software installations in supercomputing environments, but
@@ -201,8 +205,45 @@ hostname > loghostfile
 
 ```
 
-Start the example script.
+##  Examples for using gspc_verifyGB
+The following is a minimal example for using the parallel implementation of Buchberger's
+algorithm to compute a Gröbner basis.
+
+Start SINGULAR in install_dir...
 ```bash
+SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular
+
+```
+
+...and run
+```bash
+LIB "buchbergergspc.lib";
+LIB "random.lib";
+
+configToken gc = configure_gspc();
+
+gc.options.tmpdir = "tempdir";
+gc.options.nodefile = "nodefile";
+gc.options.procspernode = 6;
+gc.options.loghostfile = "loghostfile";
+gc.options.logport = 3217;
+
+ring r = 0,x(0..9),dp;
+ideal I = katsura(9);
+ideal IH = std(homog(I,x(9)));
+
+int result = gspc_verifyGB(I, gc);
+
+```
+
+```gspc_verifyGB``` returns 1 if the first argument (could be an ideal or a module) is a Gröbner basis and 0 else. 
+
+For more examples including procedures to display timings and additional information about the algorithm refer to example.lib
+You can run example.lib with
+```bash
+cd $GPISpace_Singular_buchberger/install_dir
 SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular example.lib
 
 ```
+
+Be sure to always use the spack installation of Singular by loading it as described above with ```spack load singular```

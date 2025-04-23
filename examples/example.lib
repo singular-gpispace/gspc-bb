@@ -98,66 +98,8 @@ proc testSystem(ideal I, int ncores, list #)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-//def J8 = read("ssi:r bigGB.ssi");
-//def J = read("ssi:r cyclic8_GB.ssi");
-
-//def J = read("ssi:r bigGB.ssi"); setcores(3); verifyGB(J); option(noprot); testSystem(J);
-//ideal I = J[1..66]; setcores(3); verifyGB(I), option(noprot); testSystem(I);
-
-//verifyGB(ideal(x(1)*x(2)-x(1),x(1)*x(3)-x(2)));
-//verifyGB(I);
-
-list ncores_list = 64,48,32,16,8,4,2,1;
-int ncores;
-/*
-def J = read("ssi:r bigGB.ssi");
-for(int i=1; i<=size(ncores_list); i++)
-{
-  ncores = ncores_list[i];
-  printf("## %s bigGB ##########################################################################",ncores);
-  setcores(ncores);
-  verifyGB(J);
-  option(noprot); testSystem(J);
-}
-
-def J = read("ssi:r cyclic8_GB.ssi");
-for(int i=1; i<=size(ncores_list); i++)
-{
-  ncores = ncores_list[i];
-  printf("## %s cyclic8_GB ##########################################################################",ncores);
-  setcores(ncores);
-  verifyGB(J);
-  option(noprot); testSystem(J);
-}
-
-def J = read("ssi:r M1_plus_M2_GB.ssi");
-for(int i=1; i<=size(ncores_list); i++)
-{
-  ncores = ncores_list[i];
-  printf("## %s M1_plus_M2_GB ##########################################################################",ncores);
-  setcores(ncores);
-  verifyGB(J);
-  //option(noprot); testSystem(J);
-}
-
-def J = read("ssi:r katsura11_GB.ssi");
-for(int i=1; i<=size(ncores_list); i++)
-{
-  ncores = ncores_list[i];
-  printf("## %s katsura11_GB ##########################################################################",ncores);
-  setcores(ncores);
-  verifyGB(J);
-  option(noprot); testSystem(J);
-}
-*/
-
-//def J = read("ssi:r bigGB.ssi");
-//ideal JJ = J[1..66]; // not a GB (1 element missing)
-
-//def J = read("ssi:r RI_5_4_5_LP_GB.ssi");
-
 ring r = 0,x(0..9),dp; ideal I = katsura(9); ideal IH = std(homog(I,x(9)));
 monitorON();
 verifyGB(IH, 6, "katsura9hom");
-//option(noprot); testSystem(IH, 6, "katsura8hom");
+option(noprot); testSystem(IH, 6, "katsura8hom");
 ////////////////////////////////////////////////////////////////////////////////
