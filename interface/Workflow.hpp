@@ -28,5 +28,6 @@ namespace buchberger_module
     std::string _libraryname;
     long _nworkers;
     long _redSB;
+    long _degBound;
   };
 }

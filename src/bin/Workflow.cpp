@@ -15,6 +15,7 @@ namespace buchberger_module
     workflow_opts.add_options()("deleteoutputfiles", po::value<bool>()->required());
     workflow_opts.add_options()("nworkers", po::value<long>()->required());
     workflow_opts.add_options()("redSB", po::value<long>()->required());
+    workflow_opts.add_options()("degBound", po::value<long>()->required());
 
     return workflow_opts;
   }
@@ -25,6 +26,7 @@ namespace buchberger_module
     , _basefilename (args.at ("basefilename").as<std::string>())
     , _nworkers (args.at ("nworkers").as<long>())
     , _redSB (args.at ("redSB").as<long>())
+    , _degBound (args.at ("degBound").as<long>())
     {}
 
   ValuesOnPorts Workflow::inputs() const
@@ -37,6 +39,7 @@ namespace buchberger_module
     values_on_ports.emplace("base_filename", _basefilename);
     values_on_ports.emplace("nworkers", _nworkers);
     values_on_ports.emplace("redSB", _redSB);
+    values_on_ports.emplace("degBound", _degBound);
 
     return values_on_ports;
   }
@@ -164,7 +167,8 @@ namespace buchberger_module
               {
                 times_sum->m[0].data = (void*) (char*)        (-1L);
                 times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
-                times_sum->m[2].data = (void*) (char*)        (-1L);
+                times_sum->m[2].data = (void*) (char*) std::min(((long) times_sum->m[2].data) , -1-count);
+                //times_sum->m[2].data = (void*) (char*)        (-1L);
               }
               break;
             }

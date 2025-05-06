@@ -3,6 +3,7 @@
 
 	<in name="base_filename" type="string" place="place_base_filename"/>
 	<in name="redSB" type="long" place="place_redSB"/>
+	<in name="degBound" type="long" place="place_degBound"/>
 	<in name="input" type="string" place="place_input"/>
 	<in name="nworkers" type="long" place="place_nworkers"/>
 	<out name="output" type="string" place="place_output"/>
@@ -25,6 +26,7 @@
 		<place name="place_needed_indices" type="long"/>
 		<place name="place_needed_indices_list" type="list"/>
 		<place name="place_blacklist" type="set"/>
+		<place name="place_degBound" type="long"/>
 		<place name="place_runtime" type="map"/>
 
 
@@ -34,6 +36,7 @@
        	<in name="base_filename" type="string"/>
 				<in name="input" type="string"/>
 				<in name="nworkers" type="long"/>
+				<in name="degBound" type="long"/>
 				<out name="started_indices" type="list"/>
 				<out name="Q" type="list"/>
 				<out name="Qback" type="index_pair"/>
@@ -45,7 +48,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(started_indices, runtime, base_filename, input, Q, Qback, r, M, nworkers, balNF, blacklist, BB_finished)">
+							  function="function_init(started_indices, degBound, runtime, base_filename, input, Q, Qback, r, M, nworkers, balNF, blacklist, BB_finished)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -68,7 +71,7 @@
 
 						r = Mvec.size();
 						#ifdef DEBUG_BBA
-						std::cout << runtime_start << ": r=" << r << std::endl;
+						std::cout << runtime_start << ": r=" << r << ", degBound=" << degBound << std::endl;
 						#endif
 
 
@@ -83,6 +86,8 @@
 							{
 								bool add_to_Q = true;
 								std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
+								if (degBound>0 && degBound < deg(lcm_i_j))
+									{add_to_Q=false;}
 								if (test_PC(*Mi,*Mj)) // apply PC
 									{add_to_Q = false; prodcrit_counter++;}
 								else // apply CC
@@ -176,6 +181,7 @@
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="nworkers" place="place_nworkers"/>
+			<connect-read port="degBound" place="place_degBound"/>
 			<connect-in port="input" place="place_input"/>
 			<connect-out port="Q" place="place_Q"/>
 			<connect-out port="Qback" place="place_Qback"/>
@@ -431,6 +437,7 @@
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="NF" type="list"/>
+				<in name="degBound" type="long"/>
 				<inout name="Q" type="list"/>
 				<inout name="Qback" type="index_pair"/>
 				<inout name="blacklist" type="set"/>
@@ -441,7 +448,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_increment(runtime, base_filename, NF, Q, Qback, r, M, started_indices, BB_finished, blacklist)">
+							  function="function_increment(degBound, runtime, base_filename, NF, Q, Qback, r, M, started_indices, BB_finished, blacklist)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -474,6 +481,7 @@
 
 							#ifdef DEBUG_BBA
 							std::cout << runtime_start << ": increasing r from " << r-1 << " to " << r << " due to spoly (" << index_i << "," << index_j << ")"<< std::endl;
+							std::cout << runtime_start << ": degBound=" << degBound << std::endl;
 							#endif
 
 							M.push_back(m);
@@ -499,8 +507,10 @@
 								else
 								{
 									lcm_i_r = lcm(*Mi, Mr);
+									if (degBound>0 && degBound < deg(lcm_i_r))
+										{add_to_Q=false;}
 									if (test_PC(*Mi,Mr)) // apply PC
-									{add_to_Q = false; prodcrit_counter++;}
+										{add_to_Q = false; prodcrit_counter++;}
 									else // apply CC
 									{
 										int k=1;
@@ -613,6 +623,7 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="degBound" place="place_degBound"/>
 			<connect-in port="NF" place="place_NF"/>
 			<connect-inout port="Q" place="place_Q"/>
 			<connect-inout port="Qback" place="place_Qback"/>
@@ -727,6 +738,8 @@
 					<code><![CDATA[
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
+						int r=M.size();
+
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": minimizing Gröbner basis with initially " << r << " elements" << std::endl;
 						#endif
@@ -738,7 +751,6 @@
 							Mvec.emplace_back(Mjvec);
 						}
 
-						int r=M.size();
 						bool needed;
 						for(int i=0; i<r; i++)
 						{

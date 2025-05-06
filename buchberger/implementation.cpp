@@ -14,7 +14,6 @@
 //#include <boost/archive/binary_iarchive.hpp>
 //#include <boost/archive/binary_oarchive.hpp>
 
-
 std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file);
 std::pair<int,void*> make_singular_data(std::string const& input, std::string const& ids, bool const& delete_file);
 std::pair<int,void*> make_singular_data(GpiVariant const& input, std::string const& ids, bool const& delete_file);
@@ -274,7 +273,10 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
   if (TEST_OPT_INTSTRATEGY) {
     for(int i=0; i<F->ncols; i++)
     {
-      F->m[i] = p_Cleardenom(F->m[i], currRing);
+      //!!F->m[i] = p_Cleardenom(F->m[i], currRing);
+      number c;
+      p_Cleardenom_n(F->m[i], currRing, c);
+      n_Delete(&c, currRing->cf);
     }
   }
   else
@@ -294,10 +296,11 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
   intvec *sort   = idSort(F);
   for (int i=0; i<sort->length();++i)
     {F_sorted->m[i] = F->m[(*sort)[i]-1];}
+  delete sort;
 
-  kStrategy strat=new skStrategy;
+
   ideal FF = idInit(1,1);
-  idInsertPolyOnPos(FF,F_sorted->m[0],0); // insert first polynomial of F
+  idInsertPolyOnPos(FF,p_Copy(F_sorted->m[0], currRing),0); // insert first polynomial of F
   writePolySSI(F_sorted->m[0], base_filename+"f1");
 
   for(int i=1; i<F->ncols; i++)
@@ -308,53 +311,79 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
     // take next polynomial, ...
     poly new_f = F_sorted->m[i];
 
-    // update strat
-    strat->ak = id_RankFreeModule(FF,currRing);
-    strat->kModW=kModW=NULL;
-    strat->kHomW=kHomW=NULL;
-    initBuchMoraCrit(strat);
-    initBuchMoraPos(strat);
-    initBba(strat);
-    initBuchMora(FF, currRing->qideal,strat);
-    //initBuchMora:
-    strat->tail = pInit();
-    //- set s -
-    strat->sl = -1;
-    //- set L -
-    strat->Lmax = ((IDELEMS(FF)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
-    strat->Ll = -1;
-    strat->L = initL(strat->Lmax);
-    //- set B -
-    strat->Bmax = setmaxL;
-    strat->Bl = -1;
-    strat->B = initL();
-    //- set T -
-    strat->tl = -1;
-    strat->tmax = setmaxT;
-    strat->T = initT();
-    strat->R = initR();
-    strat->sevT = initsevT();
-    //- init local data struct.----------------------------------------
-    strat->P.ecart=0;
-    strat->P.length=0;
-    strat->P.pLength=0;
-    initS(FF, currRing->qideal,strat); //sets also S, ecartS, fromQ
-    strat->fromT = FALSE;
-    strat->noTailReduction = FALSE;
+    if (USE_KNF)
+    {
+      if (TEST_OPT_INTSTRATEGY) {new_f = kNF(FF,currRing->qideal,new_f,0,4);}
+      else                      {new_f = kNF(FF,currRing->qideal,new_f);}
+    }
+    else
+    {
+      kStrategy strat=new skStrategy;
+      // update strat
+      strat->ak = id_RankFreeModule(FF,currRing);
+      strat->kModW=kModW=NULL;
+      strat->kHomW=kHomW=NULL;
+      initBuchMoraCrit(strat);
+      initBuchMoraPos(strat);
+      initBba(strat);
+      initBuchMora(FF, currRing->qideal,strat);
+      //initBuchMora:
+      strat->tail = pInit();
+      //- set s -
+      strat->sl = -1;
+      //- set L -
+      strat->Lmax = ((IDELEMS(FF)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
+      strat->Ll = -1;
+      strat->L = initL(strat->Lmax);
+      //- set B -
+      strat->Bmax = setmaxL;
+      strat->Bl = -1;
+      strat->B = initL();
+      //- set T -
+      strat->tl = -1;
+      strat->tmax = setmaxT;
+      strat->T = initT();
+      strat->R = initR();
+      strat->sevT = initsevT();
+      //- init local data struct.----------------------------------------
+      strat->P.ecart=0;
+      strat->P.length=0;
+      strat->P.pLength=0;
+      initS(FF, currRing->qideal,strat); //sets also S, ecartS, fromQ
+      strat->fromT = FALSE;
+      strat->noTailReduction = FALSE;
 
-    int sl=strat->sl;
+      int sl=strat->sl;
 
-    // reduce new_f by previously added elements:
-    new_f = redNF(new_f,sl,TRUE,strat);
+      // reduce new_f by previously added elements:
+      new_f = redNF(new_f,sl,TRUE,strat);
+
+      delete(strat);
+    }
+
+    if (TEST_OPT_INTSTRATEGY) {
+      //!!FF->m[i] = p_Cleardenom(FF->m[i], currRing);
+      number c;
+      p_Cleardenom_n(new_f, currRing, c);
+      n_Delete(&c, currRing->cf);
+    }
+    else
+    {
+      p_Norm(new_f, currRing);
+    }
 
     writePolySSI(new_f, base_filename+"f"+std::to_string(i+1));
     idInsertPolyOnPos(FF,new_f,i);
   }
 
+/*
   if (TEST_OPT_INTSTRATEGY) {
     for(int i=0; i<FF->ncols; i++)
     {
-      FF->m[i] = p_Cleardenom(FF->m[i], currRing);
+      //!!FF->m[i] = p_Cleardenom(FF->m[i], currRing);
+      number c;
+      p_Cleardenom_n(FF->m[i], currRing, c);
+      n_Delete(&c, currRing->cf);
     }
   }
   else
@@ -364,6 +393,7 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
       p_Norm(FF->m[i], currRing);
     }
   }
+*/
 
   //building Mvec
   std::vector<std::vector<int>> Mvec;
@@ -377,6 +407,17 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
     Mjvec.emplace_back(p_GetComp(FF->m[i],currRing)); // last entry = component
     Mvec.emplace_back(Mjvec);
   }
+
+  id_Delete(&F, currRing);
+
+  //id_Delete(&F_sorted, currRing);
+  long elems = (long) F_sorted->nrows * (long) F_sorted->ncols;
+  if (elems>0) {omFreeSize((ADDRESS) (F_sorted->m),sizeof(poly)*elems);}
+  omFreeBin((ADDRESS) F_sorted, sip_sideal_bin);
+
+  id_Delete(&FF, currRing);
+
+  (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1L, -1L, -1L, (long) om_Info.MaxBytesSystem / 1024});
 
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "saving initial ideal elements in init"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
@@ -427,6 +468,8 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     m.emplace_back((int) p_GetComp(NF_spoly, currRing));
 
     (*NF).emplace_back(GpiList({index_i, index_j,m}));
+
+    p_Delete(&NF_spoly, currRing);
 
     return;
   }
@@ -499,7 +542,10 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       NF_spoly = redNF(Pair.p,sl,TRUE,strat);
       //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
       //(*runtime)[(std::string) "just the call to redNF(..) in NF_of_spoly"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
+      delete(strat);
     }
+
+    Pair.Delete();
 
     stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
@@ -507,15 +553,15 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
   else
   {
     start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    NF_spoly = readPolySSI(save_filename, true);
+    poly prev_result = readPolySSI(save_filename, true);
     stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     (*runtime)[(std::string) "reading partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
     start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     if (USE_KNF)
     {
-      if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,NF_spoly,0,4);}
-      else                      {NF_spoly = kNF(F,currRing->qideal,NF_spoly);}
+      if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,prev_result,0,4);}
+      else                      {NF_spoly = kNF(F,currRing->qideal,prev_result);}
     }
     else
     {
@@ -556,14 +602,21 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       int sl = strat->sl;
 
       //long start_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      NF_spoly = redNF(NF_spoly,sl,TRUE,strat);
+      NF_spoly = redNF(prev_result,sl,TRUE,strat);
       //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
       //(*runtime)[(std::string) "just the call to redNF(..) in NF_of_spoly"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
+      delete(strat);
     }
+
+    p_Delete(&prev_result, currRing);
 
     stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
   }
+
+  long elems = (long) F->nrows * (long) F->ncols;
+  if (elems>0) {omFreeSize((ADDRESS) (F->m),sizeof(poly)*elems);}
+  omFreeBin((ADDRESS) F, sip_sideal_bin);
 
   if (NF_spoly==NULL) // reduction to 0 ==> pair is finished (and to be removed from Q)
   {
@@ -596,7 +649,14 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       (*started_indices_out).emplace_back(index_i);
       (*started_indices_out).emplace_back(index_j);
     }
+
+    p_Delete(&NF_spoly, currRing);
   }
+
+  omUpdateInfo();
+  long max_mem = om_Info.MaxBytesSystem / 1024;
+  (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1L, -1L, -1L, max_mem});
+  std::cout << "memory(2): " << max_mem << std::endl;
 }
 
 
@@ -620,7 +680,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
 {
   init_singular (config::singularLibrary().string());
 
-  poly f; // poly ro be reduced and saved in a file
+  poly f; // poly to be reduced and saved in a file
 
   long start_time,stop_time;
 
@@ -632,7 +692,10 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
     for(int i=0; i<final_r; i++)
     {
       if(i==current_index)
-        {f = p_Copy(*gen, currRing, currRing);}
+      {
+        //!!f = p_Copy(*gen, currRing, currRing);
+        f = *gen;
+      }
       else
       {
         idInsertPolyOnPos(F, *gen, ii);
@@ -645,7 +708,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
 
     // start reduction
     start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    if (USE_KNF || true)
+    if (USE_KNF)
     {
       if (TEST_OPT_INTSTRATEGY) {f = kNF(F,currRing->qideal,f,0,4);}
       else                      {f = kNF(F,currRing->qideal,f);}
@@ -692,7 +755,14 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
       f = redNF(f,sl,TRUE,strat);
       //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
       //(*runtime)[(std::string) "just the call to redNF(..) in reduce_GB"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
+      delete(strat);
     }
+
+    //id_Delete(&F, currRing);
+    long elems = (long) F->nrows * (long) F->ncols;
+    if (elems>0) {omFreeSize((ADDRESS) (F->m),sizeof(poly)*elems);}
+    omFreeBin((ADDRESS) F, sip_sideal_bin);
+
     stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     (*runtime)[(std::string) "applying NF in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
   }
@@ -704,7 +774,10 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   if (TEST_OPT_INTSTRATEGY)
   {
-    f = p_Cleardenom(f, currRing);
+    //!!f = p_Cleardenom(f, currRing);
+    number c;
+    p_Cleardenom_n(f, currRing, c);
+    n_Delete(&c, currRing->cf);
   }
   else
   {
@@ -713,8 +786,13 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "clearing denominators in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
+
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   writePolySSI(f, base_filename + "g" + std::to_string(current_index+1));
+  if (redSB)
+  {
+    p_Delete(&f, currRing);
+  }
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "saving GB in files in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 }

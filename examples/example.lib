@@ -100,13 +100,18 @@ proc testParallelBB(def I, int ncores, int nworkers, list #) // test the paralle
   for(i=3; i<=size(runtimes[1]); i++) {j_max = max(j_max,size(runtimes[1][i]));}
   string s;
   for(i=3; i<=size(runtimes[1]); i++) {
-    s="";
     for(j=size(runtimes[1][i]); j<=j_max; j++) {runtimes[1][i] = " "+runtimes[1][i];}
-    for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
-    if (runtimes[2][i][1]==runtimes[2][i][3] && runtimes[2][i][1]==-1) //count
-      {printf(runtimes[1][i]+": %s"+s, runtimes[2][i][2]);}
+    s="";
+    if (runtimes[2][i][3]<0 && runtimes[2][i][1]==-1) //count
+      {
+        for(j=size(string(-1-runtimes[2][i][3])); j<=12; j++) {s = " "+s;}
+        printf(runtimes[1][i]+": %s"+s+" (max: %s)", runtimes[2][i][2], -1-runtimes[2][i][3]);
+      }
     else // timing
-      {printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);}
+      {
+      for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
+      printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);
+      }
   }
 
   export(GB,indices,runtimes);
@@ -134,17 +139,170 @@ proc testBB(def I, int ncores, int nworkers, list #) // compare both implementat
 
 // small example:
 
-//system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
-//monitorON();
-//testBB(I, 6, 5, "RANDOMID_7_2_5");
+system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
+monitorON();
+testBB(I, 6, 5, "RANDOMID_7_2_5");
+
+
+// jacobi ideal
+/*
+ring R = 0,(x,y,z),dp;
+poly g = x^3+y^9+(10)*x*y^7+y^4*x^2+z^2;
+poly phix = x+y^2+x^2+x*y+x^2*y+x*y^3+x*y*z;
+poly phiy = y+y^2+2*x^2+x*y+y*x^2+y^2*x+x*y^4+z^3;
+poly phiz = z+2*x+x^2+y^4*x;
+map phi = R,phix,phiy,phiz;
+g = phi(g);
+ideal J = jacob(g);
+*/
+
+// Hankel matrix
+/*
+ring H = 0,x(0..9),dp;
+system("--random", 42); ideal V = randomid(maxideal(1),10,20);
+system("--random", 42); ideal rand2 = randomid(maxideal(2),10,20);
+system("--random", 42); ideal rand3 = randomid(maxideal(3),10,20);
+system("--random", 42); ideal rand4 = randomid(maxideal(4),10,20);
+system("--random", 42); ideal rand5 = randomid(maxideal(5),10,20);
+system("--random", 42); ideal rand6 = randomid(maxideal(6),10,20);
+
+matrix M[2][9] = x(0..8),x(1..9);
+ideal I = minor(M,2);
+
+matrix MM = substitute(M,maxideal(1),V);
+ideal II = minor(MM,2);
+
+ideal V2 = V;
+V2[10] = V2[10] + rand2[10];
+matrix MM2 = substitute(M,maxideal(1),V2);
+ideal II2 = minor(MM2,2);
+
+ideal V23 = V;
+V23[9]  = V23[9]  + rand2[9];
+V23[10] = V23[10] + rand2[10] + rand3[10];
+matrix MM23 = substitute(M,maxideal(1),V23);
+ideal II23 = minor(MM23,2);
+
+ideal V234 = V;
+V234[8]  = V234[8]  + rand2[8];
+V234[9]  = V234[9]  + rand2[9]  + rand3[9];
+V234[10] = V234[10] + rand2[10] + rand3[10] + rand4[10];
+matrix MM234 = substitute(M,maxideal(1),V234);
+ideal II234 = minor(MM234,2);
+*/
+
+
+proc testHankelMinors(int ncores, int do_std, int range, list #)
+{
+  ring H = 0,(x0,x1,x2,x3,x4,x5,x6,x7,x8,x9),dp;
+  system("--random", 42); ideal V = randomid(maxideal(1),10,range);
+  list random_polys;
+  string filename = "minors__coef_range_"+string(range)+"__degrees";
+  int n = size(#);
+  int ii;
+  for(int i=1; i<=n; i++)
+  {
+    filename = filename + "_" + string(#[i]);
+    for (ii=2; ii<=#[i]; ii++)
+    {
+      if (typeof(random_polys[ii])=="none")
+      {
+        system("--random", 42); random_polys[ii] = randomid(maxideal(ii),10,range);
+      }
+      V[10-n+i] = V[10-n+i] + random_polys[ii][10-n+i];
+    }
+  }
+  matrix M[2][9] = x0,x1,x2,x3,x4,x5,x6,x7,x8, x1,x2,x3,x4,x5,x6,x7,x8,x9;
+  matrix MM = substitute(M,maxideal(1),V);
+  ideal I = minor(MM,2);
+
+  print(filename);
+  print("  writing files");
+
+  short=0;
+  write(   ":w "+filename+".txt", I);
+  write("ssi:w "+filename+".ssi", I);
+  write(   ":w "+filename+".jl", "using Oscar");
+  write(   ":a "+filename+".jl", "R,(x0,x1,x2,x3,x4,x5,x6,x7,x8,x9) = polynomial_ring(QQ, [:x0,:x1,:x2,:x3,:x4,:x5,:x6,:x7,:x8,:x9])");
+  write(   ":a "+filename+".jl", "L = []");
+  /*for (int k=1; k<=size(I); k++)
+  {
+    write(   ":a "+filename+".jl", "push!(L," + string(I[k]) + ");");
+  }*/
+  int kk;
+  for (int k=1; k<=8; k++)
+  {
+    for (kk=k+1; kk<=9; kk++)
+    {
+      write(   ":a "+filename+".jl", "push!(L,((" + string(MM[1,k]) + ")*(" + string(MM[2,kk]) + "))-((" + string(MM[1,kk]) + ")*(" + string(MM[2,k]) + ")));");
+    }
+  }
+  write(   ":a "+filename+".jl", "I = ideal(R, L);");
+  write(   ":a "+filename+".jl", "@time groebner_basis_f4(I);");
+
+
+
+  print("  applying algorithms");
+  if(do_std)
+  {
+    testBB(I, ncores, ncores-1, filename);
+  }
+  else
+  {
+    testParallelBB(I, ncores, ncores-1, filename);
+  }
+}
+
+
+
+
+//int max_coef = 16001;
+int max_coef = 20;
+
+/*
+testHankelMinors(48, 0, max_coef, 2);
+testHankelMinors(48, 0, max_coef, 3);
+testHankelMinors(48, 0, max_coef, 4);
+testHankelMinors(48, 0, max_coef, 5);
+testHankelMinors(48, 0, max_coef, 6);
+testHankelMinors(48, 0, max_coef, 7);
+
+testHankelMinors(48, 0, max_coef, 2, 2);
+testHankelMinors(48, 0, max_coef, 2, 3);
+testHankelMinors(48, 0, max_coef, 2, 4);
+testHankelMinors(48, 0, max_coef, 2, 5);
+
+testHankelMinors(48, 0, max_coef, 3, 3);
+testHankelMinors(48, 0, max_coef, 3, 4);
+testHankelMinors(48, 0, max_coef, 3, 5);
+
+testHankelMinors(48, 0, max_coef, 2, 2, 2);
+testHankelMinors(48, 0, max_coef, 2, 2, 3);
+testHankelMinors(48, 0, max_coef, 2, 3, 3);
+testHankelMinors(48, 0, max_coef, 2, 3, 4);
+
+testHankelMinors(48, 0, max_coef, 2, 2, 2, 2);
+*/
+
+proc timestd(def I, list #)
+{
+  int tps=1;
+  if(size(#)>0) {tps=#[1];}
+  system("--ticks-per-sec",tps);
+  option(prot);
+  int t=rtimer;
+  def G = std(I);
+  printf("time: %s (%s ticks per second)",rtimer-t,tps);
+  return(G);
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // M1+M2 example
-
-ring r = (0,s,t),z(1..15),dp;             // rational function field
+/*
 ring R = 0,(z(1..15),s,t),(dp(15),dp(2)); // block ordering
+ring r = (0,s,t),z(1..15),dp;             // rational function field
 
 matrix M1_mat_T[18][15] = (-z(1) + z(2), -z(1) + z(2), -z(1) + z(2) - z(8) + z(11), -z(1) + z(2) - z(6) + z(14), 0, 0, 0, 0, 0, 0, 0, -s - z(1) + z(2), -t - z(1) + z(2), 0, 0), (0, 0, z(1) - z(2) + z(8) - z(11), 0, -z(6) + z(8) - z(11) + z(14), 0, 0, z(8) - z(11), s + z(8) - z(11), s + t + z(8) - z(11), z(8) - z(11), 0, 0, 0, 0), (0, 0, 0, z(1) - z(2) + z(6) - z(14), z(6) - z(8) + z(11) - z(14), z(6) - z(14), s + t + z(6) - z(14), 0, 0, 0, 0, 0, 0, z(6) - z(14), -s + z(6) - z(14)), (z(1) - z(12), s + z(1) - z(12), s + z(1) + z(8) - z(9) - z(12), z(1) - z(6) - z(12) + z(15), 0, 0, 0, 0, 0, 0, 0, z(1) - z(12), s + t + z(1) - z(12), 0, 0), (0, 0, -s - z(1) - z(8) + z(9) + z(12), 0, -s - z(6) - z(8) + z(9) + z(15), 0, 0, -z(8) + z(9), -z(8) + z(9), -s - t - z(8) + z(9), -s - z(8) + z(9), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(6) + z(12) - z(15), s + z(6) + z(8) - z(9) - z(15), z(6) - z(15), -t + z(6) - z(15), 0, 0, 0, 0, 0, 0, -s + z(6) - z(15), z(6) - z(15)), (z(1) - z(13), t + z(1) - z(13), -s + z(1) + z(9) - z(10) - z(13), z(1) + 3*z(6) - z(7) - z(13) - z(14) - z(15), 0, 0, 0, 0, 0, 0, 0, s + t + z(1) - z(13), z(1) - z(13), 0, 0), (0, 0, s - z(1) - z(9) + z(10) + z(13), 0, s + 3*z(6) - z(7) - z(9) + z(10) - z(14) - z(15), 0, 0, s + t - z(9) + z(10), -z(9) + z(10), -z(9) + z(10), s - z(9) + z(10), 0, 0, 0, 0), (0, 0, 0, -z(1) - 3*z(6) + z(7) + z(13) + z(14) + z(15), -s - 3*z(6) + z(7) + z(9) - z(10) + z(14) + z(15), -3*z(6) + z(7) + z(14) + z(15), -s - 3*z(6) + z(7) + z(14) + z(15), 0, 0, 0, 0, 0, 0, -t - 3*z(6) + z(7) + z(14) + z(15), s + t - 3*z(6) + z(7) + z(14) + z(15)), (2*z(1), z(1) + z(2), z(1) + z(3) - z(11), z(1) + z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) + z(12), z(1) + z(13), 0, 0), (0, 0, -z(1) - z(3) + z(11), 0, -z(3) + z(4) - z(6) + z(11), 0, 0, z(2) - z(3) + z(11), z(1) + z(2) - z(3) + z(11) - z(12), 2*z(1) + z(2) - z(3) + z(11) - z(12) - z(13), z(1) - z(3) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) - z(4) + z(6), z(3) - z(4) + z(6) - z(11), z(1) - z(4) + z(6), 2*z(1) + z(2) - z(4) + z(6) - z(12) - z(13), 0, 0, 0, 0, 0, 0, 2*z(1) - z(2) - z(4) + z(6), -z(4) + z(6) + z(12)), (z(1) - z(3) + z(11), z(1) - z(3) + z(8), z(1) - z(3) - z(11), z(1) - z(3) + z(5) - z(6), 0, 0, 0, 0, 0, 0, 0, s + z(1) - z(3) + z(8) - z(9) + z(11), -s + z(1) - z(3) + z(9) - z(10) + z(11), 0, 0), (0, 0, -z(1) + z(3) + z(11), 0, z(5) - z(6) + z(11), 0, 0, z(8) + z(11), -s + z(9) + z(11), z(10) + z(11), 2*z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(3) - z(5) + z(6), -z(5) + z(6) - z(11), -z(5) + z(6) + z(11), -z(5) + z(6) + z(10), 0, 0, 0, 0, 0, 0, -z(5) + z(6) - z(8) + 2*z(11), s - z(5) + z(6) + z(8) - z(9) + z(11)), (z(1) - z(4) + z(6), z(1) - z(4) + 2*z(6) - z(14), z(1) - z(4) + z(5) - z(11), z(1) - z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) - z(4) + z(15), z(1) - z(4) + 4*z(6) - z(7) - z(14) - z(15), 0, 0), (0, 0, -z(1) + z(4) - z(5) + z(11), 0, -z(5) - z(6) + z(11), 0, 0, -z(5) + 2*z(6) + z(11) - z(14), -z(5) + 3*z(6) + z(11) - z(14) - z(15), -z(5) + z(7) + z(11), -z(5) + z(6) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(4) + z(6), z(5) + z(6) - z(11), 2*z(6), z(6) + z(7), 0, 0, 0, 0, 0, 0, z(6) + z(14), z(6) + z(15));
 matrix M2_mat_T[15][15] = (z(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, z(2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, z(3), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, z(4), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, z(5), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, z(6), 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, z(7), 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, z(8), 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, z(9), 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, z(10), 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
@@ -166,3 +324,4 @@ module M1 = module(M1_mat);
 module M2 = module(M2_mat);
 module M = M1+M2;
 ;
+*/

@@ -30,7 +30,7 @@ proc mod_init()
     LIB "buchbergergp.lib";
     newstruct("configToken", "string tokentype, def options");
     newstruct("gspcConfigToken", "string tmpdir, string nodefile, int procspernode, string rifstrategy, string rifstrategyparameters, string loghost, int logport, string loghostfile, int deleteoutputfiles");
-    newstruct("buchbergerConfigToken", " string functionName, int nworkers, int redSB");
+    newstruct("buchbergerConfigToken", " string functionName, int nworkers, int redSB, int degreeBound");
     newstruct("token", "list fieldnames, list data");
 }
 
@@ -148,6 +148,9 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
     // parse redSB option (boolean)
     workflow_opts = workflow_opts + " --redSB " + string(pc.options.redSB);
 
+    // parse degBound option (int)
+    workflow_opts = workflow_opts + " --degBound " + string(pc.options.degreeBound);
+
     string all_opts = driver_opts + " " + workflow_opts;
     def sm_result = sggspc_buchberger(all_opts);
     return(sm_result);
@@ -159,6 +162,7 @@ proc gspc_buchberger_extraData(def I, configToken gc, list #)
     if(size(#)==0) {#[1] = gc.options.procspernode - 2;} // by default: use all but 2 workers for the NF(spoly)-transition
     ct.options.nworkers = #[1];
     ct.options.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
+    ct.options.degreeBound = degBound;
     token t;
     t.fieldnames[1] = "ideal_generators";
     t.data[1] = I;
@@ -209,6 +213,7 @@ proc gspc_buchberger(def I, configToken gc, list #)
     if(size(#)==0) {#[1] = gc.options.procspernode - 2;} // by default: use all but 2 workers for the NF(spoly)-transition
     ct.options.nworkers = #[1];
     ct.options.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
+    ct.options.degreeBound= degBound;
     token t;
     t.fieldnames[1] = "ideal_generators";
     t.data[1] = I;

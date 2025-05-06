@@ -1,6 +1,6 @@
 #pragma once
 
-//#define DEBUG_BBA
+#define DEBUG_BBA
 
 #define USE_KNF true
 
@@ -27,6 +27,10 @@
       RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND) \
       .sym<decltype(function)> \
       (BOOST_PP_STRINGIZE(function)))
+
+
+
+extern int Kstd1_deg;
 
 
 // types needed from SINGULAR
