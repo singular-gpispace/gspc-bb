@@ -332,7 +332,7 @@ where ```v1,...,v8``` are generic polynomials in the ring Q[x1,...,x8] with coef
 The first column in the following table are the degrees of ```v1,...,v8```
 We compared the runtimes (in seconds) of ```gspc_buchberger``` on 48 cores, OSCAR's implementation of the F4 algorithm ```groebner_basis_f4```, as well as SINGULAR's ```std```:
 
-##### Rntimes of the parallel Buchberger with OSCAR's implementation of F4
+##### Runtimes of the parallel Buchberger, OSCAR's implementation of F4 and SINGULAR's std
 degrees of v1,...,v8 | gspc_buchberger | groebner_basis_f4 | ratio of runtimes | std
 --- | --- | --- | --- | ---
 1,1,1,1,1,1,2,3  | 1.43 | 0.373 | 3.82 | 2.64
