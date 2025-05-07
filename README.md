@@ -329,7 +329,7 @@ v2 v3 v4 v5 v6 v7 v8
 ```
 where ```v1,...,v8``` are generic polynomials in the ring Q[x1,...,x8] with coefficients chosen at random between -20 and 20.
 The first column in the following table are the degrees of ```v1,...,v8```
-We compared the runtimes (in seconds) of ```gspc_buchberger``` on 48 cores, OSCAR's implementation of the F4 algorithm ```groebner_basis_f4``` which uses modular methods, as well as SINGULAR's ```std```. (These examples are all relatively small due to limitations with passing big polynomials from SINGULAR to julia/OSCAR.)
+We compare the runtimes (in seconds) of ```gspc_buchberger``` on 48 cores, the [OSCAR](https://www.oscar-system.org/) implementation of the F4 algorithm ```groebner_basis_f4``` which uses modular methods, as well as SINGULAR's ```std```. (These examples are all relatively small due to limitations with passing big polynomials from SINGULAR to julia/OSCAR.)
 
 ##### Runtimes of the parallel Buchberger, OSCAR's implementation of F4 and SINGULAR's std
 degrees of v1,...,v8 | gspc_buchberger | groebner_basis_f4 | ratio of runtimes | std
