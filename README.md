@@ -354,4 +354,4 @@ The F4 algorithm is faster than the parallel implementation by a factor of up to
 
 [2] : M. Wittmann (2025). *Parallel Buchberger Algorithms and Their Application for Feynman Integrals* (Master’s thesis). RPTU Kaiserslautern-Landau.
 
-[3] Basson, D., Boehm, J., Marais, M. S., Rahn, M., & Rakotoarisoa, H. P. (2024). *Massively Parallel Modular Methods in Commutative Algebra and Algebraic Geometry*. [arXiv:2401.11606](https://arxiv.org/abs/2401.11606)
+[3] J. Boehm, D. Bendle, W. Decker, A. Georgoudis, F.J. Pfreundt, M. Rahn and Y. Zhang: *Module Intersection for the Integration-by-Parts Reduction of Multi-Loop Feynman Integrals*. PoS, MA2019:004, 2022. [arXiv:2010.06895](https://arxiv.org/abs/2010.06895), [doi:10.22323/1.383.0004](https://doi.org/10.22323/1.383.0004)
