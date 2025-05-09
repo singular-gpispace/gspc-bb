@@ -329,7 +329,7 @@ v2 v3 v4 v5 v6 v7 v8
 ```
 where ```v1,...,v8``` are generic polynomials in the ring Q[x1,...,x8] with coefficients chosen at random between -20 and 20.
 The first column in the following table are the degrees of ```v1,...,v8```
-We compare the runtimes (in seconds) of ```gspc_buchberger``` on 48 cores, the [OSCAR](https://www.oscar-system.org/) implementation of the F4 algorithm ```groebner_basis_f4``` which uses modular methods, as well as SINGULAR's ```std```. (These examples are all relatively small due to limitations with passing big polynomials from SINGULAR to julia/OSCAR.)
+We compare the runtimes (in seconds) of ```gspc_buchberger``` on 48 cores, the [OSCAR](https://www.oscar-system.org/) implementation of the F4 algorithm ```groebner_basis_f4``` which uses modular methods, as well as SINGULAR's ```std```.
 
 ##### Runtimes of the parallel Buchberger, OSCAR's implementation of F4 and SINGULAR's std
 degrees of v1,...,v8 | gspc_buchberger | groebner_basis_f4 | ratio of runtimes | std
@@ -345,7 +345,9 @@ degrees of v1,...,v8 | gspc_buchberger | groebner_basis_f4 | ratio of runtimes |
 1,1,1,1,1,1,3,6  | 36.7 | 16.01 | 0.44 | 275
 1,1,1,1,1,1,3,7  | 66.6 | 31.4  | 0.47 | 524
 
-The F4 algorithm is faster than the parallel implementation by a factor of up to ~5, in some examples it is even slower, while both implementations are significantly faster than SINGULAR's ```std```. It is however unclear from the documentation whether ```groebner_basis_f4``` verifies the result. (This is necessary as it uses modular methods, applying the F4 algorithm over finite fields and lifting the result back to the rationals.)
+In these examples over the rationals and with monomial ordering dp, chosen so that both the parallel implemenation and the F4 implemenation are applicable, the F4 implementation is in examples of moderate size faster by a factor of ~2, in small examples by a factor of ~5,  in some moderate size examples it is also slower. We could not try larger due to technical issues transporting larger input to OSCAR. In this series of examples, both the parallel implementation and F4 are significantly faster than SINGULAR's ```std```.
+
+We could not infer from the documentation whether ```groebner_basis_f4``` , which uses modular methods, applying the F4 algorithm over finite fields and lifting the result back to the rationals, does a verificiation of the result.
 
 
 
