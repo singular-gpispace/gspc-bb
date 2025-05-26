@@ -45,6 +45,8 @@ poly readPolySSI(std::string filename, BOOLEAN delete_file);
 void  writeIdealSSI(ideal I, std::string out_filename);
 ideal readIdealSSI(std::string filename, BOOLEAN delete_file);
 
+BOOLEAN jjRINGLIST(leftv res, leftv v);
+
 int get_struct_cmd();
 
 void init_singular (std::string const&);

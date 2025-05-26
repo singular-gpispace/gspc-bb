@@ -1,6 +1,7 @@
 #include <interface/Workflow.hpp>
 
 #include <iostream>
+#include <fstream>
 
 namespace buchberger_module
 {
@@ -9,37 +10,40 @@ namespace buchberger_module
     namespace po = boost::program_options;
 
     ParametersDescription workflow_opts ("Workflow");
-    workflow_opts.add_options()("N", po::value<int>()->required());
-    workflow_opts.add_options()("basefilename", po::value<std::string>()->required());
+    //workflow_opts.add_options()("N", po::value<int>()->required());
     workflow_opts.add_options()("input", po::value<std::string>()->required());
+    workflow_opts.add_options()("basefilename", po::value<std::string>()->required());
+    workflow_opts.add_options()("installdir", po::value<std::string>()->required());
     workflow_opts.add_options()("deleteoutputfiles", po::value<bool>()->required());
-    workflow_opts.add_options()("nworkers", po::value<long>()->required());
-    workflow_opts.add_options()("redSB", po::value<long>()->required());
-    workflow_opts.add_options()("degBound", po::value<long>()->required());
+    //workflow_opts.add_options()("nworkers", po::value<long>()->required());
+    //workflow_opts.add_options()("redSB", po::value<long>()->required());
+    //workflow_opts.add_options()("degBound", po::value<long>()->required());
 
     return workflow_opts;
   }
 
   Workflow::Workflow (Parameters const& args)
-    : _N (args.at ("N").as<int>())
-    , _input (args.at ("input").as<std::string>())
+    : //_N (args.at ("N").as<int>()),
+      _input (args.at ("input").as<std::string>())
     , _basefilename (args.at ("basefilename").as<std::string>())
-    , _nworkers (args.at ("nworkers").as<long>())
-    , _redSB (args.at ("redSB").as<long>())
-    , _degBound (args.at ("degBound").as<long>())
+    , _installdir (args.at ("installdir").as<std::string>())
+    //, _nworkers (args.at ("nworkers").as<long>())
+    //, _redSB (args.at ("redSB").as<long>())
+    //, _degBound (args.at ("degBound").as<long>())
     {}
 
   ValuesOnPorts Workflow::inputs() const
   {
     ValuesOnPorts::Map values_on_ports; // writing all the input tokens onto the ports specified at the beginning of the .xpnet file:
-    for(int i = 1; i <= _N ; ++i)
-    {
-	    values_on_ports.emplace ("input", _basefilename + _input + std::to_string(i));
-    }
+    //for(int i = 1; i <= _N ; ++i)
+    //{
+	  values_on_ports.emplace ("input", _basefilename + _input);// + std::to_string(i));
+    //}
     values_on_ports.emplace("base_filename", _basefilename);
-    values_on_ports.emplace("nworkers", _nworkers);
-    values_on_ports.emplace("redSB", _redSB);
-    values_on_ports.emplace("degBound", _degBound);
+    values_on_ports.emplace("installdir", _installdir);
+    //values_on_ports.emplace("nworkers", _nworkers);
+    //values_on_ports.emplace("redSB", _redSB);
+    //values_on_ports.emplace("degBound", _degBound);
 
     return values_on_ports;
   }
@@ -80,10 +84,10 @@ namespace buchberger_module
 
   void Workflow::process (WorkflowResult const& results, Parameters const& parameters, leftv res  ) const // processing the SINGULAR output and writing it to "res"
   {
-    results.buchberger_module::WorkflowResult::assert_key_count("output",parameters.at("N").as<int>());
+    //results.buchberger_module::WorkflowResult::assert_key_count("output",parameters.at("N").as<int>());
     lists out_list =  static_cast<lists> (omAlloc0Bin (slists_bin));
-  	out_list->Init (parameters.at("N").as<int>());
-  	int i {0};
+  	out_list->Init (1); //(parameters.at("N").as<int>());
+  	//int i {0};
   	std::pair<int, lists> entry;
     auto& valuesOnPortsMap = results.buchberger_module::ValuesOnPorts::map();
   	for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
@@ -91,9 +95,9 @@ namespace buchberger_module
   		if( boost::get<std::string>(it->first ) == "output")
   		{
   			entry = deserialize(boost::get<std::string>(it->second),"Result extraction", parameters.at("deleteoutputfiles").as<bool>());
-  			out_list->m[i].rtyp = entry.first;
-  			out_list->m[i].data = entry.second;
-  			i = i + 1;
+  			out_list->m[0].rtyp = entry.first;
+  			out_list->m[0].data = entry.second;
+  			//i = i + 1;
   		}
   	}
 
@@ -124,6 +128,7 @@ namespace buchberger_module
       }
     }
 
+    std::map<std::string,std::map<long,long>> memory;
     for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
     {
       if( boost::get<std::string>(it->first ) == "runtime")
@@ -141,40 +146,63 @@ namespace buchberger_module
           long duration = boost::get<long>(*list_it); list_it++;
           long count    = boost::get<long>(*list_it);
 
-          for(int ii=2; ii<=lSize(transition_list); ii++)
+          if(stop==-1L && duration>=0) // memory measurement (here start, duration and count will instead store the workers id, current time and current memory usage)
           {
-            std::string transition_name = reinterpret_cast<char*> (transition_list->m[ii].data);
-            if(transition_name==transition)
+            memory[transition][duration] = count;
+          }
+          else
+          {
+            for(int ii=2; ii<=lSize(transition_list); ii++)
             {
-              lists times_sum        = (lists) (runtimes_list->m[ii].data);
-
-              if(stop>=0) // for all timings:
+              std::string transition_name = reinterpret_cast<char*> (transition_list->m[ii].data);
+              if(transition_name==transition)
               {
-                times_sum->m[0].data = (void*) (char*)        ( ((long) times_sum->m[0].data) + duration);
-                times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
-                times_sum->m[2].data = (void*) (char*) std::max(((long) times_sum->m[2].data) , duration);
+                lists times_sum        = (lists) (runtimes_list->m[ii].data);
 
-                if(start>=0) // total timings of transitions:
+                if(stop>=0) // for all timings:
                 {
-                  times_sum_total->m[0].data = (void*) (char*)        ( ((long) times_sum_total->m[0].data) + duration);
-                  times_sum_total->m[1].data = (void*) (char*)        ( ((long) times_sum_total->m[1].data) + count);
-                  times_sum_total->m[2].data = (void*) (char*) std::max(((long) times_sum_total->m[2].data) , duration);
+                  times_sum->m[0].data = (void*) (char*)        ( ((long) times_sum->m[0].data) + duration);
+                  times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
+                  times_sum->m[2].data = (void*) (char*) std::max(((long) times_sum->m[2].data) , duration);
 
-                  times_start_stop->m[1].data = (void*) (char*) std::max(((long) times_start_stop->m[1].data) , stop-algorithm_starttime); // count end of last activated transition as ending of the algorithm
+                  if(start>=0) // total timings of transitions:
+                  {
+                    times_sum_total->m[0].data = (void*) (char*)        ( ((long) times_sum_total->m[0].data) + duration);
+                    times_sum_total->m[1].data = (void*) (char*)        ( ((long) times_sum_total->m[1].data) + count);
+                    times_sum_total->m[2].data = (void*) (char*) std::max(((long) times_sum_total->m[2].data) , duration);
+
+                    times_start_stop->m[1].data = (void*) (char*) std::max(((long) times_start_stop->m[1].data) , stop-algorithm_starttime); // count end of last activated transition as ending of the algorithm
+                  }
                 }
+                else
+                {
+                  if (duration==-1L) // for counts, like PC, CC
+                  {
+                    times_sum->m[0].data = (void*) (char*)        (-1L);
+                    times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
+                    times_sum->m[2].data = (void*) (char*) std::min(((long) times_sum->m[2].data) , -1-count);
+                    //times_sum->m[2].data = (void*) (char*)        (-1L);
+                  }
+                }
+                break;
               }
-              else // for counts, like PC, CC
-              {
-                times_sum->m[0].data = (void*) (char*)        (-1L);
-                times_sum->m[1].data = (void*) (char*)        ( ((long) times_sum->m[1].data) + count);
-                times_sum->m[2].data = (void*) (char*) std::min(((long) times_sum->m[2].data) , -1-count);
-                //times_sum->m[2].data = (void*) (char*)        (-1L);
-              }
-              break;
             }
           }
         }
       }
+    }
+    for (std::map<std::string,std::map<long,long>>::const_iterator worker_it = memory.begin(); worker_it != memory.end(); ++worker_it)
+    {
+      std::string worker_id = worker_it->first;
+      std::map<long,long> memory_usage = worker_it->second;
+
+      std::string filename = _basefilename + "memory/memory_usage__worker_"+worker_id+".csv";
+      std::ofstream mem_file(filename);
+      for (std::map<long,long>::const_iterator it = memory_usage.begin(); it != memory_usage.end(); ++it)
+      {
+        mem_file << it->first << "," << it->second << "\n";
+      }
+      mem_file.close();
     }
 
   	res->rtyp = LIST_CMD;

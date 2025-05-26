@@ -4,6 +4,9 @@
 
 #define USE_KNF true
 
+//#define TRACE 39
+#define TRACE 0
+
 #define NO_NAME_MANGLING extern "C"
 
 #include <string>
@@ -12,6 +15,7 @@
 //#include <vector>
 
 #include <iostream>
+#include <fstream>
 
 #include <we/type/literal/control.hpp>
 #include <we/type/bitsetofint.hpp>
@@ -30,7 +34,7 @@
 
 
 
-extern int Kstd1_deg;
+//extern int Kstd1_deg;
 
 
 // types needed from SINGULAR
@@ -214,6 +218,33 @@ inline int deg(std::vector<int> const& monom)
   return d;
 }
 
+
+inline bool over_deg_bound(std::vector<int> const& monom, GpiList const& degBounds)
+{
+  long i=0;
+  for(GpiList::const_iterator it=degBounds.begin(); it!=degBounds.end(); ++it)
+  {
+    long degBound = boost::get<long>(get_list(*it).front());
+    long nvars    = boost::get<long>(get_list(*it).back());
+    long end_i    = i+nvars;
+
+    if (degBound==0)
+    {
+      i = end_i;
+      continue;
+    }
+
+    int degree=0;
+    for(; i<end_i; i++)
+    {
+      degree += monom[i];
+    }
+
+    if (degree > degBound) {return true;}
+  }
+  return false;
+}
+
 inline std::vector<int> lcm(std::vector<int> const& m1, std::vector<int> const& m2)
 {
   std::vector<int>::const_iterator it1 = m1.begin();
@@ -297,7 +328,7 @@ inline bool test_CC(std::vector<int> const& lcm_i_j, std::vector<int> const& Mi,
 
 // helper functions for the queue
 
-inline void queue_insert(GpiList& Q, int i, int j, int deg_lcm, GpiList const& lcm)
+inline void queue_insert(GpiList& Q, int i, int j, int deg_lcm, GpiList const& lcm, std::string base_filename)
 {
   GpiList data = {i, j, deg_lcm, lcm};
   if(Q.size()==0)
@@ -313,13 +344,15 @@ inline void queue_insert(GpiList& Q, int i, int j, int deg_lcm, GpiList const& l
     if(dp_larger_equal(lcm, get_list(entry.back()), deg_lcm, boost::get<int>(*std::next(entry.begin(),2))))
     {
       Q.insert(it, data);
+      std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
+      ijFile.close();
       return;
     }
   }
   Q.push_back(data);
 }
 
-inline void queue_delete_i_j(GpiList& Q, int i, int j) // remove index (i,j) from Q
+inline void queue_delete_i_j(GpiList& Q, int i, int j, std::string base_filename, std::string to_filename) // remove index (i,j) from Q
 {
   for (GpiList::iterator Qk=Q.begin(); Qk!=Q.end(); )
   {
@@ -328,6 +361,10 @@ inline void queue_delete_i_j(GpiList& Q, int i, int j) // remove index (i,j) fro
     if(ii==i && jj==j)
     {
       Qk = Q.erase(Qk);
+      std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
+      std::ofstream ijFile(base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj)));
+      std::cout << "writing file " << base_filename+to_filename+"/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj)) << std::endl;
+      ijFile.close();
       break;
     }
     else
@@ -337,7 +374,7 @@ inline void queue_delete_i_j(GpiList& Q, int i, int j) // remove index (i,j) fro
   }
 }
 
-inline void queue_delete_i(GpiList& Q, int i) // remove indices (i,j) and (j,i) from Q (for all j)
+inline void queue_delete_i(GpiList& Q, int i, std::string base_filename, std::string to_filename) // remove indices (i,j) and (j,i) from Q (for all j)
 {
   for (GpiList::iterator Qk=Q.begin(); Qk!=Q.end(); )
   {
@@ -346,6 +383,10 @@ inline void queue_delete_i(GpiList& Q, int i) // remove indices (i,j) and (j,i) 
     if(ii==i || jj==i)
     {
       Qk = Q.erase(Qk);
+      std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
+      std::ofstream ijFile (base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj)));
+      std::cout << "writing file " << base_filename+to_filename+"/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj)) << std::endl;
+      ijFile.close();
     }
     else
     {
@@ -369,9 +410,15 @@ void singular_buchberger_compute(std::string const& singular_library_name,
                                  bool silent);
 
 NO_NAME_MANGLING
-std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string const& base_filename,
-                                                                   std::string const& input,
-                                                                   GpiMap* runtime);
+void singular_init(std::string const& base_filename,
+                   std::string const& input,
+                   bool prev_queue_had_started,
+                   std::vector<std::vector<int>>* Mvec,
+                   GpiList* degBounds,
+                   long* redSB,
+                   long* nworkers,
+                   int* prev_r,
+                   GpiMap* runtime);
 
 NO_NAME_MANGLING
 void singular_buchberger_compute_NF(std::string const& base_filename,

@@ -15,7 +15,7 @@ const std::string STRUCT_DESC = "list fieldnames, list data";
 
 void writePolySSI(poly P, std::string out_filename)
 {
-  si_link f  = ssi_open_for_write (out_filename);
+  si_link f  = ssi_open_for_write (out_filename + "_incomplete");
   sleftv data;
   data.Init();
   if (p_GetComp(P,currRing)==0)
@@ -28,6 +28,8 @@ void writePolySSI(poly P, std::string out_filename)
     throw std::runtime_error ("saving polynomial to ssi failed");
   }
   ssi_close_and_remove (f);
+
+  std::rename((out_filename + "_incomplete").c_str(),out_filename.c_str());
 }
 
 poly readPolySSI(std::string filename, BOOLEAN delete_file)
@@ -45,7 +47,7 @@ poly readPolySSI(std::string filename, BOOLEAN delete_file)
 
 void writeIdealSSI(ideal I, std::string out_filename)
 {
-  si_link f  = ssi_open_for_write (out_filename);
+  si_link f  = ssi_open_for_write (out_filename + "_incomplete");
   sleftv data;
   data.Init();
   if (p_GetComp(I->m[0],currRing)==0)
@@ -58,6 +60,8 @@ void writeIdealSSI(ideal I, std::string out_filename)
     throw std::runtime_error ("saving ideal/module to ssi failed");
   }
   ssi_close_and_remove (f);
+
+  std::rename((out_filename + "_incomplete").c_str(),out_filename.c_str());
 }
 
 ideal readIdealSSI(std::string filename, BOOLEAN delete_file)
@@ -72,6 +76,22 @@ ideal readIdealSSI(std::string filename, BOOLEAN delete_file)
   ssi_close_and_remove (f);
   if(delete_file) {std::remove(filename.c_str());}
   return (ideal) data->data;
+}
+
+BOOLEAN jjRINGLIST(leftv res, leftv v)
+{
+  ring r=(ring)v->Data();
+  if (r!=NULL)
+  {
+    res->data = (char *)rDecompose((ring)v->Data());
+    if (res->data!=NULL)
+    {
+      long mm=r->wanted_maxExp;
+      if (mm!=0) atSet(res,omStrDup("maxExp"),(void*)mm,INT_CMD);
+      return FALSE;
+    }
+  }
+  return TRUE;
 }
 
 int get_struct_cmd()
@@ -175,9 +195,10 @@ std::string serialize (lists lst , std::string const& base_filename, std::string
 {
 	std::string out_filename = filename_generator (singular_function_name);
 	out_filename = base_filename +  out_filename;
-	si_link l  = ssi_open_for_write (out_filename);
+	si_link l  = ssi_open_for_write (out_filename + "_incomplete");
 	ssi_write_newstruct (l, STRUCT_NAME, lst);
 	ssi_close_and_remove (l);
+  std::rename((out_filename + "_incomplete").c_str(),out_filename.c_str());
 	return out_filename;
 }
 

@@ -1,22 +1,23 @@
 <defun name="buchberger">
 	<include-structs href="structures.xpnet"/>
 
-	<in name="base_filename" type="string" place="place_base_filename"/>
-	<in name="redSB" type="long" place="place_redSB"/>
-	<in name="degBound" type="long" place="place_degBound"/>
 	<in name="input" type="string" place="place_input"/>
-	<in name="nworkers" type="long" place="place_nworkers"/>
+	<in name="base_filename" type="string" place="place_base_filename"/>
+	<in name="installdir" type="string" place="place_installdir"/>
+	<!--in name="redSB" type="long" place="place_redSB"/>
+	<in name="degBound" type="long" place="place_degBound"/>
+	<in name="nworkers" type="long" place="place_nworkers"/-->
 	<out name="output" type="string" place="place_output"/>
 	<out name="runtime" type="map" place="place_runtime"/>
 	<net>
 		<place name="place_base_filename" type="string"/>
+		<place name="place_installdir" type="string"/>
 		<place name="place_redSB" type="long"/>
 		<place name="place_input" type="string"/>
 		<place name="place_output" type="string"/>
 		<place name="place_BB_finished" type="control"/>
 		<place name="place_r" type="int"/>
 		<place name="place_M" type="list"/>
-		<place name="place_nworkers" type="long"/>
 		<place name="place_balNF" type="control"/>
 		<place name="place_Q" type="list"/>
 		<place name="place_Qback" type="index_pair"/>
@@ -26,7 +27,8 @@
 		<place name="place_needed_indices" type="long"/>
 		<place name="place_needed_indices_list" type="list"/>
 		<place name="place_blacklist" type="set"/>
-		<place name="place_degBound" type="long"/>
+		<!--place name="place_degBound" type="long"/-->
+		<place name="place_degBounds" type="list"/>
 		<place name="place_runtime" type="map"/>
 
 
@@ -35,20 +37,21 @@
 				<require key="worker" mandatory="true"/>
        	<in name="base_filename" type="string"/>
 				<in name="input" type="string"/>
-				<in name="nworkers" type="long"/>
-				<in name="degBound" type="long"/>
+				<!--in name="degBound" type="long"/-->
+				<out name="degBounds" type="list"/>
 				<out name="started_indices" type="list"/>
 				<out name="Q" type="list"/>
 				<out name="Qback" type="index_pair"/>
 				<out name="blacklist" type="set"/>
 				<out name="r" type="int"/>
 				<out name="M" type="list"/>
+				<out name="redSB" type="long"/>
 				<out name="runtime" type="map"/>
 				<out name="balNF" type="list"/>
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(started_indices, degBound, runtime, base_filename, input, Q, Qback, r, M, nworkers, balNF, blacklist, BB_finished)">
+							  function="function_init(started_indices, degBounds, runtime, base_filename, input, Q, Qback, r, M, redSB, balNF, blacklist, BB_finished)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -56,6 +59,8 @@
 					<cinclude href="fstream"/>
 					<cinclude href="chrono"/>
 					<cinclude href="boost/thread/thread.hpp"/>
+					<cinclude href="sys/stat.h"/>
+					<cinclude href="sys/types.h"/>
 
 					<code><![CDATA[
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -67,68 +72,181 @@
 						std::cout << runtime_start << ": entering " << singular_function_name << std::endl;
 						#endif
 
-						std::vector<std::vector<int>> Mvec = RESOLVE_INTERFACE_FUNCTION(singular_buchberger_get_M_and_init_F) (base_filename, input, &runtime);
+						// make subdirectories:
+						mkdir((base_filename + "intermediate_files"     ).c_str(), 0777);
+						mkdir((base_filename + "temporary_files"        ).c_str(), 0777);
+						mkdir((base_filename + "result"                 ).c_str(), 0777);
+						mkdir((base_filename + "memory"                 ).c_str(), 0777);
+						mkdir((base_filename + "queue"                  ).c_str(), 0777);
+						mkdir((base_filename + "queue/started"          ).c_str(), 0777);
+						mkdir((base_filename + "queue/zero_reduction"   ).c_str(), 0777);
+						mkdir((base_filename + "queue/new_element"      ).c_str(), 0777);
+						mkdir((base_filename + "queue/chain_criterion"  ).c_str(), 0777);
+						mkdir((base_filename + "queue/product_criterion").c_str(), 0777);
+						mkdir((base_filename + "queue/cancelled_s_pair" ).c_str(), 0777);
+						mkdir((base_filename + "queue/cancelled_element").c_str(), 0777);
+						mkdir((base_filename + "queue/degree_bound"     ).c_str(), 0777);
+						std::ifstream queueFileIn(base_filename+"queue/NOT_STARTED");
+						bool prev_queue_had_started = !queueFileIn.good();
+						queueFileIn.close();
+						std::ofstream queueFile(base_filename+"queue/NOT_STARTED");
+						queueFile.close();
+
+
+						long nworkers=0; // max number of workers given to NF_of_spoly transition
+						int prev_r=0; // value of r from a previous computation that is being continued
+						std::vector<std::vector<int>> Mvec; // lead monomials as a vector of exponent vectors (last entry = component)
+						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &degBounds, &redSB, &nworkers, &prev_r, &runtime);
 
 						r = Mvec.size();
 						#ifdef DEBUG_BBA
-						std::cout << runtime_start << ": r=" << r << ", degBound=" << degBound << std::endl;
+						std::cout << runtime_start << ": r=" << r << ", prev_r=" << prev_r << ", prev_queue_had_started=" << prev_queue_had_started << ", degBounds="<< std::endl;
+						print_variant(degBounds);
 						#endif
 
 
 						long prodcrit_counter  = 0L;
 						long chaincrit_counter = 0L;
+						long degbound_counter = 0L;
 
-						int j=1;
-						for (std::vector<std::vector<int>>::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
+						if (prev_r>0 && prev_queue_had_started) // use previous state to initialize Q(ueue)
 						{
-							int i=1;
-							for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
+							r=prev_r;
+							if(TRACE>0)
 							{
-								bool add_to_Q = true;
-								std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
-								if (degBound>0 && degBound < deg(lcm_i_j))
-									{add_to_Q=false;}
-								if (test_PC(*Mi,*Mj)) // apply PC
-									{add_to_Q = false; prodcrit_counter++;}
-								else // apply CC
+								prev_r=TRACE;
+							}
+							int j=1;
+							for (std::vector<std::vector<int>>::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
+							{
+								int i=1;
+								for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
 								{
-									int k=1;
-									for (std::vector<std::vector<int>>::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
+									std::ifstream ijFileIn(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
+									std::ifstream ijDegBoundFileIn(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j));
+									std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
+
+									if ((ijFileIn.good() || ijDegBoundFileIn.good()))
 									{
-										if(k!=i && k!=j)
+										ijFileIn.close();
+										ijDegBoundFileIn.close();
+										if (over_deg_bound(lcm_i_j, degBounds))
 										{
-											if (test_CC(lcm_i_j, *Mi, *Mj, *Mk))
-											{
-												if(k<i)
-													{add_to_Q = false; chaincrit_counter++; break;}
-												else { if(k<j)
-												{
-													std::vector<int> lcm_k_j = lcm(*Mk, *Mj);
-													if(!equal(lcm_k_j,lcm_i_j)) {add_to_Q = false; chaincrit_counter++; break;}
-												}
-												else // (k>j)
-												{
-													std::vector<int> lcm_i_k = lcm(*Mi, *Mk);
-													std::vector<int> lcm_j_k = lcm(*Mj, *Mk);
-													if(!equal(lcm_i_k,lcm_i_j) && !equal(lcm_j_k,lcm_i_j)) {add_to_Q = false; chaincrit_counter++; break;}
-												} }
-											}
+											// move from started to degree_bound
+											ijFileIn.close();
+											std::ofstream ijFileOut(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)); ijFileOut.close();
+											std::remove((base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
+										}
+										else
+										{
+											std::ifstream ijResFileIn(base_filename+"temporary_files/intermediate_result_"+std::to_string(i)+"_"+std::to_string(j));
+											GpiStruct si;
+											si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+											si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
+											si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) ijResFileIn.good()}));
+											ijResFileIn.close();
+
+											// move from degree_bound to started
+											std::ofstream ijFileOut(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j)); ijFileOut.close();
+											std::remove((base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
+
+											#ifdef DEBUG_BBA
+											std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
+											#endif
+
+											// add (i,j) to started indices:
+											started_indices.push_back(si);
+
+											// add (i,j) and information about lcm(fi,fj) to the queue:
+											std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
+											queue_insert(Q, i, j, deg(lcm_i_j), vec2list(lcm_i_j), base_filename);
 										}
 									}
 								}
-
-								if(add_to_Q)
+							}
+						}
+						else
+						{
+							int j=1;
+							for (std::vector<std::vector<int>>::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
+							{
+								int i=1;
+								for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
 								{
-									GpiStruct si;
-									si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
-									si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
-									si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+									bool add_to_Q = true;
+									std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
+									//if (degBound>0 && degBound < deg(lcm_i_j))
+									if (over_deg_bound(lcm_i_j, degBounds))
+									{
+										add_to_Q=false;
+										degbound_counter++;
+										std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+									}
+									if (test_PC(*Mi,*Mj)) // apply PC
+									{
+										add_to_Q = false;
+										prodcrit_counter++;
+										std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+									}
+									else // apply CC
+									{
+										int k=1;
+										for (std::vector<std::vector<int>>::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
+										{
+											if(k!=i && k!=j)
+											{
+												if (test_CC(lcm_i_j, *Mi, *Mj, *Mk))
+												{
+													if(k<i)
+													{
+														add_to_Q = false;
+														chaincrit_counter++;
+														std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+														break;
+													}
+													else { if(k<j)
+													{
+														std::vector<int> lcm_k_j = lcm(*Mk, *Mj);
+														if(!equal(lcm_k_j,lcm_i_j))
+														{
+															add_to_Q = false;
+															chaincrit_counter++;
+															std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+															break;
+														}
+													}
+													else // (k>j)
+													{
+														std::vector<int> lcm_i_k = lcm(*Mi, *Mk);
+														std::vector<int> lcm_j_k = lcm(*Mj, *Mk);
+														if(!equal(lcm_i_k,lcm_i_j) && !equal(lcm_j_k,lcm_i_j))
+														{
+															add_to_Q = false;
+															chaincrit_counter++;
+															std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+															break;
+														}
+													}}
+												}
+											}
+										}
+									}
 
-									#ifdef DEBUG_BBA
-									std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
-									#endif
-									started_indices.push_back(si);                       // add (i,j) to started indices
-									queue_insert(Q, i, j, deg(lcm_i_j), vec2list(lcm_i_j)); // add (i,j) and information about lcm(fi,fj) to the queue
+									if(add_to_Q)
+									{
+										GpiStruct si;
+										si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+										si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
+										si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+
+										#ifdef DEBUG_BBA
+										std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
+										#endif
+										// add (i,j) to started indices:
+										started_indices.push_back(si);
+										// add (i,j) and information about lcm(fi,fj) to the queue:
+										queue_insert(Q, i, j, deg(lcm_i_j), vec2list(lcm_i_j), base_filename);
+									}
 								}
 							}
 						}
@@ -168,6 +286,9 @@
 						logFile << 0;
 						logFile.close();
 
+						// mark queue as "started"
+						std::remove((base_filename+"queue/NOT_STARTED").c_str());
+
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
 						#endif
@@ -175,20 +296,22 @@
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
 						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
+						runtime[(std::string) "DEGREE BOUND"] = GpiList({-1L, -1L, -1L, degbound_counter});
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="nworkers" place="place_nworkers"/>
-			<connect-read port="degBound" place="place_degBound"/>
+			<!--connect-read port="degBound" place="place_degBound"/-->
 			<connect-in port="input" place="place_input"/>
+			<connect-out port="degBounds" place="place_degBounds"/>
 			<connect-out port="Q" place="place_Q"/>
 			<connect-out port="Qback" place="place_Qback"/>
 			<connect-out port="blacklist" place="place_blacklist"/>
 			<connect-out port="r" place="place_r"/>
 			<connect-out port="M" place="place_M"/>
 			<connect-out port="runtime" place="place_runtime"/>
+			<connect-out port="redSB" place="place_redSB"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="balNF" place="place_balNF"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
@@ -249,6 +372,7 @@
 
 						// add generators to a static variable, so each element will be read in only once per worker
 						static std::list<poly> generators;
+						//static_assert(sizeof(poly)==sizeof(void*));
 						for (int k=generators.size()+1; k<=r; k++)
 						{
 							generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, k));
@@ -299,7 +423,7 @@
 				</module>
 			</defun>
 			<condition>
-				(${r} :gt: ${started_indices.old_r})
+				((${r} :gt: ${started_indices.old_r}) :and: (${r} :ge: ${started_indices.j}))
 			</condition>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
@@ -417,7 +541,7 @@
 				</module>
 			</defun>
 			<condition>
-				((${started_indices.i} :eq: ${Qback.i}) :and: (${started_indices.j} :eq: ${Qback.j}))
+				((${started_indices.i} :eq: ${Qback.i}) :and: (${started_indices.j} :eq: ${Qback.j}) :and: (${r} :ge: ${started_indices.j}))
 			</condition>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
@@ -431,13 +555,13 @@
 		</transition>
 
 
-
 		<transition name="increment" priority="4">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="NF" type="list"/>
-				<in name="degBound" type="long"/>
+				<!--in name="degBound" type="long"/-->
+				<in name="degBounds" type="list"/>
 				<inout name="Q" type="list"/>
 				<inout name="Qback" type="index_pair"/>
 				<inout name="blacklist" type="set"/>
@@ -448,7 +572,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_increment(degBound, runtime, base_filename, NF, Q, Qback, r, M, started_indices, BB_finished, blacklist)">
+							  function="function_increment(degBounds, runtime, base_filename, NF, Q, Qback, r, M, started_indices, BB_finished, blacklist)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -470,7 +594,7 @@
 						long chaincrit_counter = 0L;
 						long cancelled_element_counter = 0L;
 						long cancelled_s_pair_counter  = 0L;
-
+						long degbound_counter = 0L;
 
 						bool i_in_bl  = (blacklist.find((GpiVariant) index_i)     !=blacklist.end());
 						bool j_in_bl  = (blacklist.find((GpiVariant) index_j)     !=blacklist.end());
@@ -481,7 +605,6 @@
 
 							#ifdef DEBUG_BBA
 							std::cout << runtime_start << ": increasing r from " << r-1 << " to " << r << " due to spoly (" << index_i << "," << index_j << ")"<< std::endl;
-							std::cout << runtime_start << ": degBound=" << degBound << std::endl;
 							#endif
 
 							M.push_back(m);
@@ -507,10 +630,32 @@
 								else
 								{
 									lcm_i_r = lcm(*Mi, Mr);
-									if (degBound>0 && degBound < deg(lcm_i_r))
-										{add_to_Q=false;}
+									//if (degBound>0 && degBound < deg(lcm_i_r))
+									if (over_deg_bound(lcm_i_r, degBounds))
+									{
+										add_to_Q=false;
+										degbound_counter++;
+										std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+									}
 									if (test_PC(*Mi,Mr)) // apply PC
-										{add_to_Q = false; prodcrit_counter++;}
+									{
+/*
+						}
+						else // queue empty
+						{
+							std::cout << runtime_start << ": ########################################## Buchberger Algorithm finished (in 'increment'!) ##########################################" << std::endl;
+							BB_finished.emplace_back(CONTROL_TOKEN);
+						}
+
+
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
+						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
+						runtime[(std::string) "DEGREE BOUND"] = GpiList({-1L, -1L, -1L, degbound_counter});	add_to_Q = false;
+						*/
+										prodcrit_counter++;
+										std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+									}
 									else // apply CC
 									{
 										int k=1;
@@ -521,11 +666,22 @@
 												if (test_CC(lcm_i_r, *Mi, Mr, *Mk))
 												{
 													if(k<i)
-													{add_to_Q = false; chaincrit_counter++; break;}
+													{
+														add_to_Q = false;
+														chaincrit_counter++;
+														std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+														break;
+													}
 													else // thus i<k<r  (k>r is not possible)
 													{
 														std::vector<int> lcm_k_r = lcm(*Mk, Mr);
-														if(!equal(lcm_k_r,lcm_i_r)) {add_to_Q = false; chaincrit_counter++; break;}
+														if(!equal(lcm_k_r,lcm_i_r))
+														{
+															add_to_Q = false;
+															chaincrit_counter++;
+															std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+															break;
+														}
 													}
 												}
 											}
@@ -540,7 +696,7 @@
 									blacklist.emplace(i);
 									blacklist.emplace(GpiSet({i,r}));
 									// remove (i,j) for all j from Q:
-									queue_delete_i(Q, i);
+									queue_delete_i(Q, i, base_filename, "cancelled_element");
 									cancelled_element_counter++;
 								}
 
@@ -550,12 +706,25 @@
 									si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
 									si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , r}));
 									si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
-
-									#ifdef DEBUG_BBA
-									std::cout << runtime_start << ": increment: adding ("<<i<<","<<r<<") to started_indices" << std::endl;
-									#endif
-									started_indices.push_back(si);                          // add (i,r) to started indices
-									queue_insert(Q, i, r, deg(lcm_i_r), vec2list(lcm_i_r)); // add (i,r) and information about lcm(fi,fr) to the queue
+									if(TRACE>0)
+									{
+										std::ifstream irFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(r));
+										if(irFile.good())
+										{
+											started_indices.push_back(si);
+											queue_insert(Q, i, r, deg(lcm_i_r), vec2list(lcm_i_r), base_filename);
+										}
+									}
+									else
+									{
+										#ifdef DEBUG_BBA
+										std::cout << runtime_start << ": increment: adding ("<<i<<","<<r<<") to started_indices" << std::endl;
+										#endif
+										// add (i,r) to started indices:
+										started_indices.push_back(si);
+										// add (i,r) and information about lcm(fi,fr) to the queue:
+										queue_insert(Q, i, r, deg(lcm_i_r), vec2list(lcm_i_r), base_filename);
+									}
 								}
 							}
 
@@ -576,6 +745,8 @@
 										Qk = Q.erase(Qk);
 										chaincrit_counter++;
 										cancelled_s_pair_counter++;
+										std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
+										std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
 									}
 									else {++Qk;}
 								}
@@ -583,7 +754,7 @@
 							}
 						}
 
-						queue_delete_i_j(Q, index_i, index_j);
+						queue_delete_i_j(Q, index_i, index_j, base_filename, "new_element");
 
 
 						#ifdef DEBUG_BBA
@@ -616,6 +787,7 @@
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
 						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
+						runtime[(std::string) "DEGREE BOUND"] = GpiList({-1L, -1L, -1L, degbound_counter});
 						runtime[(std::string) "CANCELLED ELEMENTS"] = GpiList({-1L, -1L, -1L,  cancelled_element_counter});
 						runtime[(std::string) "CANCELLED S-PAIRS"] = GpiList({-1L, -1L, -1L,  cancelled_s_pair_counter});
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
@@ -623,7 +795,8 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="degBound" place="place_degBound"/>
+			<!--connect-read port="degBound" place="place_degBound"/-->
+			<connect-read port="degBounds" place="place_degBounds"/>
 			<connect-in port="NF" place="place_NF"/>
 			<connect-inout port="Q" place="place_Q"/>
 			<connect-inout port="Qback" place="place_Qback"/>
@@ -662,7 +835,7 @@
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::string singular_function_name = "remove_from_Q";
 
-						queue_delete_i_j(Q, finished_indices.i, finished_indices.j);
+						queue_delete_i_j(Q, finished_indices.i, finished_indices.j, base_filename, "zero_reduction");
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": remove_from_Q: removed element (" << finished_indices.i << "," << finished_indices.j << ") from Q(ueue) as it reduced to 0, size of Q: " << Q.size() <<std::endl;
@@ -671,7 +844,6 @@
 						if (Q_size%100==0 || (Q_size<100 && Q_size%10==0))
 						{
 							std::cout << "(" << Q_size << ")" << std::endl;
-
 						}
 
 						std::ifstream logFileIn(base_filename+"LOG.txt");
@@ -719,6 +891,7 @@
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
+				<in name="installdir" type="string"/>
 				<in name="BB_finished" type="control"/>
 				<in name="M" type="list"/>
 				<out name="needed_indices_list" type="list"/>
@@ -727,7 +900,7 @@
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_minimize_GB(runtime, base_filename, M, needed_indices_list, needed_indices, output)">
+							  function="function_minimize_GB(runtime, base_filename, installdir, M, needed_indices_list, needed_indices, output)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -772,7 +945,8 @@
 
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
-						std::string library_name = base_filename.substr(0, base_filename.find_last_of('/', base_filename.size() - 2) + 1) + "buchbergergp.lib";
+						//std::string library_name = base_filename.substr(0, base_filename.find_last_of('/', base_filename.size() - 2) + 1) + "buchbergergp.lib";
+						std::string library_name = installdir + "buchbergergp.lib";
 						args_read  = {base_filename};
 						args_in    = {(long) r,(long) final_r, needed_indices_list};
 						args_inout = {};
@@ -780,7 +954,7 @@
 						out_many   = {};
 						bool delete_files = true;
 						bool silent = true;
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename, args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename+"intermediate_files/", args_read, args_in, args_inout, out, out_many, delete_files, silent);
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": " << needed_indices.size() << " elements left" << std::endl;
@@ -792,6 +966,7 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="installdir" place="place_installdir"/>
 			<connect-in port="BB_finished" place="place_BB_finished"/>
 			<connect-in port="M" place="place_M"/>
 			<connect-out port="needed_indices_list" place="place_needed_indices_list"/>

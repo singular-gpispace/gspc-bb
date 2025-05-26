@@ -15,7 +15,6 @@ buchbergerConfigToken  configuration token for the transition procedure
 
 PROCEDURES:
 configure_gspc()                                         generates standard config token for GPI-Space
-configure_buchberger()                                   generates standard config token for the transition procedure
 generateIOTokenTypes(configToken)                        register the user-defined types for input and output
 gspc_buchberger(list,configToken,configToken)            interface of the buchberger framework in Singular
 gspc_buchberger_extraData(list,configToken,configToken)  interface of the buchberger framework in Singular
@@ -28,25 +27,26 @@ proc mod_init()
     LIB "polylib.lib";
     LIB "teachstd.lib"; // for spoly
     LIB "buchbergergp.lib";
-    newstruct("configToken", "string tokentype, def options");
-    newstruct("gspcConfigToken", "string tmpdir, string nodefile, int procspernode, string rifstrategy, string rifstrategyparameters, string loghost, int logport, string loghostfile, int deleteoutputfiles");
-    newstruct("buchbergerConfigToken", " string functionName, int nworkers, int redSB, int degreeBound");
+    //newstruct("configToken", "string tokentype, def options");
+    newstruct("gspcConfigToken", "string tmpdir, string installdir, string nodefile, int procspernode, string rifstrategy, string rifstrategyparameters, string loghost, int logport, string loghostfile, int deleteoutputfiles");
+    //newstruct("buchbergerConfigToken", " string functionName, int nworkers, int redSB, int degreeBound");
     newstruct("token", "list fieldnames, list data");
 }
 
 proc configure_gspc()
 "USAGE: configure_gspc()
-RETURN: a configToken containing a gspcConfigToken with the standard configuration for GPI-Space
+RETURN: a gspcConfigToken containing a gspcConfigToken with the standard configuration for GPI-Space
 "
 {
     gspcConfigToken gc;
     gc.rifstrategy = "ssh";
-    configToken ct;
-    ct.tokentype = "gspcConfigToken";
-    ct.options = gc;
-    return(ct);
+    //configToken ct;
+    //ct.tokentype = "gspcConfigToken";
+    //ct = gc;
+    return(gc);
 }
 
+/*
 proc configure_buchberger()
 "USAGE: configure_buchberger()
 RETURN: a configToken containing a buchbergerConfigToken with the standard
@@ -56,42 +56,101 @@ RETURN: a configToken containing a buchbergerConfigToken with the standard
     buchbergerConfigToken tc;
     configToken ct;
     ct.tokentype = "buchbergerConfigToken";
-    ct.options = tc;
+    ct = tc;
     return(ct);
 }
+*/
 
-static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc)
+static proc gspc_buchberger_static(token t, gspcConfigToken gc)
 {
+    //Starting to parse workflow options
+    string workflow_opts;
+
+    //Parse N
+    //workflow_opts = "--N " + string(N);
+
+    //Parse basefilename
+    string basefilename;
+    if (gc.tmpdir[1] == "/")
+    {
+        basefilename = gc.tmpdir;
+    }
+    else { if(gc.tmpdir[1] == "")
+    {
+        basefilename = system("getenv", "PWD");
+    }
+    else
+    {
+        basefilename = system("getenv", "PWD") + "/" + gc.tmpdir;
+    }}
+    basefilename = basefilename + "/";
+    workflow_opts =  workflow_opts + " --basefilename " + basefilename;
+
+    //Parse install directory (containing nodefile, loghostfile and needed Singular libraries: buchbergergspc.lib)
+    string installdir;
+    if (gc.installdir[1] == "/")
+    {
+        installdir = gc.installdir;
+    }
+    else { if(gc.installdir[1] == "")
+    {
+        installdir = system("getenv", "PWD");
+    }
+    else
+    {
+        installdir = system("getenv", "PWD") + "/" + gc.installdir;
+    }}
+    installdir = installdir + "/";
+    workflow_opts =  workflow_opts + " --installdir " + installdir;
+
+    //Parse input
+    link lin = "ssi:w " + basefilename + "input";
+    write(lin, t);
+    close(lin);
+
+    workflow_opts = workflow_opts + " --input " + "input";
+
+    // parse delete-output-files option (boolean)
+    workflow_opts = workflow_opts + " --deleteoutputfiles " + string(gc.deleteoutputfiles);
+
+    // parse number of workers for "NF(spoly(...),...)"
+    //workflow_opts = workflow_opts + " --nworkers " + string(pc.nworkers);
+
+    // parse redSB option (boolean)
+    //workflow_opts = workflow_opts + " --redSB " + string(pc.redSB);
+
+    // parse degBound option (int)
+    //workflow_opts = workflow_opts + " --degBound " + string(pc.degreeBound);
+
+
     //Parse driver options
     string driver_opts;
-    if ((typeof(gc.options) != "gspcConfigToken") || (typeof(pc.options) != "buchbergerConfigToken"))
-    {
-        ERROR("wrong config token types");
-    }
 
     //Parse rifstrategy and rifstrategy-parameters
-    driver_opts = driver_opts + "--rif-strategy " + gc.options.rifstrategy;
-    if ( gc.options.rifstrategyparameters != "")
+    driver_opts = driver_opts + "--rif-strategy " + gc.rifstrategy;
+    if ( gc.rifstrategyparameters != "")
     {
-        driver_opts = driver_opts + " --rif-strategy-parameters " + gc.options.rifstrategyparameters;
+        driver_opts = driver_opts + " --rif-strategy-parameters " + gc.rifstrategyparameters;
     }
 
     //Parse worker topology
-    driver_opts = driver_opts + " --topology " + "worker:" + string(gc.options.procspernode);
+    driver_opts = driver_opts + " --topology " + "worker:" + string(gc.procspernode);
 
     //Parse nodefile
-    driver_opts = driver_opts + " --nodefile " + gc.options.nodefile;
+    if (gc.nodefile[1] != "/") {gc.nodefile = installdir + gc.nodefile;}
+    driver_opts = driver_opts + " --nodefile " + gc.nodefile;
 
     //Parser loghost and logport
-    if (gc.options.logport != 0) // logging requested
+    if (gc.logport != 0) // logging requested
     {
-        if (gc.options.loghost == "") // no hostname given, so read from file
+        if (gc.loghost == "") // no hostname given, so read from file
         {
-            if (gc.options.loghostfile == "")
+            if (gc.loghostfile == "")
             {
                 ERROR("logging requested, no loghost and no loghostfile given");
             }
-            string loghost = read(gc.options.loghostfile);
+            if (gc.loghostfile[1] != "/") {gc.loghostfile = installdir + gc.loghostfile;}
+            string loghost = read(gc.loghostfile);
             if ((loghost == "") || (loghost == newline))
             {
                 ERROR("no hostname in loghostfile");
@@ -100,9 +159,9 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
             {
                 loghost = loghost[1..(size(loghost)-1)];
             }
-            gc.options.loghost = loghost;
+            gc.loghost = loghost;
         }
-        driver_opts = driver_opts + " --log-host " + gc.options.loghost, " --log-port ", string(gc.options.logport);
+        driver_opts = driver_opts + " --log-host " + gc.loghost, " --log-port ", string(gc.logport);
     }
 
     if (system("getenv", "LD_LIBRARY_PATH") != "")
@@ -110,84 +169,58 @@ static proc gspc_buchberger_static(list l, int N, configToken gc, configToken pc
         driver_opts = driver_opts + " --worker-env-copy-variable " + "LD_LIBRARY_PATH";
     }
 
-    //Starting to parse workflow options
-    string workflow_opts;
-
-    //Parse N
-    workflow_opts = "--N " + string(N);
-
-    //Parse basefilename
-    string tmpdir;
-    if (gc.options.tmpdir[1] == "/")
-    {
-        tmpdir = gc.options.tmpdir;
-    }
-    else
-    {
-        tmpdir = system("getenv", "PWD") + "/" + gc.options.tmpdir;
-    }
-    string basefilename = tmpdir + "/";
-    workflow_opts =  workflow_opts + " --basefilename " + basefilename;
-
-    //Parse input
-    link lin;
-    for(int i = 1; i<=N; i++)
-    {
-        lin = "ssi:w " + basefilename + "input" + string(i);
-        write(lin, l[i]);
-        close(lin);
-    }
-    workflow_opts = workflow_opts + " --input " + "input";
-
-    // parse delete-output-files option (boolean)
-    workflow_opts = workflow_opts + " --deleteoutputfiles " + string(gc.options.deleteoutputfiles);
-
-    // parse number of workers for "NF(spoly(...),...)"
-    workflow_opts = workflow_opts + " --nworkers " + string(pc.options.nworkers);
-
-    // parse redSB option (boolean)
-    workflow_opts = workflow_opts + " --redSB " + string(pc.options.redSB);
-
-    // parse degBound option (int)
-    workflow_opts = workflow_opts + " --degBound " + string(pc.options.degreeBound);
-
     string all_opts = driver_opts + " " + workflow_opts;
     def sm_result = sggspc_buchberger(all_opts);
     return(sm_result);
 }
 
-proc gspc_buchberger_extraData(def I, configToken gc, list #)
+proc gspc_buchberger_extraData(def I, gspcConfigToken gc, list #)
 {
-    configToken ct = configure_buchberger();
-    if(size(#)==0) {#[1] = gc.options.procspernode - 2;} // by default: use all but 2 workers for the NF(spoly)-transition
-    ct.options.nworkers = #[1];
-    ct.options.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
-    ct.options.degreeBound = degBound;
+    //configToken ct = configure_buchberger();
+    if(size(#)==0) {#[1] = gc.procspernode - 1;}                  // by default: use all but 1 worker for the NF(spoly)-transition
+    if(size(#)<=1) {#[2] = list(list(degBound,nvars(basering)));} // by default: apply the degree bound to ALL ring variables
+    if(size(#)<=2) {#[3] = 0;}                                    // by default: do not continue if directory contains files from a computation with DIFFERENT input
+    int i;
+    int n_vars = 0;
+    for(i=1; i<=size(#[2]); i++)
+    {
+      n_vars = n_vars + #[2][i][2];
+    }
+    if (n_vars!=nvars(basering)) {printf("ERROR: wrong total number of variables given in degree bounds list! (expected %s, got %s)", nvars(basering), n_vars); return();}
+    //ct.nworkers = #[1];
+    //ct.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
+    //ct.degreeBound = degBound;
     token t;
     t.fieldnames[1] = "ideal_generators";
     t.data[1] = I;
-    list inputlists;
-    inputlists[1] = t;
+    t.fieldnames[2] = "degree_bounds";
+    t.data[2] = #[2];
+    t.fieldnames[3] = "redSB";
+    t.data[3] = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
+    t.fieldnames[4] = "nworkers";
+    t.data[4] = #[1];
+    t.fieldnames[5] = "force_continue";
+    t.data[5] = #[3];
 
 
-    def output = gspc_buchberger_static(inputlists, 1, gc, ct);
+    def output = gspc_buchberger_static(t, gc);
 
 
     int r = output[1].data[1];
     int r_all = output[1].data[4];
     list indices = output[1].data[5];
 
-    string DIR = gc.options.tmpdir + "/";
+    string DIR = gc.tmpdir + "/";
 
     system("--ticks-per-sec",1000); int T = rtimer;
-    def g1 = read("ssi:r "+DIR+"g1");
+    def g1 = read("ssi:r "+DIR+"result/g1");
 
     if(typeof(g1)=="poly") {ideal  GB,F;}
     else                   {module GB,F;}
     GB[1] = g1;
-    for(int i=2; i<=r; i++)
+    for(i=2; i<=r; i++)
     {
-      GB[i] = read("ssi:r "+DIR+"g"+string(i));
+      GB[i] = read("ssi:r "+DIR+"result/g"+string(i));
     }
     printf("reading GB elements from files: %s ms",rtimer-T);
 
@@ -195,7 +228,7 @@ proc gspc_buchberger_extraData(def I, configToken gc, list #)
     system("--ticks-per-sec",1000); int TT = rtimer;
     for(i=1; i<=r_all; i++)
     {
-      F[i] = read("ssi:r "+DIR+"f"+string(i));
+      F[i] = read("ssi:r "+DIR+"intermediate_files/f"+string(i));
     }
     printf("reading all intermediate elements from files: %s ms",rtimer-TT);
     */
@@ -207,37 +240,52 @@ proc gspc_buchberger_extraData(def I, configToken gc, list #)
     return(GB, r_all, indices, list(output[1].data[2],output[1].data[3]));
 }
 
-proc gspc_buchberger(def I, configToken gc, list #)
+proc gspc_buchberger(def I, gspcConfigToken gc, list #)
+{
+  def GB, r_all, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers, degBounds);
+  return(GB);
+}
+/*
 {
     configToken ct = configure_buchberger();
-    if(size(#)==0) {#[1] = gc.options.procspernode - 2;} // by default: use all but 2 workers for the NF(spoly)-transition
-    ct.options.nworkers = #[1];
-    ct.options.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
-    ct.options.degreeBound= degBound;
+    if(size(#)==0) {#[1] = gc.procspernode - 1;}          // by default: use all but 1 worker for the NF(spoly)-transition
+    if(size(#)<=1) {#[2] = list(list(degBound,nvars(basering)));} // by default: apply the degree bound to ALL ring variables
+    int i;
+    int n_vars = 0;
+    for(i=1; i<=size(#[2]); i++)
+    {
+      n_vars = n_vars + #[2][i][2];
+    }
+    if (n_vars!=nvars(basering)) {printf("ERROR: wrong number of total variables given in degree bounds list! (expected %s, got %s)", nvars(basering), n_vars); return();}
+    ct.nworkers = #[1];
+    ct.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
+    ct.degreeBound = degBound;
     token t;
     t.fieldnames[1] = "ideal_generators";
     t.data[1] = I;
+    t.fieldnames[2] = "degree_bounds";
+    t.data[2] = #[2];
     list inputlists;
     inputlists[1] = t;
 
 
-    def output = gspc_buchberger_static(inputlists, 1, gc, ct);
+    def output = gspc_buchberger_static(inputlists, gc, ct);
 
 
     int r = output[1].data[1];
     list indices = output[1].data[5];
 
-    string DIR = gc.options.tmpdir + "/";
+    string DIR = gc.tmpdir + "/";
 
     system("--ticks-per-sec",1000); int T = rtimer;
-    def g1 = read("ssi:r "+DIR+"g1");
+    def g1 = read("ssi:r "+DIR+"result/g1");
 
     if(typeof(g1)=="poly") {ideal  GB,F;}
     else                   {module GB,F;}
     GB[1] = g1;
     for(int i=2; i<=r; i++)
     {
-      GB[i] = read("ssi:r "+DIR+"g"+string(i));
+      GB[i] = read("ssi:r "+DIR+"result/g"+string(i));
     }
     printf("reading GB elements from files: %s ms",rtimer-T);
 
@@ -247,3 +295,4 @@ proc gspc_buchberger(def I, configToken gc, list #)
 
     return(GB);
 }
+*/

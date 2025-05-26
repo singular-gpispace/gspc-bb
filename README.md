@@ -220,13 +220,13 @@ SINGULARPATH="$GPISpace_Singular_buchberger/install_dir"  Singular
 LIB "buchbergergspc.lib";
 LIB "random.lib";
 
-configToken gc = configure_gspc();
+gspcConfigToken gc = configure_gspc();
 
-gc.options.tmpdir = "tempdir";
-gc.options.nodefile = "nodefile";
-gc.options.procspernode = 6;
-gc.options.loghostfile = "loghostfile";
-gc.options.logport = 3217;
+gc.tmpdir = "tempdir";
+gc.nodefile = "nodefile";
+gc.procspernode = 6;
+gc.loghostfile = "loghostfile";
+gc.logport = 3217;
 
 ring r = 0,x(1..7),dp;
 ideal I = randomid(maxideal(2),5);   

@@ -3,6 +3,7 @@
 #include <interface/buchberger_interface.hpp>
 
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 #include <unistd.h>
 #include <vector>
@@ -10,6 +11,8 @@
 #include <chrono>
 #include "config.hpp"
 #include "singular_functions.hpp"
+#include "sys/stat.h"
+#include "sys/types.h"
 //#include <fstream>
 //#include <boost/archive/binary_iarchive.hpp>
 //#include <boost/archive/binary_oarchive.hpp>
@@ -256,9 +259,15 @@ void singular_buchberger_compute(std::string const& singular_library_name,
 
 
 NO_NAME_MANGLING
-std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string const& base_filename,
-                                                                   std::string const& input,
-                                                                   GpiMap* runtime)
+void singular_init(std::string const& base_filename,
+                   std::string const& input,
+                   bool prev_queue_had_started,
+                   std::vector<std::vector<int>>* Mvec,
+                   GpiList* degBounds,
+                   long* redSB,
+                   long* nworkers,
+                   int* prev_r,
+                   GpiMap* runtime)
 {
   std::string ids = worker();
   init_singular (config::singularLibrary().string());
@@ -266,24 +275,179 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
   long start_time,stop_time;
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
-  //read ideal from input
-  std::pair<int,void*> input_ideal = deserialize(input, ids, false);
-  ideal F = (ideal) ((lists) (((lists) input_ideal.second)->m[3]).data)->m[0].data;
+  // read ideal from input
+  std::pair<int,void*> input_token = deserialize(input, ids, true);
+  lists inputList = (lists) (((lists) input_token.second)->m[3]).data;
+  ideal F = (ideal) inputList->m[0].data;
+  // read degree bound(s)
+  if( write_singular_output(std::make_pair((inputList->m[1]).Typ(), static_cast<void*> ((inputList->m[1]).Data())), degBounds, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading degree bounds list in init!"); }
+  // read redSB
+  if( write_singular_output(std::make_pair((inputList->m[2]).Typ(), static_cast<void*> ((inputList->m[2]).Data())), redSB, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading redSB in init!"); }
+  // read nworkers
+  if( write_singular_output(std::make_pair((inputList->m[3]).Typ(), static_cast<void*> ((inputList->m[3]).Data())), nworkers, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading nworkers in init!"); }
+  // read force_continue
+  long force_continue=0;
+  if( write_singular_output(std::make_pair((inputList->m[4]).Typ(), static_cast<void*> ((inputList->m[4]).Data())), &force_continue, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading force_continue in init!"); }
 
-  if (TEST_OPT_INTSTRATEGY) {
-    for(int i=0; i<F->ncols; i++)
+
+  // check if a previous computation with the same inout used the same directory and, if so, continue from there, else abort.
+  // see if there is a checksum file, if so compare to input:
+  std::hash<std::string> string_hash_fct;
+  std::string degBounds_string = (std::string) lString((lists) ((inputList->m[1]).data), true, 1);
+  size_t degBounds_checksum = string_hash_fct (degBounds_string);
+  //long degBounds_checksum_long = static_cast<long int>(degBounds_checksum % static_cast<size_t>(LONG_MAX));
+
+  std::string poly_str="";
+  for(int i=0; i<F->ncols; i++)
+  {
+    std::string poly_string = std::to_string(i) + ": " + ((std::string) p_String(F->m[i], currRing, currRing));
+    poly_str = poly_str + "," + std::to_string(string_hash_fct (poly_string));
+  }
+  leftv cur_ring = (leftv) omAlloc0Bin(sleftv_bin); cur_ring->rtyp=LIST_CMD; cur_ring->data=currRing;
+  leftv res      = (leftv) omAlloc0Bin(sleftv_bin); res->rtyp=LIST_CMD;
+  jjRINGLIST(res,cur_ring);
+  lists rlist = (lists) res->data;
+  std::string rlist_str     = (std::string) lString(rlist, true, 1);
+  omFreeBin (cur_ring, sleftv_bin);
+  omFreeBin (res, sleftv_bin);
+  std::size_t poly_checksum = string_hash_fct (poly_str + rlist_str);
+  //long poly_checksum_long = static_cast<long int>(poly_checksum % static_cast<size_t>(LONG_MAX));
+
+  #ifdef DEBUG_BBA
+  std::cout << "checksum poly     : " << poly_checksum      << std::endl;
+  std::cout << "checksum degBounds: " << degBounds_checksum << std::endl;
+  std::cout << "force_continue    : " << force_continue     << std::endl;
+  #endif
+
+
+  if (force_continue==2) // overwrite files from previous computation(s)
+  {
+    int nfiles=0;
+    // delete everything and continue as if gspc_buchberger is called for the first time
+    std::remove((base_filename+"checksum").c_str());
+    std::remove((base_filename+"LOG.txt").c_str());
+    for (int i=1; ; i++)
     {
-      //!!F->m[i] = p_Cleardenom(F->m[i], currRing);
-      number c;
-      p_Cleardenom_n(F->m[i], currRing, c);
-      n_Delete(&c, currRing->cf);
+      std::ifstream fFileIn(base_filename+"intermediate_files/f"+std::to_string(i));
+      if (fFileIn.good())
+      {
+        std::remove((base_filename+"intermediate_files/f"+std::to_string(i)).c_str());
+      }
+      else
+      {
+        std::remove((base_filename+"intermediate_files/f"+std::to_string(i)+"_incomplete").c_str());
+        nfiles = i;
+        break;
+      }
+    }
+    for (int i=1; i<=nfiles; i++)
+    {
+      std::remove((base_filename+"result/g"+std::to_string(i)).c_str());
+      std::remove((base_filename+"result/g"+std::to_string(i)+"_incomplete").c_str());
+      for(int j=i+1; j<=nfiles; j++)
+      {
+        std::remove((base_filename+"queue/started/"          +std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"queue/zero_reduction/"   +std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"queue/new_element/"      +std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"queue/chain_criterion/"  +std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"queue/cancelled_s_pair/" +std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"queue/cancelled_element/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"queue/degree_bound/"     +std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"temporary_files/intermediate_result_"+std::to_string(i)+"_"+std::to_string(j)).c_str());
+        std::remove((base_filename+"temporary_files/intermediate_result_"+std::to_string(i)+"_"+std::to_string(j)+"_incomplete").c_str());
+      }
+    }
+    (*prev_r)=0;
+  }
+  else
+  {
+    for (int i=1; ; i++)
+    {
+      std::ifstream fFileIn(base_filename+"intermediate_files/f"+std::to_string(i));
+      if (!fFileIn.good())
+      {
+        (*prev_r) = i-1;
+        break;
+      }
+    }
+  }
+
+  // compare to previous input using a checksum and throw error if they do not agree
+  std::ifstream csFileIn(base_filename+"checksum");
+  if (csFileIn.good() && force_continue!=2) // file exists
+  {
+    std::string oldLine1, oldLine2;
+    std::getline(csFileIn, oldLine1);
+    std::getline(csFileIn, oldLine2);
+    csFileIn.close();
+
+    if (oldLine1!=std::to_string(poly_checksum))
+    {
+      if(prev_queue_had_started) {std::remove((base_filename+"queue/NOT_STARTED").c_str());}
+      throw std::runtime_error (ids + ": Directory contains files from a previous computation with different input ideal!");
+    }
+    if (oldLine2!=std::to_string(degBounds_checksum))
+    {
+      if (force_continue==1) // continue even with different degree bound
+        {
+          std::ofstream csFile(base_filename+"checksum",std::ios::trunc);
+          csFile << poly_checksum << '\n';
+          csFile << degBounds_checksum;
+          csFile.close();
+        }
+      else
+        {
+          if(prev_queue_had_started) {std::remove((base_filename+"queue/NOT_STARTED").c_str());}
+          throw std::runtime_error (ids + ": Directory contains files from a previous computation with different degree bound(s)!");
+        }
     }
   }
   else
   {
-    for(int i=0; i<F->ncols; i++)
+    csFileIn.close();
+    std::ofstream csFile(base_filename+"checksum",std::ios::trunc);
+    csFile << poly_checksum << '\n';
+    csFile << degBounds_checksum;
+    csFile.close();
+  }
+
+  if (force_continue!=2) // remove previous incomplete files from previous computation(s)
+  {
+    int nfiles = (*prev_r) + 1;
+    for (int i=1; i<=nfiles; i++)
     {
-      p_Norm(F->m[i], currRing);
+      std::remove((base_filename+"result/g"+std::to_string(i)+"_incomplete").c_str());
+      for(int j=i+1; j<=nfiles; j++)
+      {
+        std::remove((base_filename+"temporary_files/intermediate_result_"+std::to_string(i)+"_"+std::to_string(j)+"_incomplete").c_str());
+      }
+    }
+  }
+
+  // From now on we can assume, that the files f1,f2,..., f{prev_r} exist from a previous computation.
+
+  if (!prev_queue_had_started || (*prev_r)==0)
+  {
+    if (TEST_OPT_INTSTRATEGY) {
+      for(int i=0; i<F->ncols; i++)
+      {
+        //!!F->m[i] = p_Cleardenom(F->m[i], currRing);
+        number c;
+        p_Cleardenom_n(F->m[i], currRing, c);
+        n_Delete(&c, currRing->cf);
+      }
+    }
+    else
+    {
+      for(int i=0; i<F->ncols; i++)
+      {
+        p_Norm(F->m[i], currRing);
+      }
     }
   }
 
@@ -291,90 +455,106 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
   (*runtime)[(std::string) "reading input ideal in init"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-
   ideal F_sorted = idInit(IDELEMS(F),F->rank);
-  intvec *sort   = idSort(F);
-  for (int i=0; i<sort->length();++i)
-    {F_sorted->m[i] = F->m[(*sort)[i]-1];}
-  delete sort;
-
-
   ideal FF = idInit(1,1);
-  idInsertPolyOnPos(FF,p_Copy(F_sorted->m[0], currRing),0); // insert first polynomial of F
-  writePolySSI(F_sorted->m[0], base_filename+"f1");
-
-  for(int i=1; i<F->ncols; i++)
+  if ((*prev_r)>0 && prev_queue_had_started) // read in from files f1,f2,...
   {
-    FF->rank = id_RankFreeModule(FF, currRing, currRing);
-    if (FF->rank==0) {FF->rank=1;}
+    idInsertPolyOnPos(FF,readPolySSI(base_filename+"intermediate_files/f1",false),0); // insert first polynomial of F
 
-    // take next polynomial, ...
-    poly new_f = F_sorted->m[i];
-
-    if (USE_KNF)
+    for(int i=1; i<(*prev_r); i++)
     {
-      if (TEST_OPT_INTSTRATEGY) {new_f = kNF(FF,currRing->qideal,new_f,0,4);}
-      else                      {new_f = kNF(FF,currRing->qideal,new_f);}
+      FF->rank = id_RankFreeModule(FF, currRing, currRing);
+      if (FF->rank==0) {FF->rank=1;}
+
+      // take next polynomial...
+      poly new_f = readPolySSI(base_filename+"intermediate_files/f"+std::to_string(i+1),false);
+
+      idInsertPolyOnPos(FF,new_f,i);
     }
-    else
-    {
-      kStrategy strat=new skStrategy;
-      // update strat
-      strat->ak = id_RankFreeModule(FF,currRing);
-      strat->kModW=kModW=NULL;
-      strat->kHomW=kHomW=NULL;
-      initBuchMoraCrit(strat);
-      initBuchMoraPos(strat);
-      initBba(strat);
-      initBuchMora(FF, currRing->qideal,strat);
-      //initBuchMora:
-      strat->tail = pInit();
-      //- set s -
-      strat->sl = -1;
-      //- set L -
-      strat->Lmax = ((IDELEMS(FF)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
-      strat->Ll = -1;
-      strat->L = initL(strat->Lmax);
-      //- set B -
-      strat->Bmax = setmaxL;
-      strat->Bl = -1;
-      strat->B = initL();
-      //- set T -
-      strat->tl = -1;
-      strat->tmax = setmaxT;
-      strat->T = initT();
-      strat->R = initR();
-      strat->sevT = initsevT();
-      //- init local data struct.----------------------------------------
-      strat->P.ecart=0;
-      strat->P.length=0;
-      strat->P.pLength=0;
-      initS(FF, currRing->qideal,strat); //sets also S, ecartS, fromQ
-      strat->fromT = FALSE;
-      strat->noTailReduction = FALSE;
-
-      int sl=strat->sl;
-
-      // reduce new_f by previously added elements:
-      new_f = redNF(new_f,sl,TRUE,strat);
-
-      delete(strat);
-    }
-
-    if (TEST_OPT_INTSTRATEGY) {
-      //!!FF->m[i] = p_Cleardenom(FF->m[i], currRing);
-      number c;
-      p_Cleardenom_n(new_f, currRing, c);
-      n_Delete(&c, currRing->cf);
-    }
-    else
-    {
-      p_Norm(new_f, currRing);
-    }
-
-    writePolySSI(new_f, base_filename+"f"+std::to_string(i+1));
-    idInsertPolyOnPos(FF,new_f,i);
   }
+  else // build f1,f2,... from input ideal
+  {
+    intvec *sort   = idSort(F);
+    for (int i=0; i<sort->length();++i)
+      {F_sorted->m[i] = F->m[(*sort)[i]-1];}
+    delete sort;
+
+    idInsertPolyOnPos(FF,p_Copy(F_sorted->m[0], currRing),0); // insert first polynomial of F
+    writePolySSI(F_sorted->m[0], base_filename+"intermediate_files/f1");
+
+    for(int i=1; i<F->ncols; i++)
+    {
+      FF->rank = id_RankFreeModule(FF, currRing, currRing);
+      if (FF->rank==0) {FF->rank=1;}
+
+      // take next polynomial...
+      poly new_f = F_sorted->m[i];
+      if (USE_KNF)
+      {
+        if (TEST_OPT_INTSTRATEGY) {new_f = kNF(FF,currRing->qideal,new_f,0,4);}
+        else                      {new_f = kNF(FF,currRing->qideal,new_f);}
+      }
+      else
+      {
+        kStrategy strat=new skStrategy;
+        // update strat
+        strat->ak = id_RankFreeModule(FF,currRing);
+        strat->kModW=kModW=NULL;
+        strat->kHomW=kHomW=NULL;
+        initBuchMoraCrit(strat);
+        initBuchMoraPos(strat);
+        initBba(strat);
+        initBuchMora(FF, currRing->qideal,strat);
+        //initBuchMora:
+        strat->tail = pInit();
+        //- set s -
+        strat->sl = -1;
+        //- set L -
+        strat->Lmax = ((IDELEMS(FF)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
+        strat->Ll = -1;
+        strat->L = initL(strat->Lmax);
+        //- set B -
+        strat->Bmax = setmaxL;
+        strat->Bl = -1;
+        strat->B = initL();
+        //- set T -
+        strat->tl = -1;
+        strat->tmax = setmaxT;
+        strat->T = initT();
+        strat->R = initR();
+        strat->sevT = initsevT();
+        //- init local data struct.----------------------------------------
+        strat->P.ecart=0;
+        strat->P.length=0;
+        strat->P.pLength=0;
+        initS(FF, currRing->qideal,strat); //sets also S, ecartS, fromQ
+        strat->fromT = FALSE;
+        strat->noTailReduction = FALSE;
+
+        int sl=strat->sl;
+
+        // reduce new_f by previously added elements:
+        new_f = redNF(new_f,sl,TRUE,strat);
+
+        delete(strat);
+      }
+
+      if (TEST_OPT_INTSTRATEGY) {
+        //!!FF->m[i] = p_Cleardenom(FF->m[i], currRing);
+        number c;
+        p_Cleardenom_n(new_f, currRing, c);
+        n_Delete(&c, currRing->cf);
+      }
+      else
+      {
+        p_Norm(new_f, currRing);
+      }
+
+      writePolySSI(new_f, base_filename+"intermediate_files/f"+std::to_string(i+1));
+      idInsertPolyOnPos(FF,new_f,i);
+    }
+  }
+
 
 /*
   if (TEST_OPT_INTSTRATEGY) {
@@ -396,7 +576,7 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
 */
 
   //building Mvec
-  std::vector<std::vector<int>> Mvec;
+  //std::vector<std::vector<int>> Mvec;
   for (int i=0; i<FF->ncols; i++)
   {
     std::vector<int> Mjvec;
@@ -405,7 +585,7 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
       Mjvec.emplace_back(p_GetExp(FF->m[i], j, currRing));
     }
     Mjvec.emplace_back(p_GetComp(FF->m[i],currRing)); // last entry = component
-    Mvec.emplace_back(Mjvec);
+    (*Mvec).emplace_back(Mjvec);
   }
 
   id_Delete(&F, currRing);
@@ -417,12 +597,14 @@ std::vector<std::vector<int>> singular_buchberger_get_M_and_init_F(std::string c
 
   id_Delete(&FF, currRing);
 
-  (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1L, -1L, -1L, (long) om_Info.MaxBytesSystem / 1024});
+  omUpdateInfo();
+  long max_mem = om_Info.MaxBytesSystem / 1024;
+  (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1L, -1L, -1L, max_mem});
+  long current_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[ids] = GpiList({-1L, -1L, current_time, max_mem});
 
   stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "saving initial ideal elements in init"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
-
-  return Mvec;
 }
 
 
@@ -441,7 +623,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     GpiList* NF)
 {
 	std::string ids = worker();
-  std::string save_filename = base_filename+"intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
+  std::string save_filename = base_filename+"temporary_files/intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
 
 	//// start Singular ////
 	init_singular (config::singularLibrary().string());
@@ -455,7 +637,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     // pass straight to place_NF:
     start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     NF_spoly = readPolySSI(save_filename, false);
-    std::rename(save_filename.c_str(), (base_filename + "f"+std::to_string(r+1)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator f{r+1}
+    std::rename(save_filename.c_str(), (base_filename + "intermediate_files/f"+std::to_string(r+1)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator f{r+1}
     stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     (*runtime)[(std::string) "reading partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
@@ -627,7 +809,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
   {
     if (index_i==Qback_i && index_j==Qback_j) // element at end of Q ==> add as new GB element
     {
-      writePolySSI(NF_spoly, base_filename + "f"+std::to_string(r+1));
+      writePolySSI(NF_spoly, base_filename + "intermediate_files/f"+std::to_string(r+1));
 
       GpiList m;
       int n = currRing->N; // number of variables
@@ -656,7 +838,12 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
   omUpdateInfo();
   long max_mem = om_Info.MaxBytesSystem / 1024;
   (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1L, -1L, -1L, max_mem});
+  long current_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[ids] = GpiList({-1L, -1L, current_time, max_mem});
+
+  #ifdef DEBUG_BBA
   std::cout << "memory(2): " << max_mem << std::endl;
+  #endif
 }
 
 
@@ -665,7 +852,7 @@ poly read_generator (std::string const& base_filename,
                      int k)
 {
   init_singular (config::singularLibrary().string());
-  return readPolySSI(base_filename+"f"+std::to_string(k),false);
+  return readPolySSI(base_filename+"intermediate_files/f"+std::to_string(k),false);
 }
 
 
@@ -768,7 +955,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   }
   else
   {
-    f = readPolySSI(base_filename+"f"+std::to_string(needed_indices),false);
+    f = readPolySSI(base_filename+"intermediate_files/f"+std::to_string(needed_indices),false);
   }
 
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -788,7 +975,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
 
 
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  writePolySSI(f, base_filename + "g" + std::to_string(current_index+1));
+  writePolySSI(f, base_filename + "result/g" + std::to_string(current_index+1));
   if (redSB)
   {
     p_Delete(&f, currRing);
