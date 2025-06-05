@@ -4,10 +4,12 @@
 
 #define USE_KNF true
 
-//#define TRACE 39
 #define TRACE 0
 
 #define NO_NAME_MANGLING extern "C"
+
+//#define sel_strat_larger_equal dp_larger_equal
+#define sel_strat_larger_equal posInL110_larger_equal
 
 #include <string>
 #include <config.hpp>
@@ -145,8 +147,13 @@ inline void print_variant(GpiVariant const& v, int depth=0) {boost::apply_visito
 
 // helper functions for handling lead monomials:
 
-inline bool dp_larger_equal(GpiList const& T1, GpiList const& T2, int d1, int d2)
+//inline bool dp_larger_equal(GpiList const& T1, GpiList const& T2, int d1, int d2)
+inline bool dp_larger_equal(GpiList const& Qentry1, GpiList const& Qentry2)
 {
+  GpiList T1 = get_list(Qentry1.back());
+  GpiList T2 = get_list(Qentry2.back());
+  int d1 = boost::get<int>(*std::next(Qentry1.begin(),2));
+  int d2 = boost::get<int>(*std::next(Qentry2.begin(),2));
   if(T1.size()!=T2.size()) {throw std::runtime_error ("exponent vectors have different lengths in dp_larger_equal");}
   if(d1>d2) {return true;}
   if(d1<d2) {return false;}
@@ -162,8 +169,44 @@ inline bool dp_larger_equal(GpiList const& T1, GpiList const& T2, int d1, int d2
     if(exp1<exp2) {return true;}
     if(exp1>exp2) {return false;}
   }
-  if(T1_comp>T2_comp) {return true;}
-  if(T1_comp<T2_comp) {return false;}
+  if(T1_comp < T2_comp) {return false;}
+
+  return true;
+}
+
+inline bool posInL110_larger_equal(GpiList const& Qentry1, GpiList const& Qentry2)
+{
+  //GpiList lcm1 = get_list(Qentry1.back());
+  //GpiList lcm2 = get_list(Qentry2.back());
+  int d1 =  boost::get<int> (*std::next(Qentry1.begin(),2));
+  int d2 =  boost::get<int> (*std::next(Qentry2.begin(),2));
+  int l1 =  boost::get<int> (*std::next(Qentry1.begin(),3));
+  int l2 =  boost::get<int> (*std::next(Qentry2.begin(),3));
+  GpiList lspoly1 = get_list(*std::next(Qentry1.begin(),4));
+  GpiList lspoly2 = get_list(*std::next(Qentry2.begin(),4));
+  //if(lcm1.size()!=lcm2.size()) {throw std::runtime_error ("exponent vectors have different lengths in posInL110_larger_equal");}
+  if(lspoly1.size()!=lspoly2.size()) {throw std::runtime_error ("exponent vectors have different lengths in posInL110_larger_equal");}
+
+  GpiList::const_reverse_iterator it1 = lspoly1.rbegin();
+  GpiList::const_reverse_iterator it2 = lspoly2.rbegin();
+  int lspoly1_comp = boost::get<int>(*it1); ++it1;
+  int lspoly2_comp = boost::get<int>(*it2); ++it2;
+
+  if(lspoly2_comp==-1) {return true;}
+  if(lspoly1_comp==-1) {return false;}
+
+  if(d1>d2) {return true;}
+  if(d1<d2) {return false;}
+
+  if(l1>l2) {return true;}
+  for(; it1 != lspoly1.rend(); ++it1, ++it2)
+  {
+    int exp1 = boost::get<int>(*it1);
+    int exp2 = boost::get<int>(*it2);
+    if(exp1<exp2) {return true;}
+    if(exp1>exp2) {return false;}
+  }
+  if(lspoly1_comp < lspoly2_comp) {return false;}
 
   return true;
 }
@@ -269,6 +312,24 @@ inline GpiList vec2list(std::vector<int> vec)
   }
   return L;
 }
+inline GpiList vec2list(std::vector<std::vector<int>> vec)
+{
+  GpiList L;
+  for (std::vector<std::vector<int>>::iterator it=vec.begin(); it!=vec.end(); ++it)
+  {
+    L.emplace_back(vec2list(*it));
+  }
+  return L;
+}
+inline GpiList vec2list(std::vector<std::vector<std::vector<int> > > vec)
+{
+  GpiList L;
+  for (std::vector<std::vector<std::vector<int> > >::iterator it=vec.begin(); it!=vec.end(); ++it)
+  {
+    L.emplace_back(vec2list(*it));
+  }
+  return L;
+}
 
 inline std::vector<int> list2vec(GpiList L)
 {
@@ -293,6 +354,53 @@ inline std::vector<int> list2vec_long(GpiList L)
     vec.emplace_back((int) boost::get<long>(*it));
   }
   return vec;
+}
+
+
+inline GpiList lead_of_spoly(std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm)
+{
+  int nvars = Mi[0].size()-1;
+  std::vector<int> Li;
+  std::vector<int> Lj;
+  int di=0;
+  int dj=0;
+  int compi = Mi[1][nvars];
+  int compj = Mj[1][nvars];
+
+  for(int k=0; k<nvars; k++)
+  {
+    int ei = lcm[k]-Mi[0][k]+Mi[1][k];
+    Li.emplace_back(ei);
+    di += ei;
+  }
+  Li.emplace_back(compi);
+
+  for(int k=0; k<nvars; k++)
+  {
+    int ej = lcm[k]-Mj[0][k]+Mj[1][k];
+    Lj.emplace_back(ej);
+    dj += ej;
+  }
+  Lj.emplace_back(compj);
+
+  // compare (just always using dp for now!)
+  if (compi==-1 && compj>=0 ) {return vec2list(Lj);} // component==-1 if there is no second term!
+  if (compi>=0  && compj==-1) {return vec2list(Li);}
+  if (compi==-1 && compj==-1) {return vec2list(Mi[1]);} // return 0
+  bool bigger = false; // "Li > Lj"
+  if(di>dj) {bigger=true;}
+  else {
+    if(di==dj) {
+      for(int k=nvars-1; k>=0; k--) {
+        if (Li[k]<Lj[k]) {
+          bigger=true;
+          break;
+        }
+      }
+    }
+  }
+  if(bigger) {return vec2list(Li);}
+  return vec2list(Lj);
 }
 
 
@@ -328,9 +436,14 @@ inline bool test_CC(std::vector<int> const& lcm_i_j, std::vector<int> const& Mi,
 
 // helper functions for the queue
 
-inline void queue_insert(GpiList& Q, int i, int j, int deg_lcm, GpiList const& lcm, std::string base_filename)
+inline void queue_insert(GpiList& Q, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename)
 {
-  GpiList data = {i, j, deg_lcm, lcm};
+  int deg_lcm = deg(lcm_vec);
+  GpiList lcm = vec2list(lcm_vec);
+
+  GpiList l_spoly = lead_of_spoly(Mi,Mj,lcm_vec);
+
+  GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, lcm};
   if(Q.size()==0)
   {
     Q.push_back(data);
@@ -341,7 +454,8 @@ inline void queue_insert(GpiList& Q, int i, int j, int deg_lcm, GpiList const& l
   {
     k++; //std::cout << "    k=" << k << std::endl;
     GpiList entry = get_list(*it);
-    if(dp_larger_equal(lcm, get_list(entry.back()), deg_lcm, boost::get<int>(*std::next(entry.begin(),2))))
+    //if(!sel_strat_larger_equal(get_list(entry.back()), lcm, boost::get<int>(*std::next(entry.begin(),2)), deg_lcm))
+    if(!sel_strat_larger_equal(entry, data))
     {
       Q.insert(it, data);
       std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
@@ -413,7 +527,7 @@ NO_NAME_MANGLING
 void singular_init(std::string const& base_filename,
                    std::string const& input,
                    bool prev_queue_had_started,
-                   std::vector<std::vector<int>>* Mvec,
+                   std::vector<std::vector<std::vector<int> > >* Mvec,
                    GpiList* degBounds,
                    long* redSB,
                    long* nworkers,

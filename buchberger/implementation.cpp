@@ -262,7 +262,7 @@ NO_NAME_MANGLING
 void singular_init(std::string const& base_filename,
                    std::string const& input,
                    bool prev_queue_had_started,
-                   std::vector<std::vector<int>>* Mvec,
+                   std::vector<std::vector<std::vector<int> > >* Mvec,
                    GpiList* degBounds,
                    long* redSB,
                    long* nworkers,
@@ -476,7 +476,8 @@ void singular_init(std::string const& base_filename,
   {
     intvec *sort   = idSort(F);
     for (int i=0; i<sort->length();++i)
-      {F_sorted->m[i] = F->m[(*sort)[i]-1];}
+      //{F_sorted->m[i] = F->m[(*sort)[i]-1];} //!!
+      {F_sorted->m[i] = F->m[i];}
     delete sort;
 
     idInsertPolyOnPos(FF,p_Copy(F_sorted->m[0], currRing),0); // insert first polynomial of F
@@ -579,13 +580,37 @@ void singular_init(std::string const& base_filename,
   //std::vector<std::vector<int>> Mvec;
   for (int i=0; i<FF->ncols; i++)
   {
+    poly first  = FF->m[i];     // first term
+    poly second = first->next;  // second term
+
     std::vector<int> Mjvec;
+    std::vector<int> Mjvec2;
+    std::vector<int> Mjvec_extra;
+
     for (int j=1; j<=currRing->N; j++)
     {
-      Mjvec.emplace_back(p_GetExp(FF->m[i], j, currRing));
+      Mjvec.emplace_back(p_GetExp(first, j, currRing));
     }
-    Mjvec.emplace_back(p_GetComp(FF->m[i],currRing)); // last entry = component
-    (*Mvec).emplace_back(Mjvec);
+    Mjvec.emplace_back(p_GetComp(first,currRing)); // last entry = component
+
+    if(second==NULL) {
+      for (int j=1; j<=currRing->N; j++)
+        {Mjvec2.emplace_back(0);}
+      Mjvec2.emplace_back(-1); // last entry = component
+    }
+    else  {
+      for (int j=1; j<=currRing->N; j++)
+        {Mjvec2.emplace_back(p_GetExp(second, j, currRing));}
+      Mjvec2.emplace_back(p_GetComp(second,currRing)); // last entry = component
+    }
+
+    int len=0;
+    Mjvec_extra.emplace_back((int) currRing->pLDeg(first, &len, currRing)); // degree
+    Mjvec_extra.emplace_back((int) len);                                    // length
+    //Mjvec_extra.emplace_back(...);                                        // ...
+    //...
+    std::vector<std::vector<int>> Mjvec_entry = {Mjvec, Mjvec2, Mjvec_extra};
+    (*Mvec).emplace_back(Mjvec_entry);
   }
 
   id_Delete(&F, currRing);
@@ -642,6 +667,8 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     (*runtime)[(std::string) "reading partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
     GpiList m;
+    GpiList m2;
+    GpiList m_extra;
     int n = currRing->N; // number of variables
     for(int k=1; k<=n; k++)
     {
@@ -649,7 +676,28 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     }
     m.emplace_back((int) p_GetComp(NF_spoly, currRing));
 
-    (*NF).emplace_back(GpiList({index_i, index_j,m}));
+    poly NF_spoly_second = NF_spoly->next;
+    if(NF_spoly_second==NULL) {
+      for(int k=1; k<=n; k++)
+      {
+        m2.emplace_back((int) 0);
+      }
+      m2.emplace_back((int) -1);
+    }
+    else {
+      for(int k=1; k<=n; k++)
+      {
+        m2.emplace_back((int) p_GetExp(NF_spoly_second,k,currRing));
+      }
+      m2.emplace_back((int) p_GetComp(NF_spoly_second, currRing));
+    }
+
+    int len;
+    m_extra.emplace_back((int) currRing->pLDeg(NF_spoly, &len, currRing));
+    m_extra.emplace_back((int) len);
+
+
+    (*NF).emplace_back(GpiList({index_i, index_j, GpiList({m,m2,m_extra})}));
 
     p_Delete(&NF_spoly, currRing);
 
@@ -671,6 +719,12 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
 
   if (old_r == 0)
   {
+    /*
+    std::cout << "CHECKPOINT1 0" << std::endl;
+    std::cout << "CHECKPOINT1 0a (" << index_i << "," << index_j << ")" <<  std::endl;
+    std::cout << p_String(F->m[index_i-1], currRing, currRing) << std::endl;
+    std::cout << p_String(F->m[index_j-1], currRing, currRing) << std::endl;
+    */
     LObject Pair;
     Pair.Init();
     Pair.p1=F->m[index_i-1];
@@ -680,8 +734,22 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     if (USE_KNF)
     {
+      /*
+      std::cout << p_String(Pair.p1, currRing, currRing) << std::endl;
+      std::cout << p_String(F->m[index_i-1], currRing, currRing) << std::endl;
+      std::cout << p_String(Pair.p2, currRing, currRing) << std::endl;
+      std::cout << p_String(F->m[index_j-1], currRing, currRing) << std::endl;
+      */
+      std::cout << "spoly("<<index_i<<","<<index_j<<"):" << std::endl;
+      std::cout << p_String(Pair.p, currRing, currRing) << std::endl;
+
       if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,Pair.p,0,4);}
       else                      {NF_spoly = kNF(F,currRing->qideal,Pair.p);}
+
+      std::cout << "NF(spoly("<<index_i<<","<<index_j<<"),G_"<<r<<"):" << std::endl;
+      //std::cout << "RESULT OF NFSPOLY (may be the new " << r+1 << "-th element)" << std::endl;
+      std::cout << p_String(NF_spoly, currRing, currRing) << std::endl;
+
     }
     else
     {
@@ -812,6 +880,8 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       writePolySSI(NF_spoly, base_filename + "intermediate_files/f"+std::to_string(r+1));
 
       GpiList m;
+      GpiList m2;
+      GpiList m_extra;
       int n = currRing->N; // number of variables
       for(int k=1; k<=n; k++)
       {
@@ -819,7 +889,24 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       }
       m.emplace_back((int) p_GetComp(NF_spoly, currRing));
 
-      (*NF).emplace_back(GpiList({index_i, index_j,m}));
+      poly NF_spoly_second = NF_spoly->next;
+      if(NF_spoly_second==NULL) {
+        for(int k=1; k<=n; k++)
+          {m2.emplace_back((int) 0);}
+        m2.emplace_back((int) -1);
+      }
+      else {
+        for(int k=1; k<=n; k++)
+          {m2.emplace_back((int) p_GetExp(NF_spoly_second,k,currRing));}
+        m2.emplace_back((int) p_GetComp(NF_spoly_second, currRing));
+      }
+
+      int len;
+      m_extra.emplace_back((int) currRing->pLDeg(NF_spoly, &len, currRing));
+      m_extra.emplace_back((int) len);
+
+
+      (*NF).emplace_back(GpiList({index_i, index_j, GpiList({m,m2,m_extra})}));
     }
     else // element not at end of Q ==> put back to started indices (to be reduced further in future)
     {

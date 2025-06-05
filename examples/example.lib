@@ -147,9 +147,9 @@ proc testBB(def I, int ncores, int nworkers, int force_continue, list #) // comp
 
 // small example:
 
-system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
+//system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
 //monitorON();
-testBB(I, 6, 5, 2, "RANDOMID_7_2_5");
+//testBB(I, 6, 5, 2, "RANDOMID_7_2_5");
 
 // jacobi ideal
 /*
@@ -447,6 +447,8 @@ module M1 = module(M1_mat);
 module M2 = module(M2_mat);
 module M = M1+M2;
 ;
+monitorON();
+degBound=0; testParallelBB(M,6,5,2,"TEST");
 */
 
 
@@ -462,17 +464,22 @@ number c4=prime(400)*t;
 
 
 
-//ring S = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 //ring R = (0, (c1, c2, c3, c4)), (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp;
-ring S = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4));
+//ring S = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4));
+ring S = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
-module old_m1 = (-z1 + z4)*gen(1) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (-z1 + z4)*gen(4) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (c2 - c3 - z1 + z4)*gen(8), (3*c1 + c4 + 2*z2 - z6 - z9)*gen(2) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (4*c1 + 2*z2 - z6 - z9)*gen(6) + (3*c1 - c2 + c3 + c4 + 2*z2 - z6 - z9)*gen(7) + (2*c1 + 2*c4 + 2*z2 - z6 - z9)*gen(9), (-3*c1 - c3 - z1 - z2 - z3 + z5 + z8 + z9)*gen(1) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z8 + z9)*gen(4) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (-4*c1 - z1 - z2 - z3 + z5 + z8 + z9)*gen(8), (c2 - c4 + z6 - z7)*gen(2) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (z6 - z7)*gen(6) + (z6 - z7)*gen(7) + (-c1 + c2 + c3 - c4 + z6 - z7)*gen(9), (-c1 - c3 - 2*z1 + z4 + z8)*gen(1) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (-c1 + c2 - 2*c3 - 2*z1 + z4 + z8)*gen(4) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (-c1 + c2 - 2*z1 + z4 + z8)*gen(8), (c1 + c2 + z2 - z7)*gen(2) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (c1 - c4 + z2 - z7)*gen(6) + (c1 - c2 + z2 - z7)*gen(7) + (c1 + c2 + c3 + c4 + z2 - z7)*gen(9), 2*(c1 + z1)*gen(1) + (z1 - z2 + z3)*gen(3) + (2*c1 + z1 + z4)*gen(4) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (c1 - c3 + z1 + z8)*gen(8), (-2*c1 - z1 - z2 + z3)*gen(2) + (z1 - z2 + z3)*gen(3) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (-4*c1 - 2*z2 - z4 + z5 + z9)*gen(6) + (-c1 + c3 + z1 - z2 + z3 - z4 - z8)*gen(7) + (-z1 + 2*z3 - z5 - z9)*gen(9), (-2*c1 - z1 - z2 + z3)*gen(1) + (-z1 + z2 + z3)*gen(3) + (c1 + c4 - z1 + z2 + z3 - z6 - z9)*gen(4) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (-4*c1 + c2 - c4 - z1 - 2*z2 + z3 + z6 - z7 + z9)*gen(8), 2*(c1 + z2)*gen(2) + (-z1 + z2 + z3)*gen(3) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (c1 - c4 + z2 + z6)*gen(6) + (c1 - c2 + z2 + z7)*gen(7) + (z2 + z9)*gen(9);
+module m1 = (-z1 + z4)*gen(1) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (-z1 + z4)*gen(4) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (c2 - c3 - z1 + z4)*gen(8), (3*c1 + c4 + 2*z2 - z6 - z9)*gen(2) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (4*c1 + 2*z2 - z6 - z9)*gen(6) + (3*c1 - c2 + c3 + c4 + 2*z2 - z6 - z9)*gen(7) + (2*c1 + 2*c4 + 2*z2 - z6 - z9)*gen(9), (-3*c1 - c3 - z1 - z2 - z3 + z5 + z8 + z9)*gen(1) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z8 + z9)*gen(4) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (-4*c1 - z1 - z2 - z3 + z5 + z8 + z9)*gen(8), (c2 - c4 + z6 - z7)*gen(2) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (z6 - z7)*gen(6) + (z6 - z7)*gen(7) + (-c1 + c2 + c3 - c4 + z6 - z7)*gen(9), (-c1 - c3 - 2*z1 + z4 + z8)*gen(1) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (-c1 + c2 - 2*c3 - 2*z1 + z4 + z8)*gen(4) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (-c1 + c2 - 2*z1 + z4 + z8)*gen(8), (c1 + c2 + z2 - z7)*gen(2) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (c1 - c4 + z2 - z7)*gen(6) + (c1 - c2 + z2 - z7)*gen(7) + (c1 + c2 + c3 + c4 + z2 - z7)*gen(9), 2*(c1 + z1)*gen(1) + (z1 - z2 + z3)*gen(3) + (2*c1 + z1 + z4)*gen(4) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (c1 - c3 + z1 + z8)*gen(8), (-2*c1 - z1 - z2 + z3)*gen(2) + (z1 - z2 + z3)*gen(3) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (-4*c1 - 2*z2 - z4 + z5 + z9)*gen(6) + (-c1 + c3 + z1 - z2 + z3 - z4 - z8)*gen(7) + (-z1 + 2*z3 - z5 - z9)*gen(9), (-2*c1 - z1 - z2 + z3)*gen(1) + (-z1 + z2 + z3)*gen(3) + (c1 + c4 - z1 + z2 + z3 - z6 - z9)*gen(4) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (-4*c1 + c2 - c4 - z1 - 2*z2 + z3 + z6 - z7 + z9)*gen(8), 2*(c1 + z2)*gen(2) + (-z1 + z2 + z3)*gen(3) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (c1 - c4 + z2 + z6)*gen(6) + (c1 - c2 + z2 + z7)*gen(7) + (z2 + z9)*gen(9);
 
-module old_m2 = z1*gen(1), z2*gen(2), z3*gen(3), z4*gen(4), z5*gen(5), z6*gen(6), z7*gen(7), gen(8), gen(9);
+module m2 = z1*gen(1), z2*gen(2), z3*gen(3), z4*gen(4), z5*gen(5), z6*gen(6), z7*gen(7), gen(8), gen(9);
 
-module old_m=old_m1+old_m2;
+module m=m1+m2;
 
-//degBound=5; testBB(old_m,6,5,2,"TEST",list(list(5,13)));
+module m_sorted = module(m[intvec(18,19,17..7,1,6,5,2,4,3)]);
+
+monitorON();
+//degBound=2; testBB(m,1,0,2,"TEST1",list(list(degBound,13)));
+option(redTail);
+degBound=2; testBB(m_sorted,1,0,2,"TEST2",list(list(degBound,13)));
 
 
 /*
@@ -496,34 +503,3 @@ for (i=1;i<=7;i++)
 */
 
 //testParallelBB(m, 48, 47, "BIG_M1_PLUS_M2", list(list(4,9),list(4,4)));
-
-
-
-
-
-
-
-// NEW EXAMPLE
-
-LIB "matrix.lib";
-//ring R = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4));
-option(prot);
-degBound=6;
-module m1 = (-z1 + z4)*gen(1) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (-z1 + z4)*gen(4) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (c2 - c3 - z1 + z4)*gen(8), (3*c1 + c4 + 2*z2 - z6 - z9)*gen(2) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (4*c1 + 2*z2 - z6 - z9)*gen(6) + (3*c1 - c2 + c3 + c4 + 2*z2 - z6 - z9)*gen(7) + (2*c1 + 2*c4 + 2*z2 - z6 - z9)*gen(9), (-3*c1 - c3 - z1 - z2 - z3 + z5 + z8 + z9)*gen(1) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z8 + z9)*gen(4) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (-4*c1 - z1 - z2 - z3 + z5 + z8 + z9)*gen(8), (c2 - c4 + z6 - z7)*gen(2) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (z6 - z7)*gen(6) + (z6 - z7)*gen(7) + (-c1 + c2 + c3 - c4 + z6 - z7)*gen(9), (-c1 - c3 - 2*z1 + z4 + z8)*gen(1) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (-c1 + c2 - 2*c3 - 2*z1 + z4 + z8)*gen(4) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (-c1 + c2 - 2*z1 + z4 + z8)*gen(8), (c1 + c2 + z2 - z7)*gen(2) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (c1 - c4 + z2 - z7)*gen(6) + (c1 - c2 + z2 - z7)*gen(7) + (c1 + c2 + c3 + c4 + z2 - z7)*gen(9), 2*(c1 + z1)*gen(1) + (z1 - z2 + z3)*gen(3) + (2*c1 + z1 + z4)*gen(4) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (c1 - c3 + z1 + z8)*gen(8), (-2*c1 - z1 - z2 + z3)*gen(2) + (z1 - z2 + z3)*gen(3) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (-4*c1 - 2*z2 - z4 + z5 + z9)*gen(6) + (-c1 + c3 + z1 - z2 + z3 - z4 - z8)*gen(7) + (-z1 + 2*z3 - z5 - z9)*gen(9), (-2*c1 - z1 - z2 + z3)*gen(1) + (-z1 + z2 + z3)*gen(3) + (c1 + c4 - z1 + z2 + z3 - z6 - z9)*gen(4) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (-4*c1 + c2 - c4 - z1 - 2*z2 + z3 + z6 - z7 + z9)*gen(8), 2*(c1 + z2)*gen(2) + (-z1 + z2 + z3)*gen(3) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (c1 - c4 + z2 + z6)*gen(6) + (c1 - c2 + z2 + z7)*gen(7) + (z2 + z9)*gen(9);
-module m2 = z1*gen(1), z2*gen(2), z3*gen(3), z4*gen(4), z5*gen(5), z6*gen(6), z7*gen(7), gen(8), gen(9);
-module m=m1+m2;
-//module m1ext = (-z1 + z4)*gen(1) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (-z1 + z4)*gen(4) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (c2 - c3 - z1 + z4)*gen(8), (3*c1 + c4 + 2*z2 - z6 - z9)*gen(2) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (4*c1 + 2*z2 - z6 - z9)*gen(6) + (3*c1 - c2 + c3 + c4 + 2*z2 - z6 - z9)*gen(7) + (2*c1 + 2*c4 + 2*z2 - z6 - z9)*gen(9), (-3*c1 - c3 - z1 - z2 - z3 + z5 + z8 + z9)*gen(1) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z8 + z9)*gen(4) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (-4*c1 - z1 - z2 - z3 + z5 + z8 + z9)*gen(8), (c2 - c4 + z6 - z7)*gen(2) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (z6 - z7)*gen(6) + (z6 - z7)*gen(7) + (-c1 + c2 + c3 - c4 + z6 - z7)*gen(9), (-c1 - c3 - 2*z1 + z4 + z8)*gen(1) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (-c1 + c2 - 2*c3 - 2*z1 + z4 + z8)*gen(4) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (-c1 + c2 - 2*z1 + z4 + z8)*gen(8), (c1 + c2 + z2 - z7)*gen(2) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (c1 - c4 + z2 - z7)*gen(6) + (c1 - c2 + z2 - z7)*gen(7) + (c1 + c2 + c3 + c4 + z2 - z7)*gen(9), 2*(c1 + z1)*gen(1) + (z1 - z2 + z3)*gen(3) + (2*c1 + z1 + z4)*gen(4) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (c1 - c3 + z1 + z8)*gen(8) - 2*gen(10), (-2*c1 - z1 - z2 + z3)*gen(2) + (z1 - z2 + z3)*gen(3) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (-4*c1 - 2*z2 - z4 + z5 + z9)*gen(6) + (-c1 + c3 + z1 - z2 + z3 - z4 - z8)*gen(7) + (-z1 + 2*z3 - z5 - z9)*gen(9), (-2*c1 - z1 - z2 + z3)*gen(1) + (-z1 + z2 + z3)*gen(3) + (c1 + c4 - z1 + z2 + z3 - z6 - z9)*gen(4) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (-4*c1 + c2 - c4 - z1 - 2*z2 + z3 + z6 - z7 + z9)*gen(8), 2*(c1 + z2)*gen(2) + (-z1 + z2 + z3)*gen(3) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (c1 - c4 + z2 + z6)*gen(6) + (c1 - c2 + z2 + z7)*gen(7) + (z2 + z9)*gen(9) - 2*gen(10);
-
-//module a=syz(m);
-
-//matrix matrixa=a;
-//matrix matrixa1=submat(matrixa,1..10,1..size(a));
-//matrix matrixm1ext=m1ext;
-//module m12old=module(matrixm1ext*matrixa1);
-//ring R2 = (0,c1, c2, c3, c4), (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp(9);
-//module m12=imap(R,m12old);
-//module mInt=simplify(m12,OptionSimplification);
-//write("/home/zhang/exchange/intersection_result.txt",string(mInt));
-
-monitorON();
-degBound=0; testBB(m,6,5,2,"TEST",list(list(0,13)));

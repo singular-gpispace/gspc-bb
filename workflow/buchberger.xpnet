@@ -66,6 +66,7 @@
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						std::string singular_function_name = "init";
+						std::cout << "ENTERING " << singular_function_name << std::endl;
 
 						#ifdef DEBUG_BBA
 						std::cout << "start time (time since epoch in ms): " << runtime_start << std::endl;
@@ -95,7 +96,7 @@
 
 						long nworkers=0; // max number of workers given to NF_of_spoly transition
 						int prev_r=0; // value of r from a previous computation that is being continued
-						std::vector<std::vector<int>> Mvec; // lead monomials as a vector of exponent vectors (last entry = component)
+						std::vector<std::vector<std::vector<int> > > Mvec; // lead monomials as a vector of exponent vectors (last entry = component)
 						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &degBounds, &redSB, &nworkers, &prev_r, &runtime);
 
 						r = Mvec.size();
@@ -117,14 +118,14 @@
 								prev_r=TRACE;
 							}
 							int j=1;
-							for (std::vector<std::vector<int>>::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
+							for (std::vector<std::vector<std::vector<int> > >::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
 							{
 								int i=1;
-								for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
+								for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
 								{
 									std::ifstream ijFileIn(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
 									std::ifstream ijDegBoundFileIn(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j));
-									std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
+									std::vector<int> lcm_i_j = lcm((*Mi)[0], (*Mj)[0]);
 
 									if ((ijFileIn.good() || ijDegBoundFileIn.good()))
 									{
@@ -158,8 +159,7 @@
 											started_indices.push_back(si);
 
 											// add (i,j) and information about lcm(fi,fj) to the queue:
-											std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
-											queue_insert(Q, i, j, deg(lcm_i_j), vec2list(lcm_i_j), base_filename);
+											queue_insert(Q, i, j, *Mi, *Mj, lcm_i_j, base_filename);
 										}
 									}
 								}
@@ -168,13 +168,13 @@
 						else
 						{
 							int j=1;
-							for (std::vector<std::vector<int>>::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
+							for (std::vector<std::vector<std::vector<int> > >::iterator Mj=Mvec.begin(); j<=r; ++Mj, j++)
 							{
 								int i=1;
-								for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
+								for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<j; ++Mi, i++)
 								{
 									bool add_to_Q = true;
-									std::vector<int> lcm_i_j = lcm(*Mi, *Mj);
+									std::vector<int> lcm_i_j = lcm((*Mi)[0], (*Mj)[0]);
 									//if (degBound>0 && degBound < deg(lcm_i_j))
 									if (over_deg_bound(lcm_i_j, degBounds))
 									{
@@ -182,7 +182,7 @@
 										degbound_counter++;
 										std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
 									}
-									if (test_PC(*Mi,*Mj)) // apply PC
+									if (test_PC((*Mi)[0],(*Mj)[0])) // apply PC
 									{
 										add_to_Q = false;
 										prodcrit_counter++;
@@ -191,11 +191,11 @@
 									else // apply CC
 									{
 										int k=1;
-										for (std::vector<std::vector<int>>::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
+										for (std::vector<std::vector<std::vector<int> > >::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
 										{
 											if(k!=i && k!=j)
 											{
-												if (test_CC(lcm_i_j, *Mi, *Mj, *Mk))
+												if (test_CC(lcm_i_j, (*Mi)[0], (*Mj)[0], (*Mk)[0]))
 												{
 													if(k<i)
 													{
@@ -206,7 +206,7 @@
 													}
 													else { if(k<j)
 													{
-														std::vector<int> lcm_k_j = lcm(*Mk, *Mj);
+														std::vector<int> lcm_k_j = lcm((*Mk)[0], (*Mj)[0]);
 														if(!equal(lcm_k_j,lcm_i_j))
 														{
 															add_to_Q = false;
@@ -217,8 +217,8 @@
 													}
 													else // (k>j)
 													{
-														std::vector<int> lcm_i_k = lcm(*Mi, *Mk);
-														std::vector<int> lcm_j_k = lcm(*Mj, *Mk);
+														std::vector<int> lcm_i_k = lcm((*Mi)[0], (*Mk)[0]);
+														std::vector<int> lcm_j_k = lcm((*Mj)[0], (*Mk)[0]);
 														if(!equal(lcm_i_k,lcm_i_j) && !equal(lcm_j_k,lcm_i_j))
 														{
 															add_to_Q = false;
@@ -245,17 +245,18 @@
 										// add (i,j) to started indices:
 										started_indices.push_back(si);
 										// add (i,j) and information about lcm(fi,fj) to the queue:
-										queue_insert(Q, i, j, deg(lcm_i_j), vec2list(lcm_i_j), base_filename);
+										queue_insert(Q, i, j, *Mi, *Mj, lcm_i_j, base_filename);
 									}
 								}
 							}
 						}
 
 						// build M
-						for(std::vector<std::vector<int>>::iterator Mveci=Mvec.begin(); Mveci!=Mvec.end(); ++Mveci)
-						{
-							M.emplace_back(vec2list(*Mveci));
-						}
+						//!!!for(std::vector<std::vector<std::vector<int> > >::iterator Mveci=Mvec.begin(); Mveci!=Mvec.end(); ++Mveci)
+						//{
+						//	M.emplace_back(vec2list(*Mveci));
+						//}
+						M = vec2list(Mvec);
 
 						if(Q.size()>0)
 						{
@@ -298,6 +299,8 @@
 						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
 						runtime[(std::string) "DEGREE BOUND"] = GpiList({-1L, -1L, -1L, degbound_counter});
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+						std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -346,6 +349,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
+					std::cout << "ENTERING NF_of_spoly" << std::endl;
 						bool i_in_bl  = (blacklist.find((GpiVariant) started_indices.i)               !=blacklist.end());
 						bool j_in_bl  = (blacklist.find((GpiVariant) started_indices.j)               !=blacklist.end());
 						bool ij_in_bl = (blacklist.find(GpiSet({started_indices.i,started_indices.j}))!=blacklist.end());
@@ -384,7 +388,6 @@
 						std::string singular_function_name = "NF_of_spoly";
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, Qback.i, Qback.j, started_indices.i, started_indices.j, started_indices.old_r, &runtime, &si_out, &fi_out, &NF);
 
-
 						if(si_out.size()>0)
 						{
 							GpiStruct si;
@@ -419,6 +422,8 @@
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 						if(NF.size()>0) {runtime[(std::string) "min serial runtime"] = GpiList({-1L, runtime_stop, runtime_stop-runtime_start, 1L});}
+
+						std::cout << runtime_start << ": EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -465,6 +470,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
+					std::cout << "ENTERING NF_of_spoly_Qback" << std::endl;
 						bool i_in_bl  = (blacklist.find((GpiVariant) started_indices.i)               !=blacklist.end());
 						bool j_in_bl  = (blacklist.find((GpiVariant) started_indices.j)               !=blacklist.end());
 						bool ij_in_bl = (blacklist.find(GpiSet({started_indices.i,started_indices.j}))!=blacklist.end());
@@ -483,6 +489,7 @@
 							return;
 						}
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						std::cout << runtime_start << ": ENTERING NF_of_spoly_Qback" << std::endl;
 
 						GpiList si_out;
 						GpiList fi_out;
@@ -537,6 +544,8 @@
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 						if(NF.size()>0) {runtime[(std::string) "min serial runtime"] = GpiList({-1L, runtime_stop, runtime_stop-runtime_start, 1L});}
+
+						std::cout << runtime_start << ": EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -582,6 +591,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
+					std::cout << "ENTERING increment" << std::endl;
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::string singular_function_name = "increment";
 
@@ -609,16 +619,24 @@
 
 							M.push_back(m);
 
-							std::vector<std::vector<int>> Mvec;
+							std::vector<std::vector<std::vector<int> > > Mvec;
 							for(GpiList::iterator Mi=M.begin(); Mi!=M.end(); ++Mi)
 							{
-								Mvec.emplace_back(list2vec(*Mi));
+								GpiList Mi_list = get_list(*Mi);
+								std::vector<std::vector<int>> Mveci;
+								for(GpiList::iterator Mii=Mi_list.begin(); Mii!=Mi_list.end(); ++Mii)
+								{
+									Mveci.emplace_back(list2vec(*Mii));
+								}
+								Mvec.emplace_back(Mveci);
 							}
 
+							std::cout << "lcm(leads):" << std::endl;
+							print_variant(vec2list(lcm(Mvec[index_i-1][0],Mvec[index_j-1][0])));
 
-							std::vector<int> Mr = Mvec.back();
+							std::vector<std::vector<int>> Mr = Mvec.back();
 							int i=1;
-							for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
+							for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
 							{
 								bool add_to_Q = true;
 								std::vector<int> lcm_i_r;
@@ -629,7 +647,7 @@
 								}
 								else
 								{
-									lcm_i_r = lcm(*Mi, Mr);
+									lcm_i_r = lcm((*Mi)[0], Mr[0]);
 									//if (degBound>0 && degBound < deg(lcm_i_r))
 									if (over_deg_bound(lcm_i_r, degBounds))
 									{
@@ -637,7 +655,7 @@
 										degbound_counter++;
 										std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 									}
-									if (test_PC(*Mi,Mr)) // apply PC
+									if (test_PC((*Mi)[0],Mr[0])) // apply PC
 									{
 /*
 						}
@@ -653,17 +671,18 @@
 						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
 						runtime[(std::string) "DEGREE BOUND"] = GpiList({-1L, -1L, -1L, degbound_counter});	add_to_Q = false;
 						*/
+										add_to_Q = false;
 										prodcrit_counter++;
 										std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 									}
 									else // apply CC
 									{
 										int k=1;
-										for (std::vector<std::vector<int>>::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
+										for (std::vector<std::vector<std::vector<int> > >::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
 										{
 											if(k!=i && k!=r)
 											{
-												if (test_CC(lcm_i_r, *Mi, Mr, *Mk))
+												if (test_CC(lcm_i_r, (*Mi)[0], Mr[0], (*Mk)[0]))
 												{
 													if(k<i)
 													{
@@ -674,7 +693,7 @@
 													}
 													else // thus i<k<r  (k>r is not possible)
 													{
-														std::vector<int> lcm_k_r = lcm(*Mk, Mr);
+														std::vector<int> lcm_k_r = lcm((*Mk)[0], Mr[0]);
 														if(!equal(lcm_k_r,lcm_i_r))
 														{
 															add_to_Q = false;
@@ -689,7 +708,7 @@
 									}
 								}
 
-								if (divides_monom(Mr,*Mi) &&  (blacklist.find((GpiVariant) i)==blacklist.end()))
+								if (divides_monom(Mr[0],(*Mi)[0]) &&  (blacklist.find((GpiVariant) i)==blacklist.end()))
 								{
 									// new found lead monomial divides i-th lead monomial ==> put i in blacklist
 									// (and Set(i,r) as the (i,r)-th spoly has to be reduced, it is not eliminated through CC!)
@@ -712,7 +731,7 @@
 										if(irFile.good())
 										{
 											started_indices.push_back(si);
-											queue_insert(Q, i, r, deg(lcm_i_r), vec2list(lcm_i_r), base_filename);
+											queue_insert(Q, i, r, *Mi, Mr, lcm_i_r, base_filename);
 										}
 									}
 									else
@@ -723,7 +742,7 @@
 										// add (i,r) to started indices:
 										started_indices.push_back(si);
 										// add (i,r) and information about lcm(fi,fr) to the queue:
-										queue_insert(Q, i, r, deg(lcm_i_r), vec2list(lcm_i_r), base_filename);
+										queue_insert(Q, i, r, *Mi, Mr, lcm_i_r, base_filename);
 									}
 								}
 							}
@@ -733,12 +752,12 @@
 								int ii = boost::get<int>(get_list(*Qk).front());
 								int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
 
-								std::vector<int> lcm_i_j = lcm(Mvec[ii-1],Mvec[jj-1]);
+								std::vector<int> lcm_i_j = lcm(Mvec[ii-1][0],Mvec[jj-1][0]);
 
-								if(test_CC(lcm_i_j, Mvec[ii-1], Mvec[jj-1], Mvec[r-1]))
+								if(test_CC(lcm_i_j, Mvec[ii-1][0], Mvec[jj-1][0], Mvec[r-1][0]))
 								{
-									std::vector<int> lcm_i_r = lcm(Mvec[ii-1], Mvec[r-1]);
-									std::vector<int> lcm_j_r = lcm(Mvec[jj-1], Mvec[r-1]);
+									std::vector<int> lcm_i_r = lcm(Mvec[ii-1][0], Mvec[r-1][0]);
+									std::vector<int> lcm_j_r = lcm(Mvec[jj-1][0], Mvec[r-1][0]);
 									if(!equal(lcm_i_r,lcm_i_j) && !equal(lcm_j_r,lcm_i_j))
 									{
 										blacklist.emplace(GpiList({ii,jj}));
@@ -791,6 +810,8 @@
 						runtime[(std::string) "CANCELLED ELEMENTS"] = GpiList({-1L, -1L, -1L,  cancelled_element_counter});
 						runtime[(std::string) "CANCELLED S-PAIRS"] = GpiList({-1L, -1L, -1L,  cancelled_s_pair_counter});
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+						std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -814,7 +835,7 @@
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<in name="M" type="list"/>
+				<!--in name="M" type="list"/-->
 				<in name="finished_indices" type="index_pair"/>
 				<inout name="Q" type="list"/>
 				<inout name="Qback" type="index_pair"/>
@@ -822,7 +843,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_remove_from_Q(runtime, base_filename, M, finished_indices, Q, Qback, BB_finished)">
+							  function="function_remove_from_Q(runtime, base_filename, finished_indices, Q, Qback, BB_finished)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -832,6 +853,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
+					std::cout << "ENTERING remove_from_Q" << std::endl;
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::string singular_function_name = "remove_from_Q";
 
@@ -873,11 +895,13 @@
 
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+						std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<connect-read port="M" place="place_M"/>
+			<!--connect-read port="M" place="place_M"/-->
 			<connect-in port="finished_indices" place="place_finished_indices"/>
 			<connect-inout port="Q" place="place_Q"/>
 			<connect-inout port="Qback" place="place_Qback"/>
@@ -909,6 +933,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
+					std::cout << "ENTERING minimize_GB" << std::endl;
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						int r=M.size();
@@ -917,11 +942,16 @@
 						std::cout << runtime_start << ": minimizing Gröbner basis with initially " << r << " elements" << std::endl;
 						#endif
 
-						std::vector<std::vector<int>> Mvec;
-						for (GpiList::const_iterator Mj=M.begin(); Mj!=M.end(); ++Mj)
+						std::vector<std::vector<std::vector<int> > > Mvec;
+						for(GpiList::const_iterator Mi=M.begin(); Mi!=M.end(); ++Mi)
 						{
-							std::vector<int> Mjvec = list2vec(get_list(*Mj));
-							Mvec.emplace_back(Mjvec);
+							GpiList Mi_list = get_list(*Mi);
+							std::vector<std::vector<int>> Mveci;
+							for(GpiList::iterator Mii=Mi_list.begin(); Mii!=Mi_list.end(); ++Mii)
+							{
+								Mveci.emplace_back(list2vec((*Mii)));
+							}
+							Mvec.emplace_back(Mveci);
 						}
 
 						bool needed;
@@ -930,8 +960,8 @@
 							needed = true;
 							for(int j=0; j<r; j++) {
 								if(j!=i) {
-								if(divides_monom(Mvec[j],Mvec[i])) {
-									if(i<j || !(equal(Mvec[i],Mvec[j]))) {
+								if(divides_monom(Mvec[j][0],Mvec[i][0])) {
+									if(i<j || !(equal(Mvec[i][0],Mvec[j][0]))) {
 										needed = false; break;
 								}}}
 							}
@@ -962,6 +992,8 @@
 
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+						std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -995,6 +1027,7 @@
 					<cinclude href="chrono"/>
 					<cinclude href="boost/thread/thread.hpp"/>
 					<code><![CDATA[
+					std::cout << "ENTERING reduce_GB" << std::endl;
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						int final_r = needed_indices_list.size();
@@ -1024,6 +1057,8 @@
 
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+						std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
 			</defun>
