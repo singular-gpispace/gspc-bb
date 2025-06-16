@@ -6,6 +6,8 @@
 
 #define TRACE 0
 
+#define SLEEP_MS(t) std::this_thread::sleep_for( std::chrono::milliseconds(t) );
+
 #define NO_NAME_MANGLING extern "C"
 
 //#define sel_strat_larger_equal dp_larger_equal

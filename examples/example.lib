@@ -479,7 +479,10 @@ module m_sorted = module(m[intvec(18,19,17..7,1,6,5,2,4,3)]);
 monitorON();
 //degBound=2; testBB(m,1,0,2,"TEST1",list(list(degBound,13)));
 option(redTail);
-degBound=2; testBB(m_sorted,1,0,2,"TEST2",list(list(degBound,13)));
+degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,1,0,2,"TEST2_first",list(list(degBound,13)));
+degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,1,0,2,"TEST2",list(list(degBound,13)));
+degBound=3; print("   DEGBOUND 3   "); testBB(m_sorted,1,0,2,"TEST3",list(list(degBound,13)));
+degBound=4; print("   DEGBOUND 4   "); testBB(m_sorted,1,0,2,"TEST4",list(list(degBound,13)));
 
 
 /*

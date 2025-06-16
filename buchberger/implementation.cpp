@@ -189,6 +189,8 @@ bool write_singular_output(std::pair<int, void*> const& res, boost::variant<long
 
 
 
+
+
 NO_NAME_MANGLING
 void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::string const& singular_function_name,

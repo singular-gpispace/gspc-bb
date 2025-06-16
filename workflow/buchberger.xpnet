@@ -17,6 +17,7 @@
 		<place name="place_output" type="string"/>
 		<place name="place_BB_finished" type="control"/>
 		<place name="place_r" type="int"/>
+		<place name="place_update_Qback_r" type="tuple__index_pair__int__set"/>
 		<place name="place_M" type="list"/>
 		<place name="place_balNF" type="control"/>
 		<place name="place_Q" type="list"/>
@@ -37,10 +38,11 @@
 				<require key="worker" mandatory="true"/>
        	<in name="base_filename" type="string"/>
 				<in name="input" type="string"/>
+				<in name="installdir" type="string"/>
 				<!--in name="degBound" type="long"/-->
 				<out name="degBounds" type="list"/>
 				<out name="started_indices" type="list"/>
-				<out name="Q" type="list"/>
+				<out name="Q_out" type="list"/>
 				<out name="Qback" type="index_pair"/>
 				<out name="blacklist" type="set"/>
 				<out name="r" type="int"/>
@@ -51,7 +53,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(started_indices, degBounds, runtime, base_filename, input, Q, Qback, r, M, redSB, balNF, blacklist, BB_finished)">
+							  function="function_init(started_indices, installdir, degBounds, runtime, base_filename, input, Q_out, Qback, r, M, redSB, balNF, blacklist, BB_finished)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -64,6 +66,8 @@
 
 					<code><![CDATA[
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+						GpiList Q; //!!
 
 						std::string singular_function_name = "init";
 						std::cout << "ENTERING " << singular_function_name << std::endl;
@@ -294,6 +298,29 @@
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
 						#endif
 
+/*
+											long serialize_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+											GpiList output;
+
+											std::vector<boost::variant<long,std::string,GpiList>>  args_read2, args_in2;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout2, out2;  std::vector<GpiList*>  out_many2;
+											std::string singular_function_name2 = "serialize";
+											//std::string library_name = base_filename.substr(0, base_filename.find_last_of('/', base_filename.size() - 2) + 1) + "buchbergergp.lib";
+											std::string library_name2 = installdir + "buchbergergp.lib";
+											args_read2  = {};
+											args_in2    = {Q};
+											args_inout2 = {};
+											out2        = {&Q_out};
+											out_many2   = {};
+											bool delete_files2 = false;
+											bool silent2 = true;
+											RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name2, singular_function_name2, base_filename+"intermediate_files/", args_read2, args_in2, args_inout2, out2, out_many2, delete_files2, silent2);
+
+											long serialize_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+											runtime[(std::string) "serialize in init"] = GpiList({-1L, serialize_stop, serialize_stop-serialize_start, 1L});
+*/
+						Q_out = Q;
+
 						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
 						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
@@ -305,10 +332,11 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="installdir" place="place_installdir"/>
 			<!--connect-read port="degBound" place="place_degBound"/-->
 			<connect-in port="input" place="place_input"/>
 			<connect-out port="degBounds" place="place_degBounds"/>
-			<connect-out port="Q" place="place_Q"/>
+			<connect-out port="Q_out" place="place_Q"/>
 			<connect-out port="Qback" place="place_Qback"/>
 			<connect-out port="blacklist" place="place_blacklist"/>
 			<connect-out port="r" place="place_r"/>
@@ -363,7 +391,9 @@
 							fi.emplace_back(std::pair<std::string,GpiVariant>({"i"    , started_indices.i}));
 							fi.emplace_back(std::pair<std::string,GpiVariant>({"j"    , started_indices.j}));
 
-							finished_indices.push_back(fi);
+							//finished_indices.push_back(fi);
+							GpiList fi_out = {started_indices.i, started_indices.j};
+							NF.push_back(fi_out); //!! for combining increment and remove_from_Q
 
 							return;
 						}
@@ -407,7 +437,8 @@
 							fi.emplace_back(std::pair<std::string,GpiVariant>({"i"    , boost::get<int>(fi_out.front())}));
 							fi.emplace_back(std::pair<std::string,GpiVariant>({"j"    , boost::get<int>(fi_out.back())}));
 
-							finished_indices.push_back(fi);
+							//finished_indices.push_back(fi);
+							NF.push_back(fi_out); //!! for combining increment and remove_from_Q
 
 							#ifdef DEBUG_BBA
 							std::cout << runtime_start << ": 2 NF_of_spoly: adding ("<<boost::get<int>(fi_out.front())<<","<<boost::get<int>(fi_out.back())<<") to finished_indices (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
@@ -485,6 +516,8 @@
 							fi.emplace_back(std::pair<std::string,GpiVariant>({"j"    , started_indices.j}));
 
 							finished_indices.push_back(fi);
+							GpiList fi_out = {started_indices.i, started_indices.j};
+							NF.push_back(fi_out); //!! for combining increment and remove_from_Q
 
 							return;
 						}
@@ -529,7 +562,8 @@
 							fi.emplace_back(std::pair<std::string,GpiVariant>({"i"    , boost::get<int>(fi_out.front())}));
 							fi.emplace_back(std::pair<std::string,GpiVariant>({"j"    , boost::get<int>(fi_out.back())}));
 
-							finished_indices.push_back(fi);
+							//finished_indices.push_back(fi);
+							NF.push_back(fi_out); //!! for combining increment and remove_from_Q
 
 							#ifdef DEBUG_BBA
 							std::cout << runtime_start << ": 2 NF_of_spoly_Qback: adding ("<<boost::get<int>(fi_out.front())<<","<<boost::get<int>(fi_out.back())<<") to finished_indices (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
@@ -563,13 +597,376 @@
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition>
 
+		<transition name="update_Q" priority="4">
+			<defun>
+				<require key="queue" mandatory="true"/>
+				<in name="base_filename" type="string"/>
+				<in name="installdir" type="string"/>
+				<in name="degBounds" type="list"/>
+				<in name="Q_in" type="list"/>
+				<in name="NF" type="list"/>
+				<in name="r_in" type="int"/>
+				<in name="Qback" type="index_pair"/>
+				<in name="blacklist" type="set"/>
+				<inout name="M" type="list"/>
+				<out name="update_Qback_r" type="list"/>
+				<out name="started_indices" type="list"/>
+				<out name="runtime" type="map"/>
+				<out name="BB_finished" type="list"/>
+				<module name="singular_buchberger"
+							  require_function_unloads_without_rest="false"
+							  function="function_increment(installdir, degBounds, runtime, base_filename, NF, Q_in, Qback, r_in, update_Qback_r, M, started_indices, BB_finished, blacklist)">
+				  <cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<cinclude href="fstream"/>
+					<cinclude href="chrono"/>
+					<cinclude href="thread"/>
+					<cinclude href="boost/thread/thread.hpp"/>
 
-		<transition name="increment" priority="4">
+					<code><![CDATA[
+					//SLEEP_MS(100);
+					long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+					int r = r_in;
+					GpiSet add_to_blacklist = {};
+
+					/*
+						long deserialize_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+						GpiList output;
+
+						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::string singular_function_name = "deserialize";
+						//std::string library_name = base_filename.substr(0, base_filename.find_last_of('/', base_filename.size() - 2) + 1) + "buchbergergp.lib";
+						std::string library_name = installdir + "buchbergergp.lib";
+						args_read  = {Q_in};
+						args_in    = {};
+						args_inout = {};
+						out        = {&output};
+						out_many   = {};
+						bool delete_files = false;
+						bool silent = true;
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename+"intermediate_files/", args_read, args_in, args_inout, out, out_many, delete_files, silent);
+
+						long deserialize_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						runtime[(std::string) "deserialize in update_Q"] = GpiList({-1L, deserialize_stop, deserialize_stop-deserialize_start, 1L});
+
+						static GpiList Q = output;
+					*/
+					static GpiList Q = Q_in;
+
+					if(NF.size()==3)
+					{
+						std::cout << "ENTERING increment" << std::endl;
+						std::string singular_function_name = "increment";
+
+						GpiList::const_iterator it = NF.begin();
+						int index_i = boost::get<int>(*it); ++it;
+					  int index_j = boost::get<int>(*it); ++it;
+						GpiVariant m = *it;
+
+						long prodcrit_counter  = 0L;
+						long chaincrit_counter = 0L;
+						long cancelled_element_counter = 0L;
+						long cancelled_s_pair_counter  = 0L;
+						long degbound_counter = 0L;
+
+						bool i_in_bl  = (blacklist.find((GpiVariant) index_i)     !=blacklist.end());
+						bool j_in_bl  = (blacklist.find((GpiVariant) index_j)     !=blacklist.end());
+						bool ij_in_bl = (blacklist.find(GpiSet({index_i,index_j}))!=blacklist.end());
+						if (!(((i_in_bl || j_in_bl) && !ij_in_bl) || (i_in_bl && j_in_bl)))
+						{
+							r++;
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": increasing r from " << r-1 << " to " << r << " due to spoly (" << index_i << "," << index_j << ")"<< std::endl;
+							#endif
+
+							M.push_back(m);
+
+							std::vector<std::vector<std::vector<int> > > Mvec;
+							for(GpiList::iterator Mi=M.begin(); Mi!=M.end(); ++Mi)
+							{
+								GpiList Mi_list = get_list(*Mi);
+								std::vector<std::vector<int>> Mveci;
+								for(GpiList::iterator Mii=Mi_list.begin(); Mii!=Mi_list.end(); ++Mii)
+								{
+									Mveci.emplace_back(list2vec(*Mii));
+								}
+								Mvec.emplace_back(Mveci);
+							}
+
+							std::cout << "lcm(leads):" << std::endl;
+							print_variant(vec2list(lcm(Mvec[index_i-1][0],Mvec[index_j-1][0])));
+
+							std::vector<std::vector<int>> Mr = Mvec.back();
+							int i=1;
+							for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
+							{
+								bool add_to_Q = true;
+								std::vector<int> lcm_i_r;
+
+								if (blacklist.find((GpiVariant) i) != blacklist.end())
+								{
+									add_to_Q = false;
+								}
+								else
+								{
+									lcm_i_r = lcm((*Mi)[0], Mr[0]);
+									//if (degBound>0 && degBound < deg(lcm_i_r))
+									if (over_deg_bound(lcm_i_r, degBounds))
+									{
+										add_to_Q=false;
+										degbound_counter++;
+										std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+									}
+									if (test_PC((*Mi)[0],Mr[0])) // apply PC
+									{
+										add_to_Q = false;
+										prodcrit_counter++;
+										std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+									}
+									else // apply CC
+									{
+										int k=1;
+										for (std::vector<std::vector<std::vector<int> > >::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
+										{
+											if(k!=i && k!=r)
+											{
+												if (test_CC(lcm_i_r, (*Mi)[0], Mr[0], (*Mk)[0]))
+												{
+													if(k<i)
+													{
+														add_to_Q = false;
+														chaincrit_counter++;
+														std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+														break;
+													}
+													else // thus i<k<r  (k>r is not possible)
+													{
+														std::vector<int> lcm_k_r = lcm((*Mk)[0], Mr[0]);
+														if(!equal(lcm_k_r,lcm_i_r))
+														{
+															add_to_Q = false;
+															chaincrit_counter++;
+															std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+															break;
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+
+								if (divides_monom(Mr[0],(*Mi)[0]) &&  (blacklist.find((GpiVariant) i)==blacklist.end()))
+								{
+									// new found lead monomial divides i-th lead monomial ==> put i in blacklist
+									// (and Set(i,r) as the (i,r)-th spoly has to be reduced, it is not eliminated through CC!)
+									add_to_blacklist.emplace(i);
+									add_to_blacklist.emplace(GpiSet({i,r}));
+									// remove (i,j) for all j from Q:
+									queue_delete_i(Q, i, base_filename, "cancelled_element");
+									cancelled_element_counter++;
+								}
+
+								if(add_to_Q)
+								{
+									GpiStruct si;
+									si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+									si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , r}));
+									si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+									if(TRACE>0)
+									{
+										std::ifstream irFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(r));
+										if(irFile.good())
+										{
+											started_indices.push_back(si);
+											queue_insert(Q, i, r, *Mi, Mr, lcm_i_r, base_filename);
+										}
+									}
+									else
+									{
+										#ifdef DEBUG_BBA
+										std::cout << runtime_start << ": increment: adding ("<<i<<","<<r<<") to started_indices" << std::endl;
+										#endif
+										// add (i,r) to started indices:
+										started_indices.push_back(si);
+										// add (i,r) and information about lcm(fi,fr) to the queue:
+										queue_insert(Q, i, r, *Mi, Mr, lcm_i_r, base_filename);
+									}
+								}
+							}
+
+							for (GpiList::iterator Qk=Q.begin(); Qk!=Q.end(); )
+							{
+								int ii = boost::get<int>(get_list(*Qk).front());
+								int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
+
+								std::vector<int> lcm_i_j = lcm(Mvec[ii-1][0],Mvec[jj-1][0]);
+
+								if(test_CC(lcm_i_j, Mvec[ii-1][0], Mvec[jj-1][0], Mvec[r-1][0]))
+								{
+									std::vector<int> lcm_i_r = lcm(Mvec[ii-1][0], Mvec[r-1][0]);
+									std::vector<int> lcm_j_r = lcm(Mvec[jj-1][0], Mvec[r-1][0]);
+									if(!equal(lcm_i_r,lcm_i_j) && !equal(lcm_j_r,lcm_i_j))
+									{
+										add_to_blacklist.emplace(GpiList({ii,jj}));
+										Qk = Q.erase(Qk);
+										chaincrit_counter++;
+										cancelled_s_pair_counter++;
+										std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
+										std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
+									}
+									else {++Qk;}
+								}
+								else {++Qk;}
+							}
+						}
+
+						queue_delete_i_j(Q, index_i, index_j, base_filename, "new_element");
+
+
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": increment: set size of Q(ueue) to " << Q.size() <<std::endl;
+						#endif
+
+						std::cout << "s(" << Q.size() << ")" << std::endl;
+
+						std::ofstream logFile(base_filename+"LOG.txt");
+						logFile << r << '\n';
+						logFile << (Q.size());
+						logFile.close();
+
+
+						if(Q.size()>0)
+						{
+							//Qback.i = boost::get<int>(           get_list(Q.back()).front() );
+							//Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+							int new_Qback_i = boost::get<int>(           get_list(Q.back()).front() );
+							int new_Qback_j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+
+							if (new_Qback_i!=Qback.i || new_Qback_j!=Qback.j || r!=r_in || add_to_blacklist.size()>0)
+							{
+								GpiStruct new_Qback;
+								new_Qback.emplace_back(std::pair<std::string,GpiVariant>({"i"    , new_Qback_i}));
+								new_Qback.emplace_back(std::pair<std::string,GpiVariant>({"j"    , new_Qback_j}));
+								GpiStruct new_values;
+								new_values.emplace_back(std::pair<std::string,GpiVariant>({"first" , new_Qback}));
+								new_values.emplace_back(std::pair<std::string,GpiVariant>({"second", r}));
+								new_values.emplace_back(std::pair<std::string,GpiVariant>({"third" , add_to_blacklist}));
+								update_Qback_r.emplace_back(new_values);
+							}
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": current Qback:  " << new_Qback_i << "," << new_Qback_j << std::endl;
+							#endif
+						}
+						else // queue empty
+						{
+							std::cout << runtime_start << ": ########################################## Buchberger Algorithm finished (in 'increment'!) ##########################################" << std::endl;
+							BB_finished.emplace_back(CONTROL_TOKEN);
+						}
+
+
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1L, -1L, -1L,  prodcrit_counter});
+						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1L, -1L, -1L, chaincrit_counter});
+						runtime[(std::string) "DEGREE BOUND"] = GpiList({-1L, -1L, -1L, degbound_counter});
+						runtime[(std::string) "CANCELLED ELEMENTS"] = GpiList({-1L, -1L, -1L,  cancelled_element_counter});
+						runtime[(std::string) "CANCELLED S-PAIRS"] = GpiList({-1L, -1L, -1L,  cancelled_s_pair_counter});
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+						std::cout << "EXITING " << singular_function_name << std::endl;
+					}
+					else
+					{
+						std::cout << "ENTERING remove_from_Q" << std::endl;
+						std::string singular_function_name = "remove_from_Q";
+
+						int index_i = boost::get<int>(NF.front());
+						int index_j = boost::get<int>(NF.back());
+						queue_delete_i_j(Q, index_i, index_j, base_filename, "zero_reduction");
+
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": remove_from_Q: removed element (" << index_i << "," << index_j << ") from Q(ueue) as it reduced to 0, size of Q: " << Q.size() <<std::endl;
+						#endif
+						int Q_size = Q.size();
+						if (Q_size%100==0 || (Q_size<100 && Q_size%10==0))
+						{
+							std::cout << "(" << Q_size << ")" << std::endl;
+						}
+
+						std::ifstream logFileIn(base_filename+"LOG.txt");
+						std::string oldLine1, oldLine2;
+						std::getline(logFileIn, oldLine1);
+						std::getline(logFileIn, oldLine2);
+						logFileIn.close();
+
+						std::ofstream logFile(base_filename+"LOG.txt",std::ios::trunc);
+						logFile << oldLine1 << '\n';
+						logFile << (Q.size());
+						logFile.close();
+
+						if(Q.size()>0)
+						{
+							//Qback.i = boost::get<int>(           get_list(Q.back()).front() );
+							//Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+							int new_Qback_i = boost::get<int>(           get_list(Q.back()).front() );
+							int new_Qback_j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
+
+							if (new_Qback_i!=Qback.i || new_Qback_j!=Qback.j || r!=r_in || add_to_blacklist.size()>0)
+							{
+								GpiStruct new_Qback;
+								new_Qback.emplace_back(std::pair<std::string,GpiVariant>({"i"    , new_Qback_i}));
+								new_Qback.emplace_back(std::pair<std::string,GpiVariant>({"j"    , new_Qback_j}));
+								GpiStruct new_values;
+								new_values.emplace_back(std::pair<std::string,GpiVariant>({"first" , new_Qback}));
+								new_values.emplace_back(std::pair<std::string,GpiVariant>({"second", r}));
+								new_values.emplace_back(std::pair<std::string,GpiVariant>({"third" , add_to_blacklist}));
+								update_Qback_r.emplace_back(new_values);
+							}
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": current Qback:  " << new_Qback_i << "," << new_Qback_j << std::endl;
+							#endif
+						}
+						else // queue empty
+						{
+							std::cout << runtime_start << ": ########################################## Buchberger Algorithm finished ##########################################" << std::endl;
+							BB_finished.emplace_back(CONTROL_TOKEN);
+						}
+
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+						std::cout << "EXITING " << singular_function_name << std::endl;
+					}
+					]]></code>
+				</module>
+			</defun>
+			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="installdir" place="place_installdir"/>
+			<connect-read port="degBounds" place="place_degBounds"/>
+			<connect-read port="Q_in" place="place_Q"/>
+			<connect-read port="r_in" place="place_r"/>
+			<connect-read port="Qback" place="place_Qback"/>
+			<connect-read port="blacklist" place="place_blacklist"/>
+			<connect-in port="NF" place="place_NF"/>
+			<connect-inout port="M" place="place_M"/>
+			<connect-out port="runtime" place="place_runtime"/>
+			<connect-out-many port="update_Qback_r" place="place_update_Qback_r"/>
+			<connect-out-many port="started_indices" place="place_started_indices"/>
+			<connect-out-many port="BB_finished" place="place_BB_finished"/>
+		</transition>
+
+		<!--transition name="increment" priority="4">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="NF" type="list"/>
-				<!--in name="degBound" type="long"/-->
 				<in name="degBounds" type="list"/>
 				<inout name="Q" type="list"/>
 				<inout name="Qback" type="index_pair"/>
@@ -816,7 +1213,6 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<!--connect-read port="degBound" place="place_degBound"/-->
 			<connect-read port="degBounds" place="place_degBounds"/>
 			<connect-in port="NF" place="place_NF"/>
 			<connect-inout port="Q" place="place_Q"/>
@@ -827,15 +1223,12 @@
 			<connect-out port="runtime" place="place_runtime"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
-		</transition>
+		</transition-->
 
-
-
-		<transition name="remove_from_Q" priority="3">
+		<!--transition name="remove_from_Q" priority="3">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
-				<!--in name="M" type="list"/-->
 				<in name="finished_indices" type="index_pair"/>
 				<inout name="Q" type="list"/>
 				<inout name="Qback" type="index_pair"/>
@@ -901,14 +1294,41 @@
 				</module>
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
-			<!--connect-read port="M" place="place_M"/-->
 			<connect-in port="finished_indices" place="place_finished_indices"/>
 			<connect-inout port="Q" place="place_Q"/>
 			<connect-inout port="Qback" place="place_Qback"/>
 			<connect-out port="runtime" place="place_runtime"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
-		</transition>
+		</transition-->
 
+		<transition name="update_Qback_and_r" priority="5">
+			<defun>
+				<require key="queue" mandatory="true"/>
+				<in name="update_Qback_r" type="tuple__index_pair__int__set"/>
+				<inout name="Qback" type="index_pair"/>
+				<inout name="r" type="int"/>
+				<inout name="blacklist" type="set"/>
+				<module name="singular_buchberger"
+							  require_function_unloads_without_rest="false"
+							  function="update_Qback_and_r(update_Qback_r, Qback, r, blacklist)">
+				  <cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="chrono"/>
+					<code><![CDATA[
+
+						Qback = update_Qback_r.first;
+						r     = update_Qback_r.second;
+						blacklist.insert(update_Qback_r.third.begin(), update_Qback_r.third.end());
+
+					]]></code>
+				</module>
+			</defun>
+			<connect-in port="update_Qback_r" place="place_update_Qback_r"/>
+			<connect-inout port="Qback" place="place_Qback"/>
+			<connect-inout port="r" place="place_r"/>
+			<connect-inout port="blacklist" place="place_blacklist"/>
+		</transition>
 
 
 		<transition name="minimize_GB" priority="3">
