@@ -146,7 +146,6 @@ public:
 
 inline void print_variant(GpiVariant const& v, int depth=0) {boost::apply_visitor(print_variant_visitor(depth), v);}
 
-
 // helper functions for handling lead monomials:
 
 //inline bool dp_larger_equal(GpiList const& T1, GpiList const& T2, int d1, int d2)
@@ -176,7 +175,7 @@ inline bool dp_larger_equal(GpiList const& Qentry1, GpiList const& Qentry2)
   return true;
 }
 
-inline bool posInL110_larger_equal(GpiList const& Qentry1, GpiList const& Qentry2)
+inline bool posInL110_larger_equal(GpiList & Qentry1, GpiList & Qentry2)
 {
   //GpiList lcm1 = get_list(Qentry1.back());
   //GpiList lcm2 = get_list(Qentry2.back());
@@ -435,11 +434,185 @@ inline bool test_CC(std::vector<int> const& lcm_i_j, std::vector<int> const& Mi,
   return false;
 }
 
+// helper functions for the queue (using a "static" queue)
 
-// helper functions for the queue
+struct Descending {
+    bool operator()(GpiList a, GpiList b) const {
+        return sel_strat_larger_equal(a, b); // descending order
+    }
+};
+using sPairQueue = std::set<GpiList, Descending>;
+using sPairQueue_by_indices = std::map<std::pair<int,int>,sPairQueue::iterator>;
 
+inline void queue_insert(sPairQueue& Q, sPairQueue_by_indices& Qind, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename)
+{
+  std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
+  ijFile.close();
+
+  int deg_lcm = deg(lcm_vec);
+  GpiList lcm = vec2list(lcm_vec);
+
+  GpiList l_spoly = lead_of_spoly(Mi,Mj,lcm_vec);
+
+  GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, lcm};
+  std::pair<sPairQueue::iterator, bool> res = Q.insert(data);
+  Qind[std::make_pair(i,j)] = res.first;
+}
+
+inline void queue_delete_i_j(sPairQueue& Q, sPairQueue_by_indices& Qind, int i, int j, std::string base_filename, std::string to_filename) // remove index (i,j) from Q
+{
+  //std::cout << "queue_delete_i_j (" << i << "," << j << ")\n";
+
+  std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j))).c_str());
+  std::ofstream ijFile(base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
+  ijFile.close();
+
+  std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
+  //std::cout << "\n("<<std::min(i,j)<<","<<std::max(i,j)<<")" << " == " << "("<< boost::get<int>((*Qind[indices]).front()) <<","<< boost::get<int>(*std::next((*Qind[indices]).begin())) <<")" << "\n";
+  //std::cout << "\n(which, size)" << " == " << "("<< (*Qind[indices]).front().which() <<","<< (*Qind[indices]).size() <<")" << "\n";
+  GpiVariant V = *(Qind[indices]);
+  Q.erase(Qind[indices]);
+  Qind.erase(indices);
+}
+
+inline void queue_delete_i(sPairQueue& Q, sPairQueue_by_indices& Qind, int i, int r, std::string base_filename, std::string to_filename) // remove indices (i,j) and (j,i) from Q (for all j)
+{
+  //std::cout << "queue_delete_i (" << i << ")\n";
+
+  for (int k=1; k<=r; k++)
+  {
+    std::pair<int,int> indices = std::make_pair(std::min(i,k),std::max(i,k));
+    if(Qind.find(indices)!=Qind.end())
+    {
+      //std::cout << "\n("<<std::min(i,k)<<","<<std::max(i,k)<<")" << " == " << "("<< boost::get<int>((*Qind[indices]).front()) <<","<< boost::get<int>(*std::next((*Qind[indices]).begin())) <<")" << "\n";
+      Q.erase(Qind[indices]);
+      Qind.erase(indices);
+
+      std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))).c_str());
+      std::ofstream ijFile (base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k)));
+      ijFile.close();
+    }
+  }
+}
+
+inline void fix_Q(sPairQueue& Q , sPairQueue_by_indices& Qind)
+{
+  for(sPairQueue::iterator it=Q.begin(); it!=Q.end(); ++it)
+  {
+    int i = boost::get<int>((*it).front());
+    int j = boost::get<int>(*std::next((*it).begin()));
+    Qind[std::make_pair(i,j)] = it;
+  }
+}
+
+inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
+{
+	std::ofstream FileQ(filenameQ);
+
+  FileQ << nvars << '\n';
+  FileQ << Q.size() << '\n';
+
+  //std::cout << "\nSERIALIZING QUEUE..." << std::endl;
+  //std::cout << "nvars: " << nvars << std::endl;
+  //std::cout << "size: " << Q.size() << std::endl;
+
+  for(sPairQueue::iterator Qit=Q.begin(); Qit!=Q.end(); ++Qit)
+  {
+    GpiList::const_iterator entry = (*Qit).begin();
+
+
+    //std::cout << ' ' << std::endl;
+    //std::cout << boost::get<int>(*entry) << std::endl;
+    FileQ << boost::get<int>(*entry) << '\n'; ++entry; // i
+    //std::cout << boost::get<int>(*entry) << std::endl;
+    FileQ << boost::get<int>(*entry) << '\n'; ++entry; // j
+    //std::cout << boost::get<int>(*entry) << std::endl;
+    FileQ << boost::get<int>(*entry) << '\n'; ++entry; // deg_lcm
+    //std::cout << boost::get<int>(*entry) << std::endl;
+    FileQ << boost::get<int>(*entry) << '\n'; ++entry; // length
+
+    //print_variant(*entry);
+    GpiList l_spoly = get_list(*entry); ++entry;
+    for(GpiList::iterator Lit=l_spoly.begin(); Lit!=l_spoly.end(); ++Lit)
+      {FileQ << boost::get<int>(*Lit) << '\n';}
+
+    //print_variant(*entry);
+    GpiList lcm = get_list(*entry);
+    for(GpiList::iterator Lit=lcm.begin(); Lit!=lcm.end(); ++Lit)
+      {FileQ << boost::get<int>(*Lit) << '\n';}
+  }
+	FileQ.close();
+}
+
+inline std::pair<sPairQueue,sPairQueue_by_indices> deserialize_queue(std::string filenameQ)
+{
+  std::ifstream FileQ(filenameQ);
+  std::string currLine;
+
+  //std::cout << "\nDESERIALIZING QUEUE..." << std::endl;
+  std::getline(FileQ, currLine);
+  int nvars = std::stoi(currLine);
+  //std::cout << "nvars: " << nvars << std::endl;
+
+  std::getline(FileQ, currLine);
+  int sizeQ = std::stoi(currLine);
+  //std::cout << "size: " << sizeQ << std::endl;
+
+  sPairQueue Q;
+  sPairQueue_by_indices Qind;
+  for(int k=0; k<sizeQ; k++)
+  {
+    GpiList data; //{i, j, deg_lcm, length, l_spoly, lcm};
+    std::getline(FileQ, currLine);
+    int i = std::stoi(currLine); data.emplace_back(i); //i
+    //std::cout << i << '\n';
+    std::getline(FileQ, currLine);
+    int j = std::stoi(currLine); data.emplace_back(j); //j
+    //std::cout << j << '\n';
+    std::getline(FileQ, currLine);
+    data.emplace_back(std::stoi(currLine)); //deg_lcm
+    //std::cout << currLine << '\n';
+    std::getline(FileQ, currLine);
+    data.emplace_back(std::stoi(currLine)); //length
+    //std::cout << currLine << '\n';
+
+    GpiList l_spoly;
+    for(int kk=0; kk<nvars; kk++)
+    {
+      std::getline(FileQ, currLine);
+      l_spoly.emplace_back(std::stoi(currLine));
+    }
+    data.emplace_back(l_spoly);
+
+    GpiList lcm;
+    for(int kk=0; kk<nvars; kk++)
+    {
+      std::getline(FileQ, currLine);
+      lcm.emplace_back(std::stoi(currLine));
+    }
+    data.emplace_back(lcm);
+
+    auto res = Q.insert(data);
+    //Qind[std::make_pair(i,j)] = (--Q.end());
+    Qind[std::make_pair(i,j)] = res.first;
+    //std::cout << "("<<i<<","<<j<<")" << " == " << "("<< boost::get<int>((*Qind[std::make_pair(i,j)]).front()) <<","<< boost::get<int>(*std::next((*Qind[std::make_pair(i,j)]).begin())) <<")" << "\n\n";
+  }
+  //std::cout << " TEST: ("<<11<<","<<13<<")" << " == " << "("<< boost::get<int>((*Qind[std::make_pair(11,13)]).front()) <<","<< boost::get<int>(*std::next((*Qind[std::make_pair(11,13)]).begin())) <<")" << "\n\n";
+  //print_variant(*Qind[std::make_pair(11,13)]);
+  FileQ.close();
+
+  return std::make_pair(Q,Qind);
+}
+
+
+// helper functions for the queue (deprecated)
+
+/*
 inline void queue_insert(GpiList& Q, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename)
 {
+  std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
+  ijFile.close();
+
   int deg_lcm = deg(lcm_vec);
   GpiList lcm = vec2list(lcm_vec);
 
@@ -460,8 +633,6 @@ inline void queue_insert(GpiList& Q, int i, int j, std::vector<std::vector<int>>
     if(!sel_strat_larger_equal(entry, data))
     {
       Q.insert(it, data);
-      std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
-      ijFile.close();
       return;
     }
   }
@@ -510,7 +681,7 @@ inline void queue_delete_i(GpiList& Q, int i, std::string base_filename, std::st
     }
   }
 }
-
+*/
 
 
 NO_NAME_MANGLING
