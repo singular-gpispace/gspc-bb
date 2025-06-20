@@ -2,7 +2,8 @@
 
 #include <drts/drts.hpp>
 
-#include <boost/filesystem/path.hpp>
+//#include <boost/filesystem/path.hpp>
+#include <filesystem>
 #include <boost/program_options.hpp>
 
 #cmakedefine SP_INSTALL_PATH "@SP_INSTALL_PATH@"
@@ -14,17 +15,18 @@ namespace singular_buchberger
   {
   public:
     installation();
-    installation (boost::filesystem::path const&);
-    installation (boost::filesystem::path const&,
-     boost::filesystem::path const&);
+    installation (boost::filesystem::path const& ip);
+    installation (std::filesystem::path const&);
+    installation (std::filesystem::path const&,
+     std::filesystem::path const&);
 
-    boost::filesystem::path workflow_all() const;
-    boost::filesystem::path workflow_dir() const;
+    std::filesystem::path workflow_all() const;
+    std::filesystem::path workflow_dir() const;
     gspc::installation gspc_installation
       (boost::program_options::variables_map&) const;
 
   private:
-    boost::filesystem::path const _path;
-    boost::filesystem::path const _gspc_path;
+    std::filesystem::path const _path;
+    std::filesystem::path const _gspc_path;
   };
 }

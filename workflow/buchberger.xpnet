@@ -822,7 +822,18 @@
 										// add (i,r) to started indices:
 										started_indices.push_back(si);
 										// add (i,r) and information about lcm(fi,fr) to the queue:
+										//int Qs = Q.size();
+										//int Qis = Qind.size();
 										queue_insert(Q, Qind, i, r, *Mi, Mr, lcm_i_r, base_filename);
+/*
+										if(Q.size()!=Qs+1 || Qind.size()!=Qis+1 || Qs!=Qis)
+										{
+											std::cout << '\n' << runtime_start << ": increment: FAILED TO ADD ("<<i<<","<<r<<") !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+											std::cout << runtime_start << ": increment: Q.size() before: "<<Qs<<","<<Qis<<", after:"<<Q.size()<<","<<Qind.size()<<", ENTRY:" << std::endl;
+											print_variant(*Qind[std::make_pair(i,r)]);
+											std::cout << runtime_start << " " << std::endl;
+										}
+*/
 									}
 								}
 							}

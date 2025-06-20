@@ -1,22 +1,23 @@
 #pragma once
 
 #include <boost/filesystem/path.hpp>
+#include <filesystem>
 
 namespace config
 {
-    static boost::filesystem::path const installation("@CMAKE_INSTALL_PREFIX@");
-    static boost::filesystem::path const sing_path("@SINGULAR_HOME@");
-    inline boost::filesystem::path const& singularLibrary()
+    static std::filesystem::path const installation("@CMAKE_INSTALL_PREFIX@");
+    static std::filesystem::path const sing_path("@SINGULAR_HOME@");
+    inline std::filesystem::path const& singularLibrary()
     {
-        static boost::filesystem::path const library
+        static std::filesystem::path const library
          ( sing_path / "lib" / "libSingular.so"
         );
 
         return library;
     }
-    inline boost::filesystem::path const& implementation()
+    inline std::filesystem::path const& implementation()
     {
-        static boost::filesystem::path const library(
+        static std::filesystem::path const library(
          installation / "libexec" / "workflow" / "libbuchberger_implementation.so"
          );
         return library;

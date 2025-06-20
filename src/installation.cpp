@@ -2,7 +2,8 @@
 
 #include <util-generic/executable_path.hpp>
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
+//#include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 
 #include <stdexcept>
@@ -11,7 +12,7 @@ namespace singular_buchberger
 {
   namespace
   {
-    void check ( boost::filesystem::path const& path
+    void check ( std::filesystem::path const& path
                , bool okay
                , std::string const& message
                )
@@ -27,38 +28,38 @@ namespace singular_buchberger
       }
     }
 
-    void check_is_directory (boost::filesystem::path const& path)
+    void check_is_directory (std::filesystem::path const& path)
     {
       check ( path
-            , boost::filesystem::is_directory (path)
+            , std::filesystem::is_directory (path)
             , "is not a directory"
             );
     }
-    void check_is_file (boost::filesystem::path const& path)
+    void check_is_file (std::filesystem::path const& path)
     {
       check ( path
-            , boost::filesystem::exists (path)
+            , std::filesystem::exists (path)
             , "does not exist"
             );
       check ( path
-            , boost::filesystem::is_regular_file (path)
+            , std::filesystem::is_regular_file (path)
             , "is not a regular file"
             );
     }
 
     //! \todo configure
-    boost::filesystem::path gspc_home
-      (boost::filesystem::path const& gspc_path)
+    std::filesystem::path gspc_home
+      (std::filesystem::path const& gspc_path)
     {
       return gspc_path;
     }
-    boost::filesystem::path workflow_path
-      (boost::filesystem::path const& installation_path)
+    std::filesystem::path workflow_path
+      (std::filesystem::path const& installation_path)
     {
       return installation_path / "libexec" / "workflow";
     }
-    boost::filesystem::path workflow_all_file
-      (boost::filesystem::path const& installation_path)
+    std::filesystem::path workflow_all_file
+      (std::filesystem::path const& installation_path)
     {
       return workflow_path (installation_path) / "buchberger.pnet";
     }
@@ -66,18 +67,27 @@ namespace singular_buchberger
 
   installation::installation()
     : installation
-        (SP_INSTALL_PATH)
+        (std::filesystem::path(SP_INSTALL_PATH))
   {}
 
   installation::installation (boost::filesystem::path const& ip)
+    : installation
+        (std::filesystem::path(ip.string()))
+  {}
+
+  installation::installation (std::filesystem::path const& ip)
     : installation ( ip
-                   , fhg::util::executable_path
-                       (gspc::set_gspc_home).parent_path().parent_path()
+                   , std::filesystem::path (fhg::util::executable_path
+                       (
+                         static_cast<void(*)(boost::program_options::variables_map&, const std::filesystem::path&)>(gspc::set_gspc_home)
+                         //static_cast<void(*)(boost::program_options::variables_map&, const std::filesystem::path&)>(gspc::set_gspc_home) // deprecated
+                         //gspc::set_gspc_home
+                       ).parent_path().parent_path().string())
                    )
   {}
 
-  installation::installation (boost::filesystem::path const& ip,
-    boost::filesystem::path const& gp)
+  installation::installation (std::filesystem::path const& ip,
+    std::filesystem::path const& gp)
     : _path (ip), _gspc_path (gp)
   {
     //! \todo more detailed tests!?
@@ -86,11 +96,11 @@ namespace singular_buchberger
     check_is_file (workflow_all());
   }
 
-  boost::filesystem::path installation::workflow_all() const
+  std::filesystem::path installation::workflow_all() const
   {
     return workflow_all_file (_path);
   }
-  boost::filesystem::path installation::workflow_dir() const
+  std::filesystem::path installation::workflow_dir() const
   {
     return workflow_path (_path);
   }

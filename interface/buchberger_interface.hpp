@@ -29,12 +29,21 @@
 
 #define CONTROL_TOKEN we::type::literal::control{}
 
+/*
 #define RESOLVE_INTERFACE_FUNCTION(function) \
       (fhg::util::scoped_dlhandle \
       (config::implementation(), \
       RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND) \
       .sym<decltype(function)> \
       (BOOST_PP_STRINGIZE(function)))
+*/
+#define RESOLVE_INTERFACE_FUNCTION(function) \
+    (fhg::util::scoped_dlhandle \
+    (boost::filesystem::path(config::implementation().string()), \
+    RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND) \
+    .sym<decltype(function)> \
+    (BOOST_PP_STRINGIZE(function)))
+
 
 
 
