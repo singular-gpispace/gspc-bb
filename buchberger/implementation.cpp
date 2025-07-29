@@ -649,6 +649,8 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     GpiList* finished_indices,
                                     GpiList* NF)
 {
+  std::cout << "current Qback: ("<<Qback_i<<","<<Qback_j<<")"<< std::endl;
+
 	std::string ids = worker();
   std::string save_filename = base_filename+"temporary_files/intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
 

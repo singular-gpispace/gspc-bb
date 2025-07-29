@@ -1,8 +1,9 @@
 #pragma once
 
-#define DEBUG_BBA
+//#define DEBUG_BBA
 
 #define USE_KNF true
+#define HEAD_SIZE_FACTOR 5
 
 #define TRACE 0
 
@@ -12,6 +13,7 @@
 
 //#define sel_strat_larger_equal dp_larger_equal
 #define sel_strat_larger_equal posInL110_larger_equal
+#define Q_larger_equal         posInL110_larger_equal
 
 #include <string>
 #include <config.hpp>
@@ -26,6 +28,12 @@
 #include <we/type/bytearray.hpp>
 #include <we/type/value.hpp>
 #include <map>
+
+#include <vector>
+#include <unordered_map>
+#include <algorithm>
+
+#include <cassert>
 
 #define CONTROL_TOKEN we::type::literal::control{}
 
@@ -47,6 +55,299 @@
 
 
 
+
+// Priority queue with delete: //!!!
+
+// iterable container holding elements of type pair<K,V> sorted with respect to Compare with logarithmic insertion/removal and average constant time access by a key (of type K)
+template<typename K, typename V, typename Compare>
+class PriorityQueue {
+private:
+    using SetType = std::set<std::pair<K,V>, Compare>;
+    using MapType = std::unordered_map<K,typename SetType::iterator>;
+
+    SetType entries;
+    Compare comp; // = "is-left-of"
+    std::size_t head_size;
+    typename SetType::iterator head_end;
+    MapType references;
+public:
+    PriorityQueue(std::size_t head_size)
+    : entries(Compare()), comp(Compare()), head_size(head_size), head_end(entries.end()) {}
+
+    using iterator = typename SetType::iterator;
+    using const_iterator = typename SetType::const_iterator;
+
+    iterator begin() { return entries.begin(); }
+    iterator end()   { return entries.end(); }
+    iterator hend()  { return head_end; }
+
+    const_iterator begin() const { return entries.begin(); }
+    const_iterator end()   const { return entries.end(); }
+    const_iterator hend()  const { return head_end; }
+
+    const std::pair<K,V>& front() const {
+      return *(entries.begin());
+    }
+    const K& front_key() const {
+      return front().first;
+    }
+    const V& front_value() const {
+      return front().second;
+    }
+    const std::pair<K,V>& back() const {
+      return *(entries.rbegin());
+    }
+    const K& back_key() const {
+      return back().first;
+    }
+    const V& back_value() const {
+      return back().second;
+    }
+
+    std::size_t size() {
+      assert(entries.size()==references.size());
+      return entries.size();
+    }
+
+    bool is_in_head(const std::pair<K,V>& key_value)
+      {return comp(key_value, *head_end);}
+    bool is_in_head(const K& key)
+      {return comp(*(references[key]), *head_end);}
+
+    std::pair<iterator,bool> push(const std::pair<K,V>& key_value) {
+      std::pair<iterator,bool> res = entries.insert(key_value);
+      if (res.second) {
+        references[key_value.first] = res.first;
+        if(entries.size()>head_size && (head_end==entries.end() || comp(key_value, *head_end))) {--head_end;}
+      }
+      return res;
+    }
+    std::pair<iterator,bool> push(const K& key, const V& value) {
+      return push(std::make_pair(key,value));
+    }
+
+    const std::pair<K,V>& get(const K& key) const {
+      typename MapType::const_iterator it = references.find(key);
+      if (it == references.end()) throw std::runtime_error("Element not in queue");
+      return *(it->second);
+    }
+    const              V& get_value(const K& key) const {
+      return get(key).second;
+    }
+
+    iterator erase(const K& key) {
+      typename MapType::iterator it = references.find(key);
+      if (it == references.end()) return end();
+
+      iterator entry = it->second;
+      if(entries.size()>head_size && (comp(*entry, *head_end) || entry == head_end)) {++head_end;}
+
+      iterator next = entries.erase(entry);
+      references.erase(it);
+
+
+      return next;
+    }
+    iterator erase(iterator it) {
+      if (it == entries.end()) return end();
+      K key = (*it).first;
+
+      if(entries.size()>head_size && (comp(*it, *head_end) || it == head_end)) {++head_end;}
+
+      references.erase(key);
+      iterator next = entries.erase(it);
+
+      return next;
+    }
+
+    const std::pair<K,V>& top() const {
+      iterator it = entries.begin();
+      if (it == entries.end()) throw std::runtime_error("Queue empty");
+      return *it;
+    }
+    const              K& top_key() const {
+      return top().first;
+    }
+    const              V& top_value() const {
+      return top().second;
+    }
+
+    std::pair<K,V> pop() {
+      std::pair<K,V> entry = top();
+      erase(begin());
+      return entry;
+    }
+    K              pop_key() {
+      return pop().first;
+    }
+    V              pop_value() {
+      return pop().second;
+    }
+
+    iterator       find(const K& key) {
+      typename MapType::iterator it = references.find(key);
+      if(it==references.end()) return entries.end();
+      return it->second;
+    }
+    const_iterator find(const K& key) const {
+      typename MapType::const_iterator it = references.find(key);
+      if(it==references.end()) return entries.end();
+      return it->second;
+    }
+    iterator       find(const std::pair<K,V>& key_value) {
+      return (entries.find(key_value));
+    }
+    const_iterator find(const std::pair<K,V>& key_value) const {
+      return (entries.find(key_value));
+    }
+
+    bool contains_key(const K& key) const {
+      return (references.find(key)!=references.end());
+    }
+    bool contains(const std::pair<K,V>& key_value) const {
+      return (entries.find(key_value)!=entries.end());
+    }
+
+    size_t get_head_size()
+      {return head_size;}
+    /*
+    void display() {
+      std::cout << "\nhead_size="<<head_size << std::endl;
+      std::cout << "entries.size()="<<entries.size()<<", references.size()="<<references.size() << std::endl;
+      std::cout << "elements:" << std::endl;
+      for (iterator it=begin(); it!=end(); ++it)
+      {
+        std::string s="";
+        if (it==head_end) s=" <-------- head_end";
+        std::cout << "  " << it->first << ", " << it->second << s << std::endl;
+        if (references.find(it->first)==references.end())
+          std::cout << "  NOT IN REFERENCES!" << std::endl;
+      }
+      std::string s="";
+      if (entries.end()==head_end) s=" <-------- head_end";
+        std::cout << "  end" << s << std::endl;
+      std::cout << "" << std::endl;
+    }
+    */
+};
+
+namespace std {
+    template<>
+    struct hash<std::pair<int, int>> {
+        std::size_t operator()(const std::pair<int, int>& p) const noexcept {
+            return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 1);
+        }
+    };
+}
+
+
+/* OLD VERSION
+template<typename K, typename V>
+class PriorityQueue {
+private:
+    std::vector<std::pair<K,V>> heap;
+    std::unordered_map<K, size_t> positions;
+
+    // Helper to swap elements and update positions
+    void swap_positions(size_t i, size_t j) {
+        std::swap(heap[i], heap[j]);
+        positions[heap[i].first] = i;
+        positions[heap[j].first] = j;
+    }
+
+    // Heapify-up after insertion //!! use std::make_heap?    also: flat_map, flat_set instead of map, set? --> no dynamic allocation
+    void heapify_up(size_t index) {
+        while (index != 0 && Q_smaller(heap[parent(index)] , heap[index])) {
+            swap_positions(index, parent(index));
+            index = parent(index);
+        }
+    }
+
+    // Heapify-down after deletion
+    void heapify_down(size_t index) {
+        size_t left = left_child(index);
+        size_t right = right_child(index);
+        size_t largest = index;
+
+        if (left  < heap.size() && Q_larger(heap[left]  , heap[largest])) largest = left;
+        if (right < heap.size() && Q_larger(heap[right] , heap[largest])) largest = right;
+
+        if (largest != index) {
+            swap_positions(index, largest);
+            heapify_down(largest);
+        }
+    }
+
+    size_t parent(size_t index) { return (index - 1) / 2; }
+    size_t left_child(size_t index) { return 2 * index + 1; }
+    size_t right_child(size_t index) { return 2 * index + 2; }
+
+public:
+    PriorityQueue() = default;
+
+    bool empty() const { return heap.empty(); }
+
+    void push(const std::pair<K,V>& value) {
+        heap.push_back(value);
+        size_t index = heap.size() - 1;
+        positions[value.first] = index;
+        heapify_up(index);
+    }
+
+    void push(const K& key, const V& value) {
+        push(std::make_pair(key,value));
+    }
+
+    void pop() {
+        if (heap.empty()) return;
+
+        positions.erase(heap[0].first);
+        heap[0] = heap.back();
+        heap.pop_back();
+
+        if (!heap.empty()) {
+            positions[heap[0].first] = 0;
+            heapify_down(0);
+        }
+    }
+
+    const std::pair<K,V>& top() const {
+        if (heap.empty()) throw std::runtime_error("PriorityQueue is empty");
+        return heap[0];
+    }
+
+    const std::pair<K,V>& get(const K& key) const {
+      auto it = positions.find(key);
+      if (it == positions.end()) throw std::runtime_error("Element not in queue");
+      return heap[it->second];
+    }
+
+    const std::pair<K,V>& get_value(const K& key) const {
+      return get(key).second;
+    }
+
+    bool remove(const K& key) {
+        auto it = positions.find(key);
+        if (it == positions.end()) return false;
+
+        size_t index = it->second;
+        positions.erase(it);
+
+        heap[index] = heap.back();
+        heap.pop_back();
+
+        if (index < heap.size()) {
+            positions[heap[index].first] = index;
+            heapify_down(index);
+            heapify_up(index);
+        }
+        return true;
+    }
+};
+*/
+
+
+
 //extern int Kstd1_deg;
 
 
@@ -64,7 +365,6 @@ using GpiStruct  = pnet::type::value::structured_type;
 using GpiList    = std::list<GpiVariant>;
 using GpiSet     = std::set<GpiVariant>;
 using GpiMap     = std::map<GpiVariant,GpiVariant>;
-
 
 // visitor functions to convert to proper lists, sets and maps:
 
@@ -184,6 +484,9 @@ inline bool dp_larger_equal(GpiList const& Qentry1, GpiList const& Qentry2)
   return true;
 }
 
+
+
+
 inline bool posInL110_larger_equal(GpiList & Qentry1, GpiList & Qentry2)
 {
   //GpiList lcm1 = get_list(Qentry1.back());
@@ -220,6 +523,23 @@ inline bool posInL110_larger_equal(GpiList & Qentry1, GpiList & Qentry2)
 
   return true;
 }
+
+inline bool Q_smaller(GpiList & Qentry1, GpiList & Qentry2)
+{
+  return (!Q_larger_equal(Qentry1, Qentry2));
+}
+
+inline bool Q_larger(GpiList & Qentry1, GpiList & Qentry2)
+{
+  return (Q_smaller(Qentry2, Qentry1));
+}
+
+struct QueueOrdering {
+    bool operator()(std::pair<std::pair<int,int>,GpiList> a, std::pair<std::pair<int,int>,GpiList> b) const {
+        return !sel_strat_larger_equal(a.second, b.second); // "<", i.e. a comes first w.r.t. Singulars s-pair selection strategy
+    }
+};
+
 
 inline bool equal(std::vector<int> const& m1, std::vector<int> const& m2)
 {
@@ -445,15 +765,23 @@ inline bool test_CC(std::vector<int> const& lcm_i_j, std::vector<int> const& Mi,
 
 // helper functions for the queue (using a "static" queue)
 
+/*
 struct Descending {
     bool operator()(GpiList a, GpiList b) const {
         return sel_strat_larger_equal(a, b); // descending order
     }
 };
-using sPairQueue = std::set<GpiList, Descending>;
-using sPairQueue_by_indices = std::map<std::pair<int,int>,sPairQueue::iterator>;
+*/
 
-inline void queue_insert(sPairQueue& Q, sPairQueue_by_indices& Qind, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename)
+using sPairQueue = PriorityQueue<std::pair<int,int>,GpiList,QueueOrdering>;
+// keys:    s-pair indices (i,j) where i<j
+// values:  list of necessary information to sort s-pairs (degree, lead monomial, length, etc.)
+// Compare: ordering of s-polnomials, should be the same as in Singular (has access to keys AND values)
+
+//using sPairQueue = PriorityQueue<std::pair<int,int>,GpiList>; //std::set<GpiList, Descending>;
+//using sPairQueue_by_indices = std::map<std::pair<int,int>,sPairQueue::iterator>;
+
+inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename, [[maybe_unused]] int state)
 {
   std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
   ijFile.close();
@@ -464,62 +792,82 @@ inline void queue_insert(sPairQueue& Q, sPairQueue_by_indices& Qind, int i, int 
   GpiList l_spoly = lead_of_spoly(Mi,Mj,lcm_vec);
 
   GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, lcm};
-  std::pair<sPairQueue::iterator, bool> res = Q.insert(data);
-  Qind[std::make_pair(i,j)] = res.first;
+  Q.push(std::make_pair(i,j),data);
 }
 
-inline void queue_delete_i_j(sPairQueue& Q, sPairQueue_by_indices& Qind, int i, int j, std::string base_filename, std::string to_filename) // remove index (i,j) from Q
+inline void queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filename, std::string to_filename, int* nrunning) // remove index (i,j) from Q
 {
-  //std::cout << "queue_delete_i_j (" << i << "," << j << ")\n";
+  size_t Qs = Q.size();
+  std::cout << "queue_delete_i_j (" << i << "," << j << "), size="<<Qs<<"\n";
 
+  std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
   std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j))).c_str());
   std::ofstream ijFile(base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
   ijFile.close();
 
-  std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
+  //std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
   //std::cout << "\n("<<std::min(i,j)<<","<<std::max(i,j)<<")" << " == " << "("<< boost::get<int>((*Qind[indices]).front()) <<","<< boost::get<int>(*std::next((*Qind[indices]).begin())) <<")" << "\n";
   //std::cout << "\n(which, size)" << " == " << "("<< (*Qind[indices]).front().which() <<","<< (*Qind[indices]).size() <<")" << "\n";
-  GpiVariant V = *(Qind[indices]);
-  Q.erase(Qind[indices]);
-  Qind.erase(indices);
+  //GpiList data = Q.get(std::make_pair(i,j));// *(Qind[indices]);
+  if (Q.contains_key(indices)) {
+    (*nrunning)--;
+    Q.erase(indices);
+  }
+  //Q.erase(Qind[indices]);
+  //Qind.erase(indices);
+  std::cout << "queue size in queue_delete_i_j: "<<Qs<<" ---> "<<Q.size()<<"\n";
 }
 
-inline void queue_delete_i(sPairQueue& Q, sPairQueue_by_indices& Qind, int i, int r, std::string base_filename, std::string to_filename) // remove indices (i,j) and (j,i) from Q (for all j)
+inline void queue_delete_i(sPairQueue& Q, int i, int r, std::string base_filename, std::string to_filename, int* nrunning) // remove indices (i,j) and (j,i) from Q (for all j)
 {
-  //std::cout << "queue_delete_i (" << i << ")\n";
+  size_t Qs = Q.size();
+  std::cout << "queue_delete_i (" << i << ")\n";
 
   for (int k=1; k<=r; k++)
   {
     std::pair<int,int> indices = std::make_pair(std::min(i,k),std::max(i,k));
-    if(Qind.find(indices)!=Qind.end())
+    if(Q.contains_key(indices))
     {
       //std::cout << "\n("<<std::min(i,k)<<","<<std::max(i,k)<<")" << " == " << "("<< boost::get<int>((*Qind[indices]).front()) <<","<< boost::get<int>(*std::next((*Qind[indices]).begin())) <<")" << "\n";
-      Q.erase(Qind[indices]);
-      Qind.erase(indices);
-
+      //GpiList data = Q.get_value(indices);// *(Qind[indices]);
+      //if (boost::get<int>(data.back())==1) {(*nrunning)--;}
+      if (Q.contains_key(indices)) {
+        (*nrunning)--;
+        Q.erase(indices);
+      }
       std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))).c_str());
       std::ofstream ijFile (base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k)));
       ijFile.close();
     }
   }
-}
 
-inline void fix_Q(sPairQueue& Q , sPairQueue_by_indices& Qind)
+  std::cout << "queue size in queue_delete_i: "<<Qs<<" ---> "<<Q.size()<<"\n";
+}
+/*
+inline void fix_Q(sPairQueue& Q , sPairQueue_by_indices& Qind, int* nrunning)
 {
+  (*nrunning) = 0;
   for(sPairQueue::iterator it=Q.begin(); it!=Q.end(); ++it)
   {
     int i = boost::get<int>((*it).front());
     int j = boost::get<int>(*std::next((*it).begin()));
     Qind[std::make_pair(i,j)] = it;
+    if(boost::get<int>((*it).back())==1)
+    {
+      (*nrunning)++;
+    }
   }
 }
-
+*/
 inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
 {
 	std::ofstream FileQ(filenameQ);
 
   FileQ << nvars << '\n';
   FileQ << Q.size() << '\n';
+  FileQ << (int) Q.get_head_size() << '\n';
+  std::cout << "head_size (serialize): " << Q.get_head_size() << std::endl;
+  std::cout << "head_size (serialize, int): " << (int) Q.get_head_size() << std::endl;
 
   //std::cout << "\nSERIALIZING QUEUE..." << std::endl;
   //std::cout << "nvars: " << nvars << std::endl;
@@ -527,7 +875,7 @@ inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
 
   for(sPairQueue::iterator Qit=Q.begin(); Qit!=Q.end(); ++Qit)
   {
-    GpiList::const_iterator entry = (*Qit).begin();
+    GpiList::const_iterator entry = (*Qit).second.begin();
 
 
     //std::cout << ' ' << std::endl;
@@ -542,33 +890,44 @@ inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
 
     //print_variant(*entry);
     GpiList l_spoly = get_list(*entry); ++entry;
-    for(GpiList::iterator Lit=l_spoly.begin(); Lit!=l_spoly.end(); ++Lit)
-      {FileQ << boost::get<int>(*Lit) << '\n';}
+    for(GpiList::iterator Lit=l_spoly.begin(); Lit!=l_spoly.end(); ++Lit) {
+      //std::cout << " l_spoly " << (*Lit).which() << std::endl;
+      FileQ << boost::get<int>(*Lit) << '\n';
+    }
 
     //print_variant(*entry);
-    GpiList lcm = get_list(*entry);
-    for(GpiList::iterator Lit=lcm.begin(); Lit!=lcm.end(); ++Lit)
-      {FileQ << boost::get<int>(*Lit) << '\n';}
+    GpiList lcm = get_list(*entry); ++entry;
+    for(GpiList::iterator Lit=lcm.begin(); Lit!=lcm.end(); ++Lit) {
+      //std::cout << " lcm " << (*Lit).which() << std::endl;
+      FileQ << boost::get<int>(*Lit) << '\n';
+    }
+
+    //FileQ << boost::get<int>(*entry) << '\n'; // status
   }
 	FileQ.close();
 }
 
-inline std::pair<sPairQueue,sPairQueue_by_indices> deserialize_queue(std::string filenameQ)
+inline sPairQueue deserialize_queue(std::string filenameQ)
 {
   std::ifstream FileQ(filenameQ);
   std::string currLine;
 
-  //std::cout << "\nDESERIALIZING QUEUE..." << std::endl;
+  std::cout << "\nDESERIALIZING QUEUE..." << std::endl;
   std::getline(FileQ, currLine);
   int nvars = std::stoi(currLine);
-  //std::cout << "nvars: " << nvars << std::endl;
+  std::cout << "nvars: " << nvars << std::endl;
 
   std::getline(FileQ, currLine);
   int sizeQ = std::stoi(currLine);
-  //std::cout << "size: " << sizeQ << std::endl;
+  std::cout << "size: " << sizeQ << std::endl;
 
-  sPairQueue Q;
-  sPairQueue_by_indices Qind;
+  std::getline(FileQ, currLine);
+  int head_size = std::stoi(currLine);
+  std::cout << "head_size (deserialize): " << head_size << std::endl;
+
+  sPairQueue Q(head_size);
+
+  //sPairQueue_by_indices Qind;
   for(int k=0; k<sizeQ; k++)
   {
     GpiList data; //{i, j, deg_lcm, length, l_spoly, lcm};
@@ -601,16 +960,19 @@ inline std::pair<sPairQueue,sPairQueue_by_indices> deserialize_queue(std::string
     }
     data.emplace_back(lcm);
 
-    auto res = Q.insert(data);
+    //std::getline(FileQ, currLine);
+    //data.emplace_back(std::stoi(currLine)); //status
+
+    Q.push(std::make_pair(i,j),data);
     //Qind[std::make_pair(i,j)] = (--Q.end());
-    Qind[std::make_pair(i,j)] = res.first;
+    //Qind[std::make_pair(i,j)] = res.first;
     //std::cout << "("<<i<<","<<j<<")" << " == " << "("<< boost::get<int>((*Qind[std::make_pair(i,j)]).front()) <<","<< boost::get<int>(*std::next((*Qind[std::make_pair(i,j)]).begin())) <<")" << "\n\n";
   }
   //std::cout << " TEST: ("<<11<<","<<13<<")" << " == " << "("<< boost::get<int>((*Qind[std::make_pair(11,13)]).front()) <<","<< boost::get<int>(*std::next((*Qind[std::make_pair(11,13)]).begin())) <<")" << "\n\n";
   //print_variant(*Qind[std::make_pair(11,13)]);
   FileQ.close();
 
-  return std::make_pair(Q,Qind);
+  return Q;
 }
 
 
@@ -641,7 +1003,7 @@ inline void queue_insert(GpiList& Q, int i, int j, std::vector<std::vector<int>>
     //if(!sel_strat_larger_equal(get_list(entry.back()), lcm, boost::get<int>(*std::next(entry.begin(),2)), deg_lcm))
     if(!sel_strat_larger_equal(entry, data))
     {
-      Q.insert(it, data);
+      Q.push(it, data);
       return;
     }
   }

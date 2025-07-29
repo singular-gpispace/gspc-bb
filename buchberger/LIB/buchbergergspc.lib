@@ -134,7 +134,7 @@ static proc gspc_buchberger_static(token t, gspcConfigToken gc)
     }
 
     //Parse worker topology
-    driver_opts = driver_opts + " --topology " + "'worker:" + string(gc.procspernode) + " queue:1x1'";
+    driver_opts = driver_opts + " --topology " + "'worker:" + string(gc.procspernode) + " update_Q:1x1 update_Qback_and_r:1x1 update_job_queue:1x1 start_jobs:1x1 NF_of_spoly_Qback:1x1'";
 
     //Parse nodefile
     if (gc.nodefile[1] != "/") {gc.nodefile = installdir + gc.nodefile;}

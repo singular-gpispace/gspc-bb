@@ -20,28 +20,50 @@
 		<place name="place_update_Qback_r" type="tuple__index_pair__int__set"/>
 		<place name="place_M" type="list"/>
 		<place name="place_balNF" type="control"/>
-		<place name="place_Q" type="list"/>
+		<!--place name="place_Q" type="list"/-->
 		<place name="place_Qback" type="index_pair"/>
+		<place name="place_job_queue" type="list"/>
+		<place name="place_update_job_queue" type="list"/>
+		<place name="place_job_queue_running" type="set"/>
 		<place name="place_started_indices" type="running_reduction"/>
 		<place name="place_finished_indices" type="index_pair"/>
 		<place name="place_NF" type="list"/>
+		<!--place name="place_NF2" type="list"/-->
 		<place name="place_needed_indices" type="long"/>
 		<place name="place_needed_indices_list" type="list"/>
 		<place name="place_blacklist" type="set"/>
 		<!--place name="place_degBound" type="long"/-->
 		<place name="place_degBounds" type="list"/>
+		<place name="place_nrunning" type="int"/>
+		<place name="place_nworkers" type="int"/>
 		<place name="place_runtime" type="map"/>
+		<place name="place_testplace" type="list"/>
+		<place name="place_once" type="control">
+			<token>
+					<value>[]</value>
+			</token>
+		</place>
+		<place name="place_enable_update_Q" type="control">
+			<token>
+					<value>[]</value>
+			</token>
+		</place>
+		<place name="place_enable_update_job_queue" type="control"/>
 
 
 		<transition name="init" priority="3">
 			<defun>
-				<require key="worker" mandatory="true"/>
+				<require key="NF_of_spoly_Qback" mandatory="true"/>
        	<in name="base_filename" type="string"/>
 				<in name="input" type="string"/>
 				<in name="installdir" type="string"/>
 				<!--in name="degBound" type="long"/-->
+				<out name="nworkers" type="int"/>
+				<out name="nrunning" type="int"/>
 				<out name="degBounds" type="list"/>
 				<out name="started_indices" type="list"/>
+				<out name="job_queue" type="list"/>
+				<out name="job_queue_running" type="set"/>
 				<!--out name="Q_out" type="list"/-->
 				<out name="Qback" type="index_pair"/>
 				<out name="blacklist" type="set"/>
@@ -53,7 +75,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(started_indices, installdir, degBounds, runtime, base_filename, input, Qback, r, M, redSB, balNF, blacklist, BB_finished)">
+							  function="function_init(started_indices, installdir, degBounds, nworkers, nrunning, runtime, base_filename, input, Qback, r, M, redSB, balNF, blacklist, BB_finished, job_queue, job_queue_running)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -68,10 +90,10 @@
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::cout << runtime_start << ": ENTERING INIT " << std::endl;
 
-						//GpiList Q; //!!
-						sPairQueue Q;
-						sPairQueue_by_indices Qind;
 						int nvars;
+
+						nrunning=0;
+						job_queue_running = GpiSet({});
 
 						std::string singular_function_name = "init";
 						std::cout << "ENTERING " << singular_function_name << std::endl;
@@ -102,10 +124,15 @@
 						queueFile.close();
 
 
-						long nworkers=0; // max number of workers given to NF_of_spoly transition
+						long nworkers_long=0; // max number of workers given to NF_of_spoly transition
 						int prev_r=0; // value of r from a previous computation that is being continued
 						std::vector<std::vector<std::vector<int> > > Mvec; // lead monomials as a vector of exponent vectors (last entry = component)
-						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &degBounds, &redSB, &nworkers, &prev_r, &runtime);
+						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &degBounds, &redSB, &nworkers_long, &prev_r, &runtime);
+						nworkers = (int) nworkers_long;
+
+						//GpiList Q; //!!
+						sPairQueue Q(nworkers*HEAD_SIZE_FACTOR);
+						//sPairQueue_by_indices Qind;
 
 						r = Mvec.size();
 						#ifdef DEBUG_BBA
@@ -148,26 +175,33 @@
 										}
 										else
 										{
-											std::ifstream ijResFileIn(base_filename+"temporary_files/intermediate_result_"+std::to_string(i)+"_"+std::to_string(j));
-											GpiStruct si;
-											si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
-											si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
-											si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) ijResFileIn.good()}));
-											ijResFileIn.close();
-
 											// move from degree_bound to started
 											std::ofstream ijFileOut(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j)); ijFileOut.close();
 											std::remove((base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
 
-											#ifdef DEBUG_BBA
-											std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
-											#endif
+											int state=0;
 
-											// add (i,j) to started indices:
-											started_indices.push_back(si);
+											std::ifstream ijResFileIn(base_filename+"temporary_files/intermediate_result_"+std::to_string(i)+"_"+std::to_string(j));
+											if(ijResFileIn.good())
+											{
+												GpiStruct si;
+												si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+												si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
+												si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) ijResFileIn.good()}));
+												ijResFileIn.close();
+
+												#ifdef DEBUG_BBA
+												std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
+												#endif
+
+												// add (i,j) to started indices:
+												started_indices.push_back(si);
+												nrunning++;
+												state=1;
+											}
 
 											// add (i,j) and information about lcm(fi,fj) to the queue:
-											queue_insert(Q, Qind, i, j, *Mi, *Mj, lcm_i_j, base_filename);
+											queue_insert(Q, i, j, *Mi, *Mj, lcm_i_j, base_filename, state);
 											nvars = lcm_i_j.size();
 										}
 									}
@@ -243,6 +277,7 @@
 
 									if(add_to_Q)
 									{
+										/*  //!!!
 										GpiStruct si;
 										si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
 										si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
@@ -253,8 +288,10 @@
 										#endif
 										// add (i,j) to started indices:
 										started_indices.push_back(si);
+										*/
+
 										// add (i,j) and information about lcm(fi,fj) to the queue:
-										queue_insert(Q, Qind, i, j, *Mi, *Mj, lcm_i_j, base_filename);
+										queue_insert(Q, i, j, *Mi, *Mj, lcm_i_j, base_filename, 0);
 										nvars = lcm_i_j.size();
 									}
 								}
@@ -262,16 +299,50 @@
 						}
 
 						// build M
-						//!!!for(std::vector<std::vector<std::vector<int> > >::iterator Mveci=Mvec.begin(); Mveci!=Mvec.end(); ++Mveci)
+						//!!for(std::vector<std::vector<std::vector<int> > >::iterator Mveci=Mvec.begin(); Mveci!=Mvec.end(); ++Mveci)
 						//{
 						//	M.emplace_back(vec2list(*Mveci));
 						//}
 						M = vec2list(Mvec);
 
+						// start jobs:
+						job_queue = GpiList({});
+						for(sPairQueue::iterator entry=Q.begin(); entry!=Q.hend(); ++entry)
+						{
+							std::pair<int,int> indices = (*entry).first;
+							job_queue.emplace_back(GpiList({indices.first,indices.second}));
+
+
+							/* //STARTED_INDICES
+							GpiList data = (*entry).second;
+							GpiList::const_iterator it = data.begin();
+							int i=boost::get<int>(*it); ++it;
+							int j=boost::get<int>(*it); ++it;
+
+							GpiStruct si;
+							si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+							si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
+							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
+							#endif
+							// add (i,j) to started indices:
+							started_indices.push_back(si);
+							nrunning++;
+							*/
+						}
+
+						//fix_Q(Q,,&nrunning);
+
+						//!!!
+
 						if(Q.size()>0)
 						{
-							Qback.i = boost::get<int>(           get_list(*--Q.end()).front() );
-							Qback.j = boost::get<int>(*std::next(get_list(*--Q.end()).begin()));
+							//std::cout << runtime_start << ": ----------------------------- (           get_list((*--Q.end()).second).front() ).which(): " << (           get_list((*--Q.end()).second).front() ).which() << std::endl;
+							Qback.i = Q.front_key().first;
+							//std::cout << runtime_start << ": ----------------------------- (*std::next(get_list((*--Q.end()).second).begin())).which(): " << (*std::next(get_list((*--Q.end()).second).begin())).which() << std::endl;
+							Qback.j = Q.front_key().second;
 						}
 						else
 						{
@@ -342,6 +413,8 @@
 			<connect-read port="installdir" place="place_installdir"/>
 			<!--connect-read port="degBound" place="place_degBound"/-->
 			<connect-in port="input" place="place_input"/>
+			<connect-out port="nworkers" place="place_nworkers"/>
+			<connect-out port="nrunning" place="place_nrunning"/>
 			<connect-out port="degBounds" place="place_degBounds"/>
 			<!--connect-out port="Q_out" place="place_Q"/-->
 			<connect-out port="Qback" place="place_Qback"/>
@@ -350,6 +423,8 @@
 			<connect-out port="M" place="place_M"/>
 			<connect-out port="runtime" place="place_runtime"/>
 			<connect-out port="redSB" place="place_redSB"/>
+			<connect-out port="job_queue" place="place_job_queue"/>
+			<connect-out port="job_queue_running" place="place_job_queue_running"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="balNF" place="place_balNF"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
@@ -484,7 +559,7 @@
 
 	  <transition name="NF_of_spoly_Qback" priority="2">
 			<defun>
-				<require key="worker" mandatory="true"/>
+				<require key="NF_of_spoly_Qback" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="blacklist" type="set"/>
 				<in name="r" type="int"/>
@@ -606,8 +681,9 @@
 
 		<transition name="update_Q" priority="4">
 			<defun>
-				<require key="queue" mandatory="true"/>
+				<require key="update_Q" mandatory="true"/>
 				<in name="nT_started_indices" type="unsigned long"/>
+				<in name="nworkers" type="int"/>
 				<in name="base_filename" type="string"/>
 				<in name="installdir" type="string"/>
 				<in name="degBounds" type="list"/>
@@ -616,14 +692,18 @@
 				<in name="r_in" type="int"/>
 				<in name="Qback" type="index_pair"/>
 				<in name="blacklist" type="set"/>
+				<in name="enable_update_Q" type="control"/>
+				<inout name="nrunning" type="int"/>
 				<inout name="M" type="list"/>
 				<out name="update_Qback_r" type="list"/>
-				<out name="started_indices" type="list"/>
+				<out name="update_job_queue" type="list"/>
+				<!--out name="started_indices" type="list"/-->
 				<out name="runtime" type="map"/>
 				<out name="BB_finished" type="list"/>
+				<out name="enable_update_job_queue" type="control"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_increment(installdir, degBounds, runtime, base_filename, NF, Qback, r_in, update_Qback_r, M, started_indices, BB_finished, blacklist, nT_started_indices)">
+							  function="function_increment(enable_update_job_queue, installdir, degBounds, runtime, base_filename, NF, Qback, r_in, update_Qback_r, M, BB_finished, blacklist, nT_started_indices, nrunning, nworkers, update_job_queue)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -636,7 +716,7 @@
 					<code><![CDATA[
 					//SLEEP_MS(100);
 					long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-
+					std::string singular_function_name;
 
 					int r = r_in;
 					GpiSet add_to_blacklist = {};
@@ -666,9 +746,9 @@
 					*/
 
 					//static GpiList Q = Q_in; //!!
-					static std::pair<sPairQueue,sPairQueue_by_indices> Q_Qind = deserialize_queue(base_filename+"queue/Q");
-					static sPairQueue                Q = Q_Qind.first;
-					static sPairQueue_by_indices  Qind = Q_Qind.second;
+					//static std::pair<sPairQueue,sPairQueue_by_indices> Q_Qind = deserialize_queue(base_filename+"queue/Q");
+					static sPairQueue                Q = deserialize_queue(base_filename+"queue/Q");
+					//static sPairQueue_by_indices  Qind = Q_Qind.second;
 /*
 					//print_variant(*Q.begin());
 					if (Qind.find(std::make_pair((int) 11, (int) 13))!=Qind.end())
@@ -680,14 +760,17 @@
 					else
 						std::cout << "false" << std::endl;
 */
-					fix_Q(Q,Qind);
+					//fix_Q(Q,Qind,&nrunning);
 
-					std::cout << runtime_start << ": ENTERING UPDATE_Q:  Q.size()="<<Q.size()<<", nT_started_indices="<<nT_started_indices<< std::endl;
+					#ifdef DEBUG_BBA
+					std::cout << runtime_start << ": ENTERING UPDATE_Q:  Q.size()="<<Q.size()<<", nT_started_indices="<<nT_started_indices<<", nworkers="<<nworkers<<", nrunning="<<nrunning<< std::endl;
+					#endif
+					//
 
-					if(NF.size()==3)
+					if (NF.size()==3)
 					{
 						std::cout << "ENTERING increment" << std::endl;
-						std::string singular_function_name = "increment";
+						singular_function_name = "increment";
 
 						GpiList::const_iterator it = NF.begin();
 						int index_i = boost::get<int>(*it); ++it;
@@ -795,16 +878,19 @@
 									add_to_blacklist.emplace(i);
 									add_to_blacklist.emplace(GpiSet({i,r}));
 									// remove (i,j) for all j from Q:
-									queue_delete_i(Q, Qind, i, r, base_filename, "cancelled_element");
+									queue_delete_i(Q, i, r, base_filename, "cancelled_element", &nrunning);
 									cancelled_element_counter++;
 								}
 
 								if(add_to_Q)
 								{
+									/*  //!!!
 									GpiStruct si;
 									si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
 									si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , r}));
 									si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+									*/
+									/*
 									if(TRACE>0)
 									{
 										std::ifstream irFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(r));
@@ -815,16 +901,18 @@
 										}
 									}
 									else
-									{
+									{*/
+									/*  //!!!
 										#ifdef DEBUG_BBA
 										std::cout << runtime_start << ": increment: adding ("<<i<<","<<r<<") to started_indices" << std::endl;
 										#endif
 										// add (i,r) to started indices:
 										started_indices.push_back(si);
+									*/
 										// add (i,r) and information about lcm(fi,fr) to the queue:
 										//int Qs = Q.size();
 										//int Qis = Qind.size();
-										queue_insert(Q, Qind, i, r, *Mi, Mr, lcm_i_r, base_filename);
+										queue_insert(Q, i, r, *Mi, Mr, lcm_i_r, base_filename, 0);
 /*
 										if(Q.size()!=Qs+1 || Qind.size()!=Qis+1 || Qs!=Qis)
 										{
@@ -834,14 +922,16 @@
 											std::cout << runtime_start << " " << std::endl;
 										}
 */
-									}
+									/*}*/
 								}
 							}
 
 							for (sPairQueue::iterator Qk=Q.begin(); Qk!=Q.end(); )
 							{
-								int ii = boost::get<int>(get_list(*Qk).front());
-								int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
+								//int ii = boost::get<int>(get_list(*Qk).front());
+								//int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
+								int ii = ((*Qk).first).first;
+								int jj = ((*Qk).first).second;
 
 								std::vector<int> lcm_i_j = lcm(Mvec[ii-1][0],Mvec[jj-1][0]);
 
@@ -853,7 +943,7 @@
 									{
 										add_to_blacklist.emplace(GpiList({ii,jj}));
 										Qk = Q.erase(Qk);
-										Qind.erase(std::make_pair(ii,jj));
+										//Qind.erase(std::make_pair(ii,jj));
 										chaincrit_counter++;
 										cancelled_s_pair_counter++;
 										std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
@@ -865,7 +955,7 @@
 							}
 						}
 
-						queue_delete_i_j(Q, Qind, index_i, index_j, base_filename, "new_element");
+						queue_delete_i_j(Q, index_i, index_j, base_filename, "new_element", &nrunning);
 
 
 						#ifdef DEBUG_BBA
@@ -884,8 +974,8 @@
 						{
 							//Qback.i = boost::get<int>(           get_list(Q.back()).front() );
 							//Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
-							int new_Qback_i = boost::get<int>(           get_list(*--Q.end()).front() );
-							int new_Qback_j = boost::get<int>(*std::next(get_list(*--Q.end()).begin()));
+							int new_Qback_i = Q.front_key().first;
+							int new_Qback_j = Q.front_key().second;
 
 							if (new_Qback_i!=Qback.i || new_Qback_j!=Qback.j || r!=r_in || add_to_blacklist.size()>0)
 							{
@@ -920,14 +1010,14 @@
 
 						std::cout << "EXITING " << singular_function_name << std::endl;
 					}
-					else
+					else { if (NF.size()==2)
 					{
 						std::cout << "ENTERING remove_from_Q" << std::endl;
-						std::string singular_function_name = "remove_from_Q";
+						singular_function_name = "remove_from_Q";
 
 						int index_i = boost::get<int>(NF.front());
 						int index_j = boost::get<int>(NF.back());
-						queue_delete_i_j(Q, Qind, index_i, index_j, base_filename, "zero_reduction");
+						queue_delete_i_j(Q, index_i, index_j, base_filename, "zero_reduction", &nrunning);
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": remove_from_Q: removed element (" << index_i << "," << index_j << ") from Q(ueue) as it reduced to 0, size of Q: " << Q.size() <<std::endl;
@@ -953,8 +1043,8 @@
 						{
 							//Qback.i = boost::get<int>(           get_list(Q.back()).front() );
 							//Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
-							int new_Qback_i = boost::get<int>(           get_list(*--Q.end()).front() );
-							int new_Qback_j = boost::get<int>(*std::next(get_list(*--Q.end()).begin()));
+							int new_Qback_i = Q.front_key().first;
+							int new_Qback_j = Q.front_key().second;
 
 							if (new_Qback_i!=Qback.i || new_Qback_j!=Qback.j || r!=r_in || add_to_blacklist.size()>0)
 							{
@@ -978,15 +1068,65 @@
 							BB_finished.emplace_back(CONTROL_TOKEN);
 						}
 
-						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
-
-						std::cout << "EXITING " << singular_function_name << std::endl;
 					}
+					else
+					{
+						std::cout << "ENTERING start_s_pairs" << std::endl;
+						singular_function_name = "start_s_pairs";
+
+						if(Q.size()==0) // queue empty
+						{
+							std::cout << runtime_start << ": ########################################## Buchberger Algorithm finished (in 'start_s_pairs'!) ##########################################" << std::endl;
+							BB_finished.emplace_back(CONTROL_TOKEN);
+						}
+					} }
+
+
+
+					// start jobs:
+					update_job_queue = GpiList({NF});
+					//for(sPairQueue::iterator entry=Q.begin(); ((entry!=Q.hend()) && (nrunning*2<nworkers*3)); ++entry)
+					for(sPairQueue::iterator entry=Q.begin(); entry!=Q.hend(); ++entry)
+					{
+						std::pair<int,int> indices = (*entry).first;
+						std::cout << "adding " << indices.first << "," << indices.second << " to update_job_queue" << std::endl;
+						update_job_queue.emplace_back(GpiList({indices.first,indices.second}));
+
+						/* //STARTED_INDICES
+
+						GpiList data = (*entry).second;
+						GpiList::const_iterator it = data.begin();
+						int i=boost::get<int>(*it); ++it;
+						int j=boost::get<int>(*it); ++it;
+
+						GpiStruct si;
+						si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+						si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
+						si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+
+						#ifdef DEBUG_BBA
+						std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
+						#endif
+						// add (i,j) to started indices:
+						started_indices.push_back(si);
+						nrunning++;
+						*/
+					}
+
+					//fix_Q(Q,Qind,&nrunning);
+
+					//!!!
+
+
+					long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+					runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+					std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
 			</defun>
 			<connect-number-of-tokens port="nT_started_indices" place="place_started_indices"/>
+			<connect-read port="nworkers" place="place_nworkers"/>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="installdir" place="place_installdir"/>
 			<connect-read port="degBounds" place="place_degBounds"/>
@@ -995,34 +1135,276 @@
 			<connect-read port="Qback" place="place_Qback"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
 			<connect-in port="NF" place="place_NF"/>
+			<connect-in port="enable_update_Q" place="place_enable_update_Q"/>
+			<connect-inout port="nrunning" place="place_nrunning"/>
 			<connect-inout port="M" place="place_M"/>
 			<connect-out port="runtime" place="place_runtime"/>
+			<connect-out port="update_job_queue" place="place_update_job_queue"/>
 			<connect-out-many port="update_Qback_r" place="place_update_Qback_r"/>
-			<connect-out-many port="started_indices" place="place_started_indices"/>
+			<!--connect-out-many port="started_indices" place="place_started_indices"/-->
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
+			<connect-out port="enable_update_job_queue" place="place_enable_update_job_queue"/>
 		</transition>
+
+
+		<transition name="update_job_queue" priority="5">
+			<defun>
+				<require key="update_job_queue" mandatory="true"/>
+				<in name="update_job_queue" type="list"/>
+				<in name="enable_update_job_queue" type="control"/>
+				<inout name="job_queue_running" type="set"/>
+				<inout name="job_queue" type="list"/>
+				<out name="enable_update_Q" type="control"/>
+				<module name="singular_buchberger"
+								require_function_unloads_without_rest="false"
+								function="update_job_queue(enable_update_Q, job_queue_running, update_job_queue, job_queue)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="chrono"/>
+					<code><![CDATA[
+						std::cout << "ENTERING update_job_queue" << std::endl;
+
+						#ifdef DEBUG_BBA
+						std::cout << "update:" << std::endl;
+						print_variant(update_job_queue);
+						std::cout << "running:" << std::endl;
+						print_variant(job_queue_running);
+						std::cout << "before:" << std::endl;
+						print_variant(job_queue);
+						#endif
+
+						job_queue = GpiList({});
+
+						GpiList::const_iterator it=update_job_queue.begin();
+						GpiList NF = get_list(*it); ++it;
+						for (; it!=update_job_queue.end(); ++it) {
+							if (job_queue_running.find(*it)==job_queue_running.end()) {
+								job_queue.emplace_back(*it);
+							}
+						}
+
+						if (NF.size()>=2) {
+							it = NF.begin();
+							int i = boost::get<int>(*it); ++it;
+							int j = boost::get<int>(*it);
+							job_queue_running.erase(GpiList({i,j}));
+						}
+
+						#ifdef DEBUG_BBA
+						std::cout << "after:" << std::endl;
+						print_variant(job_queue);
+						#endif
+
+						std::cout << "EXITING update_job_queue" << std::endl;
+					]]></code>
+				</module>
+			</defun>
+			<connect-in port="update_job_queue" place="place_update_job_queue"/>
+			<connect-in port="enable_update_job_queue" place="place_enable_update_job_queue"/>
+			<connect-inout port="job_queue_running" place="place_job_queue_running"/>
+			<connect-inout port="job_queue" place="place_job_queue"/>
+			<connect-out port="enable_update_Q" place="place_enable_update_Q"/>
+		</transition>
+
+
+		<transition name="start_jobs" priority="5">
+			<defun>
+				<require key="start_jobs" mandatory="true"/>
+				<in name="nworkers" type="int"/>
+				<in name="nT_started_indices" type="unsigned long"/>
+				<!--in name="r" type="int"/-->
+				<inout name="job_queue" type="list"/>
+				<inout name="job_queue_running" type="set"/>
+				<out name="started_indices" type="list"/>
+				<module name="singular_buchberger"
+								require_function_unloads_without_rest="false"
+								function="start_jobs(job_queue_running, job_queue, started_indices, nT_started_indices, nworkers)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="chrono"/>
+					<code><![CDATA[
+						std::cout << "ENTERING start_jobs (nrunning="<<nT_started_indices<<", nworkers="<<nworkers<<")\njob_queue:" << std::endl;
+						print_variant(job_queue);
+
+						unsigned long nrunning = nT_started_indices;
+
+						while (job_queue.size()>0 && nrunning*2<=nworkers*3) {
+
+							GpiList::const_iterator it = get_list(job_queue.front()).begin();
+							int i = boost::get<int>(*it); ++it;
+							int j = boost::get<int>(*it); ++it;
+
+							GpiStruct si;
+							si.emplace_back(std::pair<std::string,GpiVariant>({"i"    , i}));
+							si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
+							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
+
+							#ifdef DEBUG_BBA
+							std::cout << " start_jobs: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
+							#endif
+							// add (i,j) to started indices:
+							started_indices.push_back(si);
+							job_queue_running.insert(GpiList({i,j}));
+							nrunning++;
+							job_queue.pop_front();
+						}
+
+						std::cout << "job_queue after:" << std::endl;
+						print_variant(job_queue);
+
+						std::cout << "EXITING start_jobs" << std::endl;
+					]]></code>
+				</module>
+			</defun>
+			<connect-read port="nworkers" place="place_nworkers"/>
+			<!--connect-read port="r" place="place_r"/-->
+			<connect-number-of-tokens port="nT_started_indices" place="place_started_indices"/>
+			<connect-inout port="job_queue" place="place_job_queue"/>
+			<connect-inout port="job_queue_running" place="place_job_queue_running"/>
+			<connect-out-many port="started_indices" place="place_started_indices"/>
+		</transition>
+
+
+		<!--transition name="put_token_to_start_NF_workers" priority="5">
+			<defun>
+				<require key="queue" mandatory="true"/>
+				<in name="nT_NF" type="unsigned long"/>
+				<in name="r" type="int"/>
+				<inout name="once" type="control"/>
+				<out name="NF" type="list"/>
+				<module name="singular_buchberger"
+							  require_function_unloads_without_rest="false"
+							  function="put_token_to_start_NF_workers(nT_NF, NF)">
+				  <cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<code><![CDATA[
+						std::cout << "ENTERING put_token_to_start_NF_workers ("<<nT_NF<<")" << std::endl;
+
+						NF = {};
+
+						std::cout << "EXITING put_token_to_start_NF_workers" << std::endl;
+					]]></code>
+				</module>
+			</defun>
+			<condition>
+				(${nT_NF} :eq: 0UL)
+			</condition>
+			<connect-number-of-tokens port="nT_NF" place="place_NF"/>
+			<connect-read port="r" place="place_r"/>
+			<connect-inout port="once" place="place_once"/>
+			<connect-out port="NF" place="place_NF"/>
+		</transition-->
+
+		<!--transition name="nT_test">
+			<defun>
+				<require key="queue" mandatory="true"/>
+				<in name="nT_NF" type="unsigned long"/>
+				<inout name="once" type="control"/>
+				<out name="NF" type="list"/>
+				<module name="singular_buchberger"
+							  require_function_unloads_without_rest="false"
+							  function="nT_test(nT_NF, NF)">
+				  <cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<code><![CDATA[
+						std::cout << "ENTERING nT_test ("<<nT_NF<<") !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+
+						NF = {};
+
+						std::cout << "EXITING nT_test" << std::endl;
+					]]></code>
+				</module>
+			</defun>
+			<condition>
+				(${nT_NF} :eq: 0UL)
+			</condition>
+			<connect-number-of-tokens port="nT_NF" place="place_testplace"/>
+			<connect-inout port="once" place="place_once"/>
+			<connect-out port="NF" place="place_testplace"/>
+		</transition>
+
+		<transition name="nT_confirm">
+			<defun>
+				<require key="queue" mandatory="true"/>
+				<in name="nT_NF" type="unsigned long"/>
+				<inout name="NF" type="list"/>
+				<module name="singular_buchberger"
+								require_function_unloads_without_rest="false"
+								function="nT_confirm(nT_NF, NF)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<code><![CDATA[
+						std::cout << "ENTERING nT_confirm ("<<nT_NF<<") ??????????????????????????????????????????????????????????????????????????????????????" << std::endl;
+
+						std::cout << "EXITING nT_confirm" << std::endl;
+					]]></code>
+				</module>
+			</defun>
+			<connect-number-of-tokens port="nT_NF" place="place_testplace"/>
+			<connect-inout port="NF" place="place_testplace"/>
+		</transition-->
+
+
+		<!--transition name="register_finished_NF" priority="50">
+			<defun>
+				<in  name="NF_in"  type="list"/>
+				<out name="NF_out" type="list"/>
+				<inout name="job_queue_running"  type="set"/>
+				<module name="singular_buchberger"
+								require_function_unloads_without_rest="false"
+								function="register_finished_NF(NF_in, NF_out, job_queue_running)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<code><![CDATA[
+						std::cout << "ENTERING register_finished_NF" << std::endl;
+
+						NF_out = NF_in;
+
+						GpiList::const_iterator it = NF_in.begin();
+						int i = boost::get<int>(*it); ++it;
+						int j = boost::get<int>(*it);
+
+						std::cout << "removing ("<<i<<","<<j<<") from job_queue_running" << std::endl;
+						job_queue_running.erase(GpiList({i,j}));
+
+						std::cout << "EXITING register_finished_NF" << std::endl;
+					]]></code>
+				</module>
+			</defun>
+			<connect-in  port="NF_in"  place="place_NF"/>
+			<connect-out port="NF_out" place="place_NF2"/>
+			<connect-inout port="job_queue_running" place="place_job_queue_running"/>
+		</transition-->
 
 
 		<transition name="update_Qback_and_r" priority="5">
 			<defun>
-				<require key="queue" mandatory="true"/>
+				<require key="update_Qback_and_r" mandatory="true"/>
 				<in name="update_Qback_r" type="tuple__index_pair__int__set"/>
 				<inout name="Qback" type="index_pair"/>
 				<inout name="r" type="int"/>
 				<inout name="blacklist" type="set"/>
 				<module name="singular_buchberger"
-							  require_function_unloads_without_rest="false"
-							  function="update_Qback_and_r(update_Qback_r, Qback, r, blacklist)">
-				  <cinclude href="interface/buchberger_interface.hpp"/>
+								require_function_unloads_without_rest="false"
+								function="update_Qback_and_r(update_Qback_r, Qback, r, blacklist)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
+						std::cout << "ENTERING update_Qback_and_r" << std::endl;
 
 						Qback = update_Qback_r.first;
 						r     = update_Qback_r.second;
 						blacklist.insert(update_Qback_r.third.begin(), update_Qback_r.third.end());
 
+						std::cout << "EXITING update_Qback_and_r" << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -1033,13 +1415,15 @@
 		</transition>
 
 
-		<transition name="minimize_GB" priority="3">
+		<transition name="minimize_GB" priority="42">
 			<defun>
-				<require key="worker" mandatory="true"/>
+				<require key="NF_of_spoly_Qback" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="installdir" type="string"/>
 				<in name="BB_finished" type="control"/>
 				<in name="M" type="list"/>
+				<in name="r" type="int"/>
+				<in name="job_queue" type="list"/>
 				<out name="needed_indices_list" type="list"/>
 				<out name="needed_indices" type="list"/>
 				<out name="output" type="string"/>
@@ -1123,6 +1507,8 @@
 			<connect-read port="installdir" place="place_installdir"/>
 			<connect-in port="BB_finished" place="place_BB_finished"/>
 			<connect-in port="M" place="place_M"/>
+			<connect-in port="r" place="place_r"/>
+			<connect-in port="job_queue" place="place_job_queue"/>
 			<connect-out port="needed_indices_list" place="place_needed_indices_list"/>
 			<connect-out port="output" place="place_output"/>
 			<connect-out-many port="needed_indices" place="place_needed_indices"/>
