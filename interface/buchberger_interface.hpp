@@ -11,9 +11,10 @@
 
 #define NO_NAME_MANGLING extern "C"
 
-//#define sel_strat_larger_equal dp_larger_equal
-#define sel_strat_larger_equal posInL110_larger_equal
-#define Q_larger_equal         posInL110_larger_equal
+#define sel_strat_larger_equal dp_larger_equal
+#define Q_larger_equal         dp_larger_equal
+//#define sel_strat_larger_equal posInL110_larger_equal
+//#define Q_larger_equal         posInL110_larger_equal
 
 #include <string>
 #include <config.hpp>
@@ -742,6 +743,7 @@ inline bool test_PC(std::vector<int> const& Mi, std::vector<int> const& Mj)
   int Mj_comp = Mj.back();
   if(Mi_comp==0) // ideals & polynomials
   {
+    std::cout << "COMPONENT 0 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
     return coprime_monom(Mi, Mj); // product-criterion: if mi and mj are coprime then (i,j) can be discarded
   }
   else // modules & vectors
@@ -797,9 +799,10 @@ inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<in
 
 inline void queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filename, std::string to_filename, int* nrunning) // remove index (i,j) from Q
 {
+  #ifdef DEBUG_BBA
   size_t Qs = Q.size();
   std::cout << "queue_delete_i_j (" << i << "," << j << "), size="<<Qs<<"\n";
-
+  #endif
   std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
   std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j))).c_str());
   std::ofstream ijFile(base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
@@ -815,14 +818,17 @@ inline void queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filen
   }
   //Q.erase(Qind[indices]);
   //Qind.erase(indices);
+	#ifdef DEBUG_BBA
   std::cout << "queue size in queue_delete_i_j: "<<Qs<<" ---> "<<Q.size()<<"\n";
+  #endif
 }
 
 inline void queue_delete_i(sPairQueue& Q, int i, int r, std::string base_filename, std::string to_filename, int* nrunning) // remove indices (i,j) and (j,i) from Q (for all j)
 {
+  #ifdef DEBUG_BBA
   size_t Qs = Q.size();
   std::cout << "queue_delete_i (" << i << ")\n";
-
+  #endif
   for (int k=1; k<=r; k++)
   {
     std::pair<int,int> indices = std::make_pair(std::min(i,k),std::max(i,k));
@@ -841,7 +847,9 @@ inline void queue_delete_i(sPairQueue& Q, int i, int r, std::string base_filenam
     }
   }
 
+  #ifdef DEBUG_BBA
   std::cout << "queue size in queue_delete_i: "<<Qs<<" ---> "<<Q.size()<<"\n";
+  #endif
 }
 /*
 inline void fix_Q(sPairQueue& Q , sPairQueue_by_indices& Qind, int* nrunning)
@@ -866,9 +874,10 @@ inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
   FileQ << nvars << '\n';
   FileQ << Q.size() << '\n';
   FileQ << (int) Q.get_head_size() << '\n';
+  #ifdef DEBUG_BBA
   std::cout << "head_size (serialize): " << Q.get_head_size() << std::endl;
   std::cout << "head_size (serialize, int): " << (int) Q.get_head_size() << std::endl;
-
+  #endif
   //std::cout << "\nSERIALIZING QUEUE..." << std::endl;
   //std::cout << "nvars: " << nvars << std::endl;
   //std::cout << "size: " << Q.size() << std::endl;

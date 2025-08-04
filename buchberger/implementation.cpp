@@ -649,7 +649,9 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     GpiList* finished_indices,
                                     GpiList* NF)
 {
+  #ifdef DEBUG_BBA
   std::cout << "current Qback: ("<<Qback_i<<","<<Qback_j<<")"<< std::endl;
+  #endif
 
 	std::string ids = worker();
   std::string save_filename = base_filename+"temporary_files/intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
@@ -744,16 +746,18 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       std::cout << p_String(Pair.p2, currRing, currRing) << std::endl;
       std::cout << p_String(F->m[index_j-1], currRing, currRing) << std::endl;
       */
+      #ifdef DEBUG_BBA
       std::cout << "spoly("<<index_i<<","<<index_j<<"):" << std::endl;
       std::cout << p_String(Pair.p, currRing, currRing) << std::endl;
-
+      #endif
       if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,Pair.p,0,4);}
       else                      {NF_spoly = kNF(F,currRing->qideal,Pair.p);}
 
+      #ifdef DEBUG_BBA
       std::cout << "NF(spoly("<<index_i<<","<<index_j<<"),G_"<<r<<"):" << std::endl;
       //std::cout << "RESULT OF NFSPOLY (may be the new " << r+1 << "-th element)" << std::endl;
       std::cout << p_String(NF_spoly, currRing, currRing) << std::endl;
-
+      #endif
     }
     else
     {

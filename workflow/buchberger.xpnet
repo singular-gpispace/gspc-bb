@@ -828,18 +828,21 @@
 									//if (degBound>0 && degBound < deg(lcm_i_r))
 									if (over_deg_bound(lcm_i_r, degBounds))
 									{
+										if(r==34) {std::cout << "("<<i<<","<<r<<") OVER DEGREE BOUND" << std::endl;} 
 										add_to_Q=false;
 										degbound_counter++;
 										std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 									}
 									if (test_PC((*Mi)[0],Mr[0])) // apply PC
 									{
+										if(r==34) {std::cout << "PC("<<i<<","<<r<<") POSITIVE" << std::endl;}
 										add_to_Q = false;
 										prodcrit_counter++;
 										std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 									}
 									else // apply CC
 									{
+										if(r==34) {std::cout << "PC("<<i<<","<<r<<") NEGATIVE" << std::endl;}
 										int k=1;
 										for (std::vector<std::vector<std::vector<int> > >::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
 										{
@@ -1065,6 +1068,7 @@
 						else // queue empty
 						{
 							std::cout << runtime_start << ": ########################################## Buchberger Algorithm finished ##########################################" << std::endl;
+
 							BB_finished.emplace_back(CONTROL_TOKEN);
 						}
 
@@ -1077,6 +1081,7 @@
 						if(Q.size()==0) // queue empty
 						{
 							std::cout << runtime_start << ": ########################################## Buchberger Algorithm finished (in 'start_s_pairs'!) ##########################################" << std::endl;
+
 							BB_finished.emplace_back(CONTROL_TOKEN);
 						}
 					} }
@@ -1089,7 +1094,9 @@
 					for(sPairQueue::iterator entry=Q.begin(); entry!=Q.hend(); ++entry)
 					{
 						std::pair<int,int> indices = (*entry).first;
+						#ifdef DEBUG_BBA
 						std::cout << "adding " << indices.first << "," << indices.second << " to update_job_queue" << std::endl;
+						#endif
 						update_job_queue.emplace_back(GpiList({indices.first,indices.second}));
 
 						/* //STARTED_INDICES
@@ -1225,9 +1232,11 @@
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
-						std::cout << "ENTERING start_jobs (nrunning="<<nT_started_indices<<", nworkers="<<nworkers<<")\njob_queue:" << std::endl;
+						std::cout << "ENTERING start_jobs (nrunning="<<nT_started_indices<<", nworkers="<<nworkers<<")" << std::endl;
+						#ifdef DEBUG_BBA
+						std::cout << "job_queue:" << std::endl;
 						print_variant(job_queue);
-
+						#endif
 						unsigned long nrunning = nT_started_indices;
 
 						while (job_queue.size()>0 && nrunning*2<=nworkers*3) {
@@ -1251,8 +1260,10 @@
 							job_queue.pop_front();
 						}
 
+						#ifdef DEBUG_BBA
 						std::cout << "job_queue after:" << std::endl;
 						print_variant(job_queue);
+						#endif
 
 						std::cout << "EXITING start_jobs" << std::endl;
 					]]></code>
@@ -1446,6 +1457,9 @@
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": minimizing Gröbner basis with initially " << r << " elements" << std::endl;
+						std::cout << runtime_start << ": lead monomials:" << std::endl;
+
+						print_variant(M);
 						#endif
 
 						std::vector<std::vector<std::vector<int> > > Mvec;
