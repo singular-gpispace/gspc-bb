@@ -1,6 +1,6 @@
 #pragma once
 
-//#define DEBUG_BBA
+#define DEBUG_BBA
 
 #define USE_KNF true
 #define HEAD_SIZE_FACTOR 5
@@ -797,7 +797,7 @@ inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<in
   Q.push(std::make_pair(i,j),data);
 }
 
-inline void queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filename, std::string to_filename, int* nrunning) // remove index (i,j) from Q
+inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filename, std::string to_filename, int* nrunning) // remove index (i,j) from Q
 {
   #ifdef DEBUG_BBA
   size_t Qs = Q.size();
@@ -812,15 +812,18 @@ inline void queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filen
   //std::cout << "\n("<<std::min(i,j)<<","<<std::max(i,j)<<")" << " == " << "("<< boost::get<int>((*Qind[indices]).front()) <<","<< boost::get<int>(*std::next((*Qind[indices]).begin())) <<")" << "\n";
   //std::cout << "\n(which, size)" << " == " << "("<< (*Qind[indices]).front().which() <<","<< (*Qind[indices]).size() <<")" << "\n";
   //GpiList data = Q.get(std::make_pair(i,j));// *(Qind[indices]);
+  sPairQueue::iterator itQ = Q.end();
   if (Q.contains_key(indices)) {
     (*nrunning)--;
-    Q.erase(indices);
+    itQ = Q.erase(indices);
   }
   //Q.erase(Qind[indices]);
   //Qind.erase(indices);
 	#ifdef DEBUG_BBA
   std::cout << "queue size in queue_delete_i_j: "<<Qs<<" ---> "<<Q.size()<<"\n";
   #endif
+
+  return itQ;
 }
 
 inline void queue_delete_i(sPairQueue& Q, int i, int r, std::string base_filename, std::string to_filename, int* nrunning) // remove indices (i,j) and (j,i) from Q (for all j)
@@ -1097,7 +1100,6 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     int index_j,
                                     int old_r,
                                     GpiMap* runtime,
-                                    GpiList* started_indices_out,
                                     GpiList* finished_indices,
                                     GpiList* NF);
 

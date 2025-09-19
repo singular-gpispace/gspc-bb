@@ -479,16 +479,19 @@ module m_sorted = module(m[intvec(18,19,17..7,1,6,5,2,4,3)]);
 monitorON();
 //degBound=2; testBB(m,1,0,2,"TEST1",list(list(degBound,13)));
 option(redTail);
-degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,1,1,2,"TEST2_first",list(list(degBound,13)));
+//degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,1,1,2,"TEST2_first",list(list(degBound,13)));
 //degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,6,5,2,"TEST2_first",list(list(degBound,13)));
 //degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,6,5,2,"TEST2",list(list(degBound,13)));
+//def I = katsura(5);
+//degBound=0; print("   DEGBOUND 0, KAT   ");  testBB(I,6,5,2,"KAT");
+
 //degBound=3; print("   DEGBOUND 3   "); testBB(m_sorted,6,5,2,"TEST3",list(list(degBound,13)));
 //degBound=4; print("   DEGBOUND 4   "); testBB(m_sorted,6,5,2,"TEST4",list(list(degBound,13)));
 //degBound=5; print("   DEGBOUND 5   "); testBB(m_sorted,6,5,2,"TEST5",list(list(degBound,13)));
 
-//ring R = 0,x(1..10),dp;
-//ideal I = katsura(10);
-//degBound=0; print("   KATSURA 10   "); testBB(I,6,5,2,"TEST_KAT",list(list(degBound,10)));
+ring R = 0,x(1..10),dp;
+ideal I = katsura(9);
+degBound=0; print("   KATSURA 10   "); testBB(I,6,5,2,"TEST_KAT",list(list(degBound,10)));
 
 
 

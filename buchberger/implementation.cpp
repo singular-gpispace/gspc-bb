@@ -645,7 +645,6 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     int index_j,
                                     int old_r,
                                     GpiMap* runtime,
-                                    GpiList* started_indices_out,
                                     GpiList* finished_indices,
                                     GpiList* NF)
 {
@@ -881,11 +880,15 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     (*finished_indices).emplace_back(index_i);
     (*finished_indices).emplace_back(index_j);
   }
-  else
+  else // did NOT reduce to 0
   {
+    /*
     if (index_i==Qback_i && index_j==Qback_j) // element at end of Q ==> add as new GB element
     {
-      writePolySSI(NF_spoly, base_filename + "intermediate_files/f"+std::to_string(r+1));
+    */
+
+      // do this later, in update_Q by renaming a file!
+      //writePolySSI(NF_spoly, base_filename + "intermediate_files/f"+std::to_string(r+1));
 
       GpiList m;
       GpiList m2;
@@ -914,18 +917,22 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       m_extra.emplace_back((int) len);
 
 
-      (*NF).emplace_back(GpiList({index_i, index_j, GpiList({m,m2,m_extra})}));
+      (*NF).emplace_back(GpiList({index_i, index_j, GpiList({m,m2,m_extra,r})}));
+    /*
     }
     else // element not at end of Q ==> put back to started indices (to be reduced further in future)
     {
+    */
       start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
       writePolySSI(NF_spoly, save_filename);
       stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
       (*runtime)[(std::string) "saving partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
 
-      (*started_indices_out).emplace_back(index_i);
-      (*started_indices_out).emplace_back(index_j);
+      //(*started_indices_out).emplace_back(index_i);
+      //(*started_indices_out).emplace_back(index_j);
+    /*
     }
+    */
 
     p_Delete(&NF_spoly, currRing);
   }
