@@ -1,9 +1,9 @@
 #pragma once
 
-#define DEBUG_BBA
+//#define DEBUG_BBA
 
 #define USE_KNF true
-#define HEAD_SIZE_FACTOR 5
+#define HEAD_SIZE_FACTOR 500
 
 #define TRACE 0
 
@@ -211,7 +211,7 @@ public:
 
     size_t get_head_size()
       {return head_size;}
-    /*
+      /*
     void display() {
       std::cout << "\nhead_size="<<head_size << std::endl;
       std::cout << "entries.size()="<<entries.size()<<", references.size()="<<references.size() << std::endl;
@@ -459,12 +459,12 @@ inline void print_variant(GpiVariant const& v, int depth=0) {boost::apply_visito
 // helper functions for handling lead monomials:
 
 //inline bool dp_larger_equal(GpiList const& T1, GpiList const& T2, int d1, int d2)
-inline bool dp_larger_equal(GpiList const& Qentry1, GpiList const& Qentry2)
+inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1, std::pair<std::pair<int,int>,GpiList> const& Qentry2)
 {
-  GpiList T1 = get_list(Qentry1.back());
-  GpiList T2 = get_list(Qentry2.back());
-  int d1 = boost::get<int>(*std::next(Qentry1.begin(),2));
-  int d2 = boost::get<int>(*std::next(Qentry2.begin(),2));
+  GpiList T1 = get_list(Qentry1.second.back());
+  GpiList T2 = get_list(Qentry2.second.back());
+  int d1 = boost::get<int>(*std::next(Qentry1.second.begin(),2));
+  int d2 = boost::get<int>(*std::next(Qentry2.second.begin(),2));
   if(T1.size()!=T2.size()) {throw std::runtime_error ("exponent vectors have different lengths in dp_larger_equal");}
   if(d1>d2) {return true;}
   if(d1<d2) {return false;}
@@ -481,8 +481,15 @@ inline bool dp_larger_equal(GpiList const& Qentry1, GpiList const& Qentry2)
     if(exp1>exp2) {return false;}
   }
   if(T1_comp < T2_comp) {return false;}
+  
+  int i1 = Qentry1.first.first;
+  int j1 = Qentry1.first.second;
+  int i2 = Qentry2.first.first;
+  int j2 = Qentry2.first.second;
 
-  return true;
+  if (i1>i2 || (i1==i2 && j1>=j2)) return true;
+
+  return false;
 }
 
 
@@ -525,19 +532,19 @@ inline bool posInL110_larger_equal(GpiList & Qentry1, GpiList & Qentry2)
   return true;
 }
 
-inline bool Q_smaller(GpiList & Qentry1, GpiList & Qentry2)
+inline bool Q_smaller(std::pair<std::pair<int,int>,GpiList> & Qentry1, std::pair<std::pair<int,int>,GpiList> & Qentry2)
 {
   return (!Q_larger_equal(Qentry1, Qentry2));
 }
 
-inline bool Q_larger(GpiList & Qentry1, GpiList & Qentry2)
+inline bool Q_larger(std::pair<std::pair<int,int>,GpiList> & Qentry1, std::pair<std::pair<int,int>,GpiList> & Qentry2)
 {
   return (Q_smaller(Qentry2, Qentry1));
 }
 
 struct QueueOrdering {
     bool operator()(std::pair<std::pair<int,int>,GpiList> a, std::pair<std::pair<int,int>,GpiList> b) const {
-        return !sel_strat_larger_equal(a.second, b.second); // "<", i.e. a comes first w.r.t. Singulars s-pair selection strategy
+        return !sel_strat_larger_equal(a, b); // "<", i.e. a comes first w.r.t. Singulars s-pair selection strategy
     }
 };
 
@@ -743,7 +750,7 @@ inline bool test_PC(std::vector<int> const& Mi, std::vector<int> const& Mj)
   int Mj_comp = Mj.back();
   if(Mi_comp==0) // ideals & polynomials
   {
-    std::cout << "COMPONENT 0 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+    //std::cout << "COMPONENT 0 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
     return coprime_monom(Mi, Mj); // product-criterion: if mi and mj are coprime then (i,j) can be discarded
   }
   else // modules & vectors

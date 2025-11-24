@@ -26,6 +26,7 @@
 		<place name="place_update_job_queue" type="list"/>
 		<place name="place_job_queue_running" type="set"/>
 		<place name="place_started_indices" type="running_reduction"/>
+		<place name="place_paused_indices" type="running_reduction"/>
 		<place name="place_finished_indices" type="index_pair"/>
 		<place name="place_NF" type="list"/>
 		<!--place name="place_NF2" type="list"/-->
@@ -376,8 +377,40 @@
 						logFile << 0;
 						logFile.close();
 
+						std::ofstream debugfile(base_filename+"debug.txt");
+						debugfile << "initial lead monomials:\n";
+						for(std::vector<std::vector<int>> leadmon : Mvec)
+						{
+							debugfile << "[ ";
+							for(std::vector<int> entry : leadmon)
+							{
+								debugfile << "( ";
+								for (int x : entry) {
+									debugfile << x << " ";
+								}
+								debugfile << ") ";
+
+							}
+							debugfile << "]\n";
+						}
+						debugfile << "\n";
+
 						// mark queue as "started"
 						std::remove((base_filename+"queue/NOT_STARTED").c_str());
+
+						std::cout << "\nQUEUE AFTER INIT:"<< std::endl;
+						for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); ++itQ)
+						{
+							int index_i = (itQ->first).first;
+							int index_j = (itQ->first).second;
+							std::cout << "    ("<< index_i<<","<<index_j<<")" << std::endl;
+							debugfile << "("<< index_i<<","<<index_j<<") ";
+						}
+						debugfile << "\n\n";
+						debugfile.close();
+
+						std::cout << "\nLEADS AFTER INIT:"<< std::endl;
+						print_variant(M);
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
@@ -439,6 +472,63 @@
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
 		</transition>
 
+
+
+		<transition name="NF_of_spoly_debug" priority="1">
+			<defun>
+				<require key="start_jobs" mandatory="true"/>
+				<in name="base_filename" type="string"/>
+				<in name="blacklist" type="set"/>
+				<in name="r" type="int"/>
+				<in name="Qback" type="index_pair"/>
+				<in name="started_indices" type="running_reduction"/>
+				<inout name="balNF" type="control"/>
+				<!--out name="started_indices_out" type="list"/-->
+				<out name="started_indices_out" type="running_reduction"/>
+				<out name="runtime" type="map"/>
+				<module name="singular_buchberger"
+							  require_function_unloads_without_rest="false"
+							  function="function_NF_of_spoly_debug(runtime, base_filename, r, Qback, started_indices, blacklist, started_indices_out)">
+					<cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
+					<cinclude href="fstream"/>
+					<cinclude href="boost/archive/binary_iarchive.hpp"/>
+					<cinclude href="boost/archive/binary_oarchive.hpp"/>
+					<cinclude href="boost/thread/thread.hpp"/>
+
+					<code><![CDATA[
+						std::string singular_function_name = "NF_of_spoly_debug";
+						//std::cout << "ENTERING " << singular_function_name << std::endl;
+						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+						//std::cout << "("<<started_indices.i<<","<<started_indices.j<<"): r="<<r<<", s_i.old_r="<<started_indices.old_r<<",  condition: "<<(r > started_indices.old_r)<<" AND "<<(r >= started_indices.j)<<" = "<<((r > started_indices.old_r) && (r >= started_indices.j)) << std::endl;
+						if (r > started_indices.old_r) {std::cout << "Qback=("<<Qback.i<<","<<Qback.j<<")  CONDITION TRUE:   (i,j)=("<<started_indices.i<<","<<started_indices.j<<"), r="<<r<<", old_r="<<started_indices.old_r << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" << std::endl;}
+						else {std::cout << "Qback=("<<Qback.i<<","<<Qback.j<<")  CONDITION FALSE:  (i,j)=("<<started_indices.i<<","<<started_indices.j<<"), r="<<r<<", old_r="<<started_indices.old_r << std::endl;}
+						started_indices_out = started_indices;
+
+						long runtime_stop = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+
+						//std::cout << runtime_start << ": EXITING " << singular_function_name << std::endl;
+					]]></code>
+				</module>
+			</defun>
+			<!--condition>
+				((${r} :gt: ${started_indices.old_r}) :and: (${r} :ge: ${started_indices.j}))
+			</condition-->
+			<connect-read port="base_filename" place="place_base_filename"/>
+			<connect-read port="blacklist" place="place_blacklist"/>
+			<connect-read port="r" place="place_r"/>
+			<connect-read port="Qback" place="place_Qback"/>
+			<connect-in port="started_indices" place="place_started_indices"/>
+			<connect-inout port="balNF" place="place_balNF"/>
+			<!--connect-out-many port="started_indices_out" place="place_started_indices"/-->
+			<connect-out port="started_indices_out" place="place_started_indices"/>
+			<connect-out port="runtime" place="place_runtime"/>
+		</transition>
 
 
 		<transition name="NF_of_spoly" priority="1">
@@ -567,7 +657,7 @@
 
 
 
-	  <transition name="NF_of_spoly_Qback" priority="2">
+	  <!--transition name="NF_of_spoly_Qback" priority="2">
 			<defun>
 				<require key="NF_of_spoly_Qback" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -575,7 +665,6 @@
 				<in name="r" type="int"/>
 				<in name="Qback" type="index_pair"/>
 				<in name="started_indices" type="running_reduction"/>
-				<!--out name="started_indices_out" type="list"/-->
 				<out name="finished_indices" type="list"/>
 				<out name="NF" type="list"/>
 				<out name="runtime" type="map"/>
@@ -683,11 +772,10 @@
 			<connect-read port="r" place="place_r"/>
 			<connect-read port="Qback" place="place_Qback"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
-			<!--connect-out-many port="started_indices_out" place="place_started_indices"/-->
 			<connect-out-many port="finished_indices" place="place_finished_indices"/>
 			<connect-out-many port="NF" place="place_NF"/>
 			<connect-out port="runtime" place="place_runtime"/>
-		</transition>
+		</transition-->
 
 		<transition name="update_Q" priority="4">
 			<defun>
@@ -707,13 +795,13 @@
 				<inout name="M" type="list"/>
 				<out name="update_Qback_r" type="list"/>
 				<out name="update_job_queue" type="list"/>
-				<out name="started_indices" type="list"/>
+				<out name="paused_indices" type="list"/>
 				<out name="runtime" type="map"/>
 				<out name="enable_get_NF_list" type="control"/>
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_update_Q(started_indices, NF_list_input, enable_get_NF_list, installdir, degBounds, runtime, base_filename, Qback, r_in, update_Qback_r, M, BB_finished, blacklist, nT_started_indices, nrunning, nworkers, update_job_queue)">
+							  function="function_update_Q(paused_indices, NF_list_input, enable_get_NF_list, installdir, degBounds, runtime, base_filename, Qback, r_in, update_Qback_r, M, BB_finished, blacklist, nT_started_indices, nrunning, nworkers, update_job_queue)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -786,6 +874,9 @@
 					const GpiSet& zero_reductions = get_set(NF_list_input.at((int) 0));
 					GpiSet remove_from_running = {};
 
+					std::ofstream debugfile(base_filename+"debug.txt", std::ios::app);
+
+
 					// (B) build vector version of M
 					std::vector<std::vector<std::vector<int> > > Mvec;
 					for(GpiList::iterator Mi=M.begin(); Mi!=M.end(); ++Mi)
@@ -832,9 +923,11 @@
 							bool ij_in_bl = (blacklist.find(GpiSet({index_i,index_j}))!=blacklist.end());
 							if (!(((i_in_bl || j_in_bl) && !ij_in_bl) || (i_in_bl && j_in_bl)))
 							{
+
 								GpiList NF = get_list(itNF->second);
 								GpiList m = get_list(NF.back());
 								int old_r = boost::get<int>(m.back());
+
 
 
 								// (1) test if the new element could be reduced further
@@ -850,20 +943,32 @@
 									}
 								}
 
+								debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") with new lead [ ";
+								//std::cout << " NEW ELEMENT DUE TO S-PAIR ("<<index_i<<","<<index_j<<") ---------------------------------------------------------------------------------------" << std::endl;
 
 								// (2) add new element to M and increase r
 								std::vector<std::vector<int>> Mvec_new;
 								for(GpiList::iterator Mi=m.begin(); Mi!=m.end(); ++Mi)
 								{
-									Mvec_new.emplace_back(list2vec(*Mi));
+									std::vector<int> new_entry = list2vec(*Mi);
+									Mvec_new.emplace_back(new_entry);
+
+									debugfile << "( ";
+									for (int x : new_entry) {
+										debugfile << x << " ";
+									}
+									debugfile << ") ";
+
 								}
+								debugfile << "]\n";
 
 								Mvec.emplace_back(Mvec_new);
 								M.push_back(m);
 								r++;
 
 								#ifdef DEBUG_BBA
-								std::cout << runtime_start << ": M.size()="<<M.size()<<", increasing r from " << r-1 << " to " << r << " due to spoly (" << index_i << "," << index_j << ")"<< std::endl;
+								std::cout << runtime_start << ": M.size()="<<M.size()<<", increasing r from " << r-1 << " to " << r << " due to spoly (" << index_i << "," << index_j << "),  new lead:           -------------------------"<< std::endl;
+								print_variant(m);
 								#endif
 
 
@@ -955,6 +1060,7 @@
 
 
 								// (5) remove old s-pairs due to chain condition
+								debugfile << "CC: removing indices ";
 								for (sPairQueue::iterator Qk=Q.begin(); Qk!=Q.end(); )
 								{
 									//int ii = boost::get<int>(get_list(*Qk).front());
@@ -977,12 +1083,14 @@
 											cancelled_s_pair_counter++;
 											std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
 											std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
+											debugfile << "("<<ii<<","<<jj<<") ";
+
 										}
 										else {++Qk;}
 									}
 									else {++Qk;}
 								}
-
+								debugfile << "\n";
 							}
 						}
 
@@ -1005,7 +1113,8 @@
 					#endif
 
 
-					// (D) put the other non-0-reductions back to started_indices to reduce further:
+					// (D) put the other non-0-reductions to paused_indices to reduce further:
+					debugfile << "pausing s-pairs: ";
 					for (GpiMap::const_iterator itNF=NF_list_input.begin(); itNF!=NF_list_input.end(); ++itNF)
 					{
 						if(remove_from_running.find(itNF->first)==remove_from_running.end() && (itNF->first).which()!=2)
@@ -1021,11 +1130,14 @@
 							si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , index_j}));
 							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", old_r}));
 
-							started_indices.push_back(si);
+							paused_indices.push_back(si);
+							debugfile <<"("<<index_i<<","<<index_j<<") ";
 						}
 					}
+					debugfile << "\n";
 
 					// (E) remove 0-reductions from the queue
+					debugfile << "reduced to 0: ";
 					for (GpiSet::const_iterator itNF0=zero_reductions.begin(); itNF0!=zero_reductions.end(); ++itNF0)
 					{
 						const GpiList& ij = get_list(*itNF0);
@@ -1042,7 +1154,9 @@
 						{
 							std::cout << "(" << Q_size << ")" << std::endl;
 						}
+						debugfile <<"("<<index_i<<","<<index_j<<") ";
 					}
+					debugfile << "\n";
 
 
 					// (F) update LOG.txt:
@@ -1050,6 +1164,17 @@
 					logFile << r << '\n';
 					logFile << (Q.size());
 					logFile.close();
+					// current Queue:
+					debugfile << "\n";
+					for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); ++itQ)
+					{
+						int index_i = (itQ->first).first;
+						int index_j = (itQ->first).second;
+						std::cout << "    ("<< index_i<<","<<index_j<<")" << std::endl;
+						debugfile << "("<< index_i<<","<<index_j<<") ";
+					}
+					debugfile << "\n\n";
+					debugfile.close();
 
 
 					// (G) termination condition + update of the r, Qback and blacklist places
@@ -1075,6 +1200,9 @@
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": current Qback:  " << new_Qback_i << "," << new_Qback_j << std::endl;
 						#endif
+
+//						Q.display(); //!!!
+
 					}
 					else // queue empty ==> terminate Buchberger algorithm
 					{
@@ -1125,8 +1253,25 @@
 			<connect-out port="update_job_queue" place="place_update_job_queue"/>
 			<connect-out port="enable_get_NF_list" place="place_enable_get_NF_list"/>
 			<connect-out-many port="update_Qback_r" place="place_update_Qback_r"/>
-			<connect-out-many port="started_indices" place="place_started_indices"/>
+			<connect-out-many port="paused_indices" place="place_paused_indices"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
+		</transition>
+
+
+
+		<transition name="restart" priority="1">
+			<defun>
+				<in name="r" type="int"/>
+				<in name="index" type="running_reduction"/>
+				<out name="index" type="running_reduction"/>
+				<expression/>
+			</defun>
+			<condition>
+				(${index.old_r} :lt: ${r})
+			</condition>
+			<connect-read port="r" place="place_r"/>
+			<connect-in port="index" place="place_paused_indices"/>
+			<connect-out port="index" place="place_started_indices"/>
 		</transition>
 
 
@@ -1208,16 +1353,17 @@
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
-						std::cout << "ENTERING start_jobs (nrunning="<<nT_started_indices<<", nworkers="<<nworkers<<")" << std::endl;
+						//std::cout << "ENTERING start_jobs (nrunning="<<nT_started_indices<<", nworkers="<<nworkers<<")" << std::endl;
 
 						unsigned long nrunning = nT_started_indices;
 
 						#ifdef DEBUG_BBA
-						std::cout << "nrunning: " <<nrunning<< ", nworkers: " <<nworkers<< ", job_queue:" << std::endl;
-						print_variant(job_queue);
+						//std::cout << "nrunning: " <<nrunning<< ", nworkers: " <<nworkers<< ", job_queue:" << std::endl;
+						//print_variant(job_queue);
 						#endif
 
-						while (job_queue.size()>0 && nrunning*2<=nworkers*3) {
+						//while (job_queue.size()>0 && nrunning*2<=nworkers*3) {
+						while (job_queue.size()>0 && nrunning < nworkers) { // only have as many jobs running as there are NF_of_spoly transitions
 
 							GpiList::const_iterator it = get_list(job_queue.front()).begin();
 							int i = boost::get<int>(*it); ++it;
@@ -1239,16 +1385,17 @@
 						}
 
 						#ifdef DEBUG_BBA
-						std::cout << "job_queue after:" << std::endl;
-						print_variant(job_queue);
+						//std::cout << "job_queue after:" << std::endl;
+						//print_variant(job_queue);
 						#endif
 
-						std::cout << "EXITING start_jobs" << std::endl;
+						//std::cout << "EXITING start_jobs" << std::endl;
+						//((stack_size(${job_queue}) :gt: 0UL) :and: (${nT_started_indices}*2UL :le: (tounsignedlong(${nworkers})*3UL) ) )
 					]]></code>
 				</module>
 			</defun>
 			<condition>
-				(stack_size(${job_queue}) :gt: 0UL)
+			(stack_size(${job_queue}) :gt: 0UL)
 			</condition>
 			<connect-read port="nworkers" place="place_nworkers"/>
 			<!--connect-read port="r" place="place_r"/-->

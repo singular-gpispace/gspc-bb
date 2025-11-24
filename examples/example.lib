@@ -489,9 +489,12 @@ option(redTail);
 //degBound=4; print("   DEGBOUND 4   "); testBB(m_sorted,6,5,2,"TEST4",list(list(degBound,13)));
 //degBound=5; print("   DEGBOUND 5   "); testBB(m_sorted,6,5,2,"TEST5",list(list(degBound,13)));
 
-ring R = 0,x(1..10),dp;
-ideal I = katsura(9);
-degBound=0; print("   KATSURA 10   "); testBB(I,6,5,2,"TEST_KAT",list(list(degBound,10)));
+
+//ring R = 0,x(1..10),dp;
+//ideal I = katsura(9);
+//degBound=0; print("   4 quadrics   "); testBB(I,1,1,2,"TEST_Q4",list(list(degBound,6)));
+system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
+degBound=0; print("   5 quadrics   "); testBB(I,1,1,2,"TEST_Q4",list(list(degBound,7)));
 
 
 
