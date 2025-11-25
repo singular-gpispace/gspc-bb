@@ -481,7 +481,7 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1
     if(exp1>exp2) {return false;}
   }
   if(T1_comp < T2_comp) {return false;}
-  
+
   int i1 = Qentry1.first.first;
   int j1 = Qentry1.first.second;
   int i2 = Qentry2.first.first;
@@ -566,7 +566,6 @@ inline bool divides_monom(std::vector<int> const& m1, std::vector<int> const& m2
   if (m1.back()!=m2.back()) {return false;} // different components
   std::vector<int>::const_iterator it1 = m1.begin();
   std::vector<int>::const_iterator it2 = m2.begin();
-  std::vector<int> res;
   for(; it1 != m1.end(); ++it1, ++it2)
   {
     if(*it1>*it2) {return false;}

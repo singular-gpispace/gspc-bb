@@ -474,7 +474,7 @@
 
 
 
-		<transition name="NF_of_spoly_debug" priority="1">
+		<!--transition name="NF_of_spoly_debug" priority="1">
 			<defun>
 				<require key="start_jobs" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -483,7 +483,6 @@
 				<in name="Qback" type="index_pair"/>
 				<in name="started_indices" type="running_reduction"/>
 				<inout name="balNF" type="control"/>
-				<!--out name="started_indices_out" type="list"/-->
 				<out name="started_indices_out" type="running_reduction"/>
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
@@ -516,19 +515,15 @@
 					]]></code>
 				</module>
 			</defun>
-			<!--condition>
-				((${r} :gt: ${started_indices.old_r}) :and: (${r} :ge: ${started_indices.j}))
-			</condition-->
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
 			<connect-read port="r" place="place_r"/>
 			<connect-read port="Qback" place="place_Qback"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-inout port="balNF" place="place_balNF"/>
-			<!--connect-out-many port="started_indices_out" place="place_started_indices"/-->
 			<connect-out port="started_indices_out" place="place_started_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
-		</transition>
+		</transition-->
 
 
 		<transition name="NF_of_spoly" priority="1">
@@ -891,6 +886,21 @@
 					}
 
 
+
+					/*
+					debugfile << "firing update_Q transition with results ";
+					for (GpiMap::const_iterator itNF = NF_list_input.begin(); itNF!=NF_list_input.end(); ++itNF)
+					{
+						if ((itNF->first).which()!=2) {
+							GpiList::const_iterator it = get_list(itNF->second).begin();
+							int index_i = boost::get<int>(*it); ++it;
+							int index_j = boost::get<int>(*it); ++it;
+							debugfile << "("<< index_i<<","<<index_j<<") ";
+						}
+					}
+					debugfile << "\n";
+					*/
+
 					// (C) remove from back of queue as long as possible
 					int Qcounter=0;
 					for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); Qcounter++)
@@ -932,6 +942,7 @@
 
 								// (1) test if the new element could be reduced further
 								std::vector<int> new_lead = list2vec(m.front());
+								bool abort = false;
 								for(int ind=old_r; ind<r; ind++)
 								{
 									if(divides_monom(Mvec[ind][0],new_lead))
@@ -939,11 +950,13 @@
 										#ifdef DEBUG_BBA
 										std::cout << "M["<<ind<<"] divides lead, aborting" << std::endl;
 										#endif
+										abort = true;
 										break;
 									}
 								}
+								if (abort) {break;}
 
-								debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") with new lead [ ";
+								debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") (old_r="<<old_r<<") with new lead [ ";
 								//std::cout << " NEW ELEMENT DUE TO S-PAIR ("<<index_i<<","<<index_j<<") ---------------------------------------------------------------------------------------" << std::endl;
 
 								// (2) add new element to M and increase r
@@ -1060,7 +1073,7 @@
 
 
 								// (5) remove old s-pairs due to chain condition
-								debugfile << "CC: removing indices ";
+								bool first=true;
 								for (sPairQueue::iterator Qk=Q.begin(); Qk!=Q.end(); )
 								{
 									//int ii = boost::get<int>(get_list(*Qk).front());
@@ -1076,6 +1089,10 @@
 										std::vector<int> lcm_j_r = lcm(Mvec[jj-1][0], Mvec[r-1][0]);
 										if(!equal(lcm_i_r,lcm_i_j) && !equal(lcm_j_r,lcm_i_j))
 										{
+											if (first)  {
+												debugfile << "CC: removing indices ";
+												first = false;
+											}
 											add_to_blacklist.emplace(GpiList({ii,jj}));
 											Qk = Q.erase(Qk);
 											//Qind.erase(std::make_pair(ii,jj));
@@ -1084,13 +1101,12 @@
 											std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
 											std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
 											debugfile << "("<<ii<<","<<jj<<") ";
-
 										}
 										else {++Qk;}
 									}
 									else {++Qk;}
 								}
-								debugfile << "\n";
+								if (!first) debugfile << "\n";
 							}
 						}
 
@@ -1114,11 +1130,15 @@
 
 
 					// (D) put the other non-0-reductions to paused_indices to reduce further:
-					debugfile << "pausing s-pairs: ";
+					bool first=true;
 					for (GpiMap::const_iterator itNF=NF_list_input.begin(); itNF!=NF_list_input.end(); ++itNF)
 					{
 						if(remove_from_running.find(itNF->first)==remove_from_running.end() && (itNF->first).which()!=2)
 						{
+							if (first) {
+								debugfile << "pausing s-pairs: ";
+								first = false;
+							}
 							GpiList::const_iterator it = get_list(itNF->second).begin();
 							int index_i = boost::get<int>(*it); ++it;
 							int index_j = boost::get<int>(*it); ++it;
@@ -1134,12 +1154,17 @@
 							debugfile <<"("<<index_i<<","<<index_j<<") ";
 						}
 					}
-					debugfile << "\n";
+					if (!first)	debugfile << "\n";
+
 
 					// (E) remove 0-reductions from the queue
-					debugfile << "reduced to 0: ";
+					first=true;
 					for (GpiSet::const_iterator itNF0=zero_reductions.begin(); itNF0!=zero_reductions.end(); ++itNF0)
 					{
+						if (first) {
+							debugfile << "reduced to 0: ";
+							first = false;
+						}
 						const GpiList& ij = get_list(*itNF0);
 						int index_i = boost::get<int>(ij.front());
 						int index_j = boost::get<int>(ij.back());
@@ -1156,7 +1181,7 @@
 						}
 						debugfile <<"("<<index_i<<","<<index_j<<") ";
 					}
-					debugfile << "\n";
+					if (!first)	debugfile << "\n";
 
 
 					// (F) update LOG.txt:
