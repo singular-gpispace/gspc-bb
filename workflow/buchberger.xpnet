@@ -36,7 +36,7 @@
 		<!--place name="place_degBound" type="long"/-->
 		<place name="place_degBounds" type="list"/>
 		<place name="place_nrunning" type="int"/>
-		<place name="place_nworkers" type="int"/>
+		<place name="place_nworkers" type="unsigned long"/>
 		<place name="place_runtime" type="map"/>
 		<place name="place_NF_list" type="map"/>
 		<place name="place_NF_list_input" type="map"/>
@@ -63,7 +63,7 @@
 				<in name="input" type="string"/>
 				<in name="installdir" type="string"/>
 				<!--in name="degBound" type="long"/-->
-				<out name="nworkers" type="int"/>
+				<out name="nworkers" type="unsigned long"/>
 				<out name="nrunning" type="int"/>
 				<out name="degBounds" type="list"/>
 				<out name="started_indices" type="list"/>
@@ -137,10 +137,10 @@
 						int prev_r=0; // value of r from a previous computation that is being continued
 						std::vector<std::vector<std::vector<int> > > Mvec; // lead monomials as a vector of exponent vectors (last entry = component)
 						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &degBounds, &redSB, &nworkers_long, &prev_r, &runtime);
-						nworkers = (int) nworkers_long;
+						nworkers = (unsigned long) nworkers_long;
 
 						//GpiList Q; //!!
-						sPairQueue Q(nworkers*HEAD_SIZE_FACTOR);
+						sPairQueue Q(((int) nworkers)*HEAD_SIZE_FACTOR);
 						//sPairQueue_by_indices Qind;
 
 						r = Mvec.size();
@@ -776,7 +776,7 @@
 			<defun>
 				<require key="update_Q" mandatory="true"/>
 				<in name="nT_started_indices" type="unsigned long"/>
-				<in name="nworkers" type="int"/>
+				<in name="nworkers" type="unsigned long"/>
 				<in name="base_filename" type="string"/>
 				<in name="installdir" type="string"/>
 				<in name="degBounds" type="list"/>
@@ -1364,7 +1364,7 @@
 		<transition name="start_jobs" priority="5">
 			<defun>
 				<require key="start_jobs" mandatory="true"/>
-				<in name="nworkers" type="int"/>
+				<in name="nworkers" type="unsigned long"/>
 				<in name="nT_started_indices" type="unsigned long"/>
 				<!--in name="r" type="int"/-->
 				<inout name="job_queue" type="list"/>
@@ -1387,7 +1387,7 @@
 						//print_variant(job_queue);
 						#endif
 
-						//while (job_queue.size()>0 && nrunning*2<=nworkers*3) {
+						//while (job_queue.size()>0 && nrunning*2<nworkers*3) {
 						while (job_queue.size()>0 && nrunning < nworkers) { // only have as many jobs running as there are NF_of_spoly transitions
 
 							GpiList::const_iterator it = get_list(job_queue.front()).begin();
@@ -1415,12 +1415,13 @@
 						#endif
 
 						//std::cout << "EXITING start_jobs" << std::endl;
-						//((stack_size(${job_queue}) :gt: 0UL) :and: (${nT_started_indices}*2UL :le: (tounsignedlong(${nworkers})*3UL) ) )
+						//((stack_size(${job_queue}) :gt: 0UL) :and: (${nT_started_indices}*2UL :lt: ${nworkers}*3UL))
+						//                             :and: (${nT_started_indices} :lt: ${nworkers})
 					]]></code>
 				</module>
 			</defun>
 			<condition>
-			(stack_size(${job_queue}) :gt: 0UL)
+				((stack_size(${job_queue}) :gt: 0UL) :and: (${nT_started_indices} :lt: ${nworkers}))
 			</condition>
 			<connect-read port="nworkers" place="place_nworkers"/>
 			<!--connect-read port="r" place="place_r"/-->
