@@ -856,9 +856,9 @@
 */
 					//fix_Q(Q,Qind,&nrunning);
 
-					#ifdef DEBUG_BBA
+					//#ifdef DEBUG_BBA
 					std::cout << runtime_start << ": ENTERING UPDATE_Q:  Q.size()="<<Q.size()<<", nT_started_indices="<<nT_started_indices<<", nworkers="<<nworkers<<", nrunning="<<nrunning<< std::endl;
-					#endif
+					//#endif
 
 					// (A) initialize
 					long prodcrit_counter  = 0L;
@@ -1129,7 +1129,7 @@
 					#endif
 
 
-					// (D) put the other non-0-reductions to paused_indices to reduce further:
+					// (D) put the other non-0-reductions to paused_indices to reduce further later:
 					bool first=true;
 					for (GpiMap::const_iterator itNF=NF_list_input.begin(); itNF!=NF_list_input.end(); ++itNF)
 					{
@@ -1304,12 +1304,14 @@
 			<defun>
 				<require key="update_job_queue" mandatory="true"/>
 				<in name="update_job_queue" type="list"/>
+				<in name="nT_started_indices" type="unsigned long"/>
+				<in name="nT_paused_indices" type="unsigned long"/>
 				<inout name="job_queue_running" type="set"/>
 				<inout name="job_queue" type="list"/>
 				<out name="enable_update_Q" type="control"/>
 				<module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
-								function="update_job_queue(enable_update_Q, job_queue_running, update_job_queue, job_queue)">
+								function="update_job_queue(enable_update_Q, job_queue_running, update_job_queue, job_queue, nT_started_indices, nT_paused_indices)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="util-generic/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -1317,14 +1319,14 @@
 					<code><![CDATA[
 						std::cout << "ENTERING update_job_queue" << std::endl;
 
-						#ifdef DEBUG_BBA
+						//#ifdef DEBUG_BBA
 						std::cout << "update:" << std::endl;
 						print_variant(update_job_queue);
 						std::cout << "running:" << std::endl;
 						print_variant(job_queue_running);
 						std::cout << "before:" << std::endl;
 						print_variant(job_queue);
-						#endif
+						//#endif
 
 						job_queue = GpiList({});
 
@@ -1345,15 +1347,18 @@
 							job_queue_running.erase(GpiList({i,j}));
 						}
 
-						#ifdef DEBUG_BBA
+						//#ifdef DEBUG_BBA
 						std::cout << "after:" << std::endl;
 						print_variant(job_queue);
-						#endif
+						std::cout << "nT_started_indices="<<nT_started_indices<<", nT_paused_indices="<<nT_paused_indices << std::endl;
+						//#endif
 
 						std::cout << "EXITING update_job_queue" << std::endl;
 					]]></code>
 				</module>
 			</defun>
+			<connect-number-of-tokens port="nT_started_indices" place="place_started_indices"/>
+			<connect-number-of-tokens port="nT_paused_indices" place="place_paused_indices"/>
 			<connect-in port="update_job_queue" place="place_update_job_queue"/>
 			<connect-inout port="job_queue_running" place="place_job_queue_running"/>
 			<connect-inout port="job_queue" place="place_job_queue"/>
@@ -1378,14 +1383,14 @@
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
-						//std::cout << "ENTERING start_jobs (nrunning="<<nT_started_indices<<", nworkers="<<nworkers<<")" << std::endl;
+						std::cout << "ENTERING start_jobs (nrunning="<<nT_started_indices<<", nworkers="<<nworkers<<")" << std::endl;
 
 						unsigned long nrunning = nT_started_indices;
 
-						#ifdef DEBUG_BBA
-						//std::cout << "nrunning: " <<nrunning<< ", nworkers: " <<nworkers<< ", job_queue:" << std::endl;
-						//print_variant(job_queue);
-						#endif
+						//#ifdef DEBUG_BBA
+						std::cout << "nrunning: " <<nrunning<< ", nworkers: " <<nworkers<< ", job_queue:" << std::endl;
+						print_variant(job_queue);
+						//#endif
 
 						//while (job_queue.size()>0 && nrunning*2<nworkers*3) {
 						while (job_queue.size()>0 && nrunning < nworkers) { // only have as many jobs running as there are NF_of_spoly transitions
@@ -1399,9 +1404,9 @@
 							si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
 							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
 
-							#ifdef DEBUG_BBA
+							//#ifdef DEBUG_BBA
 							std::cout << " start_jobs: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
-							#endif
+							//#endif
 							// add (i,j) to started indices:
 							started_indices.push_back(si);
 							job_queue_running.insert(GpiList({i,j}));
@@ -1409,12 +1414,12 @@
 							job_queue.pop_front();
 						}
 
-						#ifdef DEBUG_BBA
-						//std::cout << "job_queue after:" << std::endl;
-						//print_variant(job_queue);
-						#endif
+						//#ifdef DEBUG_BBA
+						std::cout << "job_queue after:" << std::endl;
+						print_variant(job_queue);
+						//#endif
 
-						//std::cout << "EXITING start_jobs" << std::endl;
+						std::cout << "EXITING start_jobs" << std::endl;
 						//((stack_size(${job_queue}) :gt: 0UL) :and: (${nT_started_indices}*2UL :lt: ${nworkers}*3UL))
 						//                             :and: (${nT_started_indices} :lt: ${nworkers})
 					]]></code>
@@ -1651,6 +1656,37 @@
 		</transition>
 
 
+
+		<!--transition name="analyze" priority="1">
+			<defun>
+				<require key="NF_of_spoly_Qback" mandatory="true"/>
+				<in name="r" type="int"/>
+				<in name="nT_r" type="unsigned long"/>
+				<in name="nT_BB" type="unsigned long"/>
+				<module name="singular_buchberger"
+							  require_function_unloads_without_rest="false"
+							  function="analyze(r,nT_r,nT_BB)">
+				  <cinclude href="interface/buchberger_interface.hpp"/>
+					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="boost/variant.hpp"/>
+					<cinclude href="iostream"/>
+					<cinclude href="chrono"/>
+					<cinclude href="boost/thread/thread.hpp"/>
+
+					<code><![CDATA[
+						#ifdef DEBUG_BBA
+						std::cout << "ANALYZE: r="<<r << std::endl;
+						#endif
+					]]></code>
+				</module>
+			</defun>
+			<condition>
+				((${nT_r} :gt: 0UL) :and: (${nT_BB} :eq: 0UL))
+			</condition>
+			<connect-read port="r" place="place_r"/>
+			<connect-number-of-tokens port="nT_r" place="place_r"/>
+			<connect-number-of-tokens port="nT_BB" place="place_BB_finished"/>
+		</transition-->
 
 
 		<transition name="minimize_GB" priority="42">
