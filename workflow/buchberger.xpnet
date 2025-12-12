@@ -56,7 +56,7 @@
 			</token>
 		</place>
 
-		<transition name="init" priority="3">
+		<transition name="init">
 			<defun>
 				<require key="NF_of_spoly_Qback" mandatory="true"/>
        	<in name="base_filename" type="string"/>
@@ -105,7 +105,6 @@
 						//NF_list[(int) 0] = GpiSet({});
 
 						std::string singular_function_name = "init";
-						std::cout << "ENTERING " << singular_function_name << std::endl;
 
 						#ifdef DEBUG_BBA
 						std::cout << "start time (time since epoch in ms): " << runtime_start << std::endl;
@@ -403,16 +402,18 @@
 						{
 							int index_i = (itQ->first).first;
 							int index_j = (itQ->first).second;
+							#ifdef DEBUG_BBA
 							std::cout << "    ("<< index_i<<","<<index_j<<")" << std::endl;
+							#endif
 							debugfile << "("<< index_i<<","<<index_j<<") ";
 						}
 						debugfile << "\n\n";
 						debugfile.close();
 
+						#ifdef DEBUG_BBA
 						std::cout << "\nLEADS AFTER INIT:"<< std::endl;
 						print_variant(M);
 
-						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
 						#endif
 
@@ -474,7 +475,7 @@
 
 
 
-		<!--transition name="NF_of_spoly_debug" priority="1">
+		<!--transition name="NF_of_spoly_debug">
 			<defun>
 				<require key="start_jobs" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -526,7 +527,7 @@
 		</transition-->
 
 
-		<transition name="NF_of_spoly" priority="1">
+		<transition name="NF_of_spoly">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -635,9 +636,9 @@
 					]]></code>
 				</module>
 			</defun>
-			<condition>
+			<!--condition>
 				((${r} :gt: ${started_indices.old_r}) :and: (${r} :ge: ${started_indices.j}))
-			</condition>
+			</condition-->
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
 			<connect-read port="r" place="place_r"/>
@@ -652,7 +653,7 @@
 
 
 
-	  <!--transition name="NF_of_spoly_Qback" priority="2">
+	  <!--transition name="NF_of_spoly_Qback">
 			<defun>
 				<require key="NF_of_spoly_Qback" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -772,7 +773,7 @@
 			<connect-out port="runtime" place="place_runtime"/>
 		</transition-->
 
-		<transition name="update_Q" priority="4">
+		<transition name="update_Q">
 			<defun>
 				<require key="update_Q" mandatory="true"/>
 				<in name="nT_started_indices" type="unsigned long"/>
@@ -811,6 +812,7 @@
 
 					long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 					std::string singular_function_name = "update_Q";
+					std::cout << "ENTERING " << singular_function_name << std::endl;
 
 					int r = r_in;
 					GpiSet add_to_blacklist = {};
@@ -856,9 +858,9 @@
 */
 					//fix_Q(Q,Qind,&nrunning);
 
-					//#ifdef DEBUG_BBA
+					#ifdef DEBUG_BBA
 					std::cout << runtime_start << ": ENTERING UPDATE_Q:  Q.size()="<<Q.size()<<", nT_started_indices="<<nT_started_indices<<", nworkers="<<nworkers<<", nrunning="<<nrunning<< std::endl;
-					//#endif
+					#endif
 
 					// (A) initialize
 					long prodcrit_counter  = 0L;
@@ -1151,7 +1153,7 @@
 							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", old_r}));
 
 							paused_indices.push_back(si);
-							debugfile <<"("<<index_i<<","<<index_j<<") ";
+							debugfile <<"("<<index_i<<","<<index_j<<","<<old_r<<") ";
 						}
 					}
 					if (!first)	debugfile << "\n";
@@ -1195,7 +1197,9 @@
 					{
 						int index_i = (itQ->first).first;
 						int index_j = (itQ->first).second;
+						#ifdef DEBUG_BBA
 						std::cout << "    ("<< index_i<<","<<index_j<<")" << std::endl;
+						#endif
 						debugfile << "("<< index_i<<","<<index_j<<") ";
 					}
 					debugfile << "\n\n";
@@ -1284,23 +1288,25 @@
 
 
 
-		<transition name="restart" priority="1">
+		<transition name="restart">
 			<defun>
 				<in name="r" type="int"/>
+				<in name="Qback" type="index_pair"/>
 				<in name="index" type="running_reduction"/>
 				<out name="index" type="running_reduction"/>
 				<expression/>
 			</defun>
 			<condition>
-				(${index.old_r} :lt: ${r})
+				((${index.old_r} :lt: ${r}) :or: ((${index.i} :eq: ${Qback.i}) :and: (${index.j} :eq: ${Qback.j})))
 			</condition>
 			<connect-read port="r" place="place_r"/>
+			<connect-read port="Qback" place="place_Qback"/>
 			<connect-in port="index" place="place_paused_indices"/>
 			<connect-out port="index" place="place_started_indices"/>
 		</transition>
 
 
-		<transition name="update_job_queue" priority="5">
+		<transition name="update_job_queue">
 			<defun>
 				<require key="update_job_queue" mandatory="true"/>
 				<in name="update_job_queue" type="list"/>
@@ -1319,14 +1325,14 @@
 					<code><![CDATA[
 						std::cout << "ENTERING update_job_queue" << std::endl;
 
-						//#ifdef DEBUG_BBA
+						#ifdef DEBUG_BBA
 						std::cout << "update:" << std::endl;
 						print_variant(update_job_queue);
 						std::cout << "running:" << std::endl;
 						print_variant(job_queue_running);
 						std::cout << "before:" << std::endl;
 						print_variant(job_queue);
-						//#endif
+						#endif
 
 						job_queue = GpiList({});
 
@@ -1347,11 +1353,11 @@
 							job_queue_running.erase(GpiList({i,j}));
 						}
 
-						//#ifdef DEBUG_BBA
+						#ifdef DEBUG_BBA
 						std::cout << "after:" << std::endl;
 						print_variant(job_queue);
 						std::cout << "nT_started_indices="<<nT_started_indices<<", nT_paused_indices="<<nT_paused_indices << std::endl;
-						//#endif
+						#endif
 
 						std::cout << "EXITING update_job_queue" << std::endl;
 					]]></code>
@@ -1366,7 +1372,7 @@
 		</transition>
 
 
-		<transition name="start_jobs" priority="5">
+		<transition name="start_jobs">
 			<defun>
 				<require key="start_jobs" mandatory="true"/>
 				<in name="nworkers" type="unsigned long"/>
@@ -1387,10 +1393,10 @@
 
 						unsigned long nrunning = nT_started_indices;
 
-						//#ifdef DEBUG_BBA
+						#ifdef DEBUG_BBA
 						std::cout << "nrunning: " <<nrunning<< ", nworkers: " <<nworkers<< ", job_queue:" << std::endl;
 						print_variant(job_queue);
-						//#endif
+						#endif
 
 						//while (job_queue.size()>0 && nrunning*2<nworkers*3) {
 						while (job_queue.size()>0 && nrunning < nworkers) { // only have as many jobs running as there are NF_of_spoly transitions
@@ -1404,9 +1410,9 @@
 							si.emplace_back(std::pair<std::string,GpiVariant>({"j"    , j}));
 							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", (int) 0}));
 
-							//#ifdef DEBUG_BBA
+							#ifdef DEBUG_BBA
 							std::cout << " start_jobs: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
-							//#endif
+							#endif
 							// add (i,j) to started indices:
 							started_indices.push_back(si);
 							job_queue_running.insert(GpiList({i,j}));
@@ -1414,10 +1420,10 @@
 							job_queue.pop_front();
 						}
 
-						//#ifdef DEBUG_BBA
+						#ifdef DEBUG_BBA
 						std::cout << "job_queue after:" << std::endl;
 						print_variant(job_queue);
-						//#endif
+						#endif
 
 						std::cout << "EXITING start_jobs" << std::endl;
 						//((stack_size(${job_queue}) :gt: 0UL) :and: (${nT_started_indices}*2UL :lt: ${nworkers}*3UL))
@@ -1437,7 +1443,7 @@
 		</transition>
 
 
-		<!--transition name="put_token_to_start_NF_workers" priority="5">
+		<!--transition name="put_token_to_start_NF_workers">
 			<defun>
 				<require key="queue" mandatory="true"/>
 				<in name="nT_NF" type="unsigned long"/>
@@ -1520,7 +1526,7 @@
 		</transition-->
 
 
-		<!--transition name="register_finished_NF" priority="50">
+		<!--transition name="register_finished_NF">
 			<defun>
 				<in  name="NF_in"  type="list"/>
 				<out name="NF_out" type="list"/>
@@ -1553,7 +1559,7 @@
 		</transition-->
 
 
-		<transition name="update_Qback_and_r" priority="5">
+		<transition name="update_Qback_and_r">
 			<defun>
 				<require key="update_Qback_and_r" mandatory="true"/>
 				<in name="update_Qback_r" type="tuple__index_pair__int__set"/>
@@ -1574,7 +1580,7 @@
 						r     = update_Qback_r.second;
 						blacklist.insert(update_Qback_r.third.begin(), update_Qback_r.third.end());
 
-						std::cout << "EXITING update_Qback_and_r" << std::endl;
+						std::cout << "EXITING update_Qback_and_r (r="<<r<<",Qback=("<<Qback.i<<","<<Qback.j<<"))" << std::endl;
 					]]></code>
 				</module>
 			</defun>
@@ -1586,7 +1592,7 @@
 
 
 
-		<transition name="collect_NF" priority="5">
+		<transition name="collect_NF">
 			<defun>
 				<require key="collect_NF" mandatory="true"/>
 				<in name="NF" type="list"/>
@@ -1623,7 +1629,7 @@
 			<connect-inout port="NF_list" place="place_NF_list"/>
 		</transition>
 
-		<transition name="get_NF_list" priority="5">
+		<transition name="get_NF_list">
 			<defun>
 				<require key="get_NF_list" mandatory="true"/>
 				<in name="enable_get_NF_list" type="control"/>
@@ -1657,7 +1663,7 @@
 
 
 
-		<!--transition name="analyze" priority="1">
+		<!--transition name="analyze">
 			<defun>
 				<require key="NF_of_spoly_Qback" mandatory="true"/>
 				<in name="r" type="int"/>
@@ -1689,7 +1695,7 @@
 		</transition-->
 
 
-		<transition name="minimize_GB" priority="42">
+		<transition name="minimize_GB">
 			<defun>
 				<require key="NF_of_spoly_Qback" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -1794,7 +1800,7 @@
 
 
 
-		<transition name="reduce_GB" priority="3">
+		<transition name="reduce_GB">
 			<defun>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>

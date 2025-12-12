@@ -702,7 +702,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     m_extra.emplace_back((int) len);
 
 
-    (*NF).emplace_back(GpiList({index_i, index_j, GpiList({m,m2,m_extra})}));
+    (*NF).emplace_back(GpiList({index_i, index_j, GpiList({m,m2,m_extra,r})}));
 
     p_Delete(&NF_spoly, currRing);
 

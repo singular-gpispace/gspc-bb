@@ -499,7 +499,7 @@ option(redTail);
 //ideal I = katsura(9);
 //degBound=0; print("   4 quadrics   "); testBB(I,1,1,2,"TEST_Q4",list(list(degBound,6)));
 int nq = 5; system("--random", 42); ring r = 0,x(1..(nq+2)),dp; ideal I = randomid(maxideal(2),nq);
-degBound=0; print("   "+string(nq)+" quadrics   "); testBB(I,1,1,2,"TEST_"+string(nq)+"Q",list(list(degBound,nq+2)));
+degBound=0; print("   "+string(nq)+" quadrics   "); testBB(I,4,4,2,"TEST_"+string(nq)+"Q",list(list(degBound,nq+2)));
 
 
 
