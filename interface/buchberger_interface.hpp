@@ -57,7 +57,7 @@
 
 
 
-// Priority queue with delete: //!!!
+// Priority queue with delete:
 
 // iterable container holding elements of type pair<K,V> sorted with respect to Compare with logarithmic insertion/removal and average constant time access by a key (of type K)
 template<typename K, typename V, typename Compare>
@@ -71,9 +71,10 @@ private:
     std::size_t head_size;
     typename SetType::iterator head_end;
     MapType references;
+    unsigned long number_of_inserts;
 public:
     PriorityQueue(std::size_t head_size)
-    : entries(Compare()), comp(Compare()), head_size(head_size), head_end(entries.end()) {}
+    : entries(Compare()), comp(Compare()), head_size(head_size), head_end(entries.end()), number_of_inserts(0) {}
 
     using iterator = typename SetType::iterator;
     using const_iterator = typename SetType::const_iterator;
@@ -118,6 +119,7 @@ public:
     std::pair<iterator,bool> push(const std::pair<K,V>& key_value) {
       std::pair<iterator,bool> res = entries.insert(key_value);
       if (res.second) {
+        number_of_inserts++;
         references[key_value.first] = res.first;
         if(entries.size()>head_size && (head_end==entries.end() || comp(key_value, *head_end))) {--head_end;}
       }
@@ -211,6 +213,11 @@ public:
 
     size_t get_head_size()
       {return head_size;}
+
+    unsigned long inserts()
+      {
+        return number_of_inserts;
+      }
       /*
     void display() {
       std::cout << "\nhead_size="<<head_size << std::endl;
@@ -256,7 +263,7 @@ private:
         positions[heap[j].first] = j;
     }
 
-    // Heapify-up after insertion //!! use std::make_heap?    also: flat_map, flat_set instead of map, set? --> no dynamic allocation
+    // Heapify-up after insertion  use std::make_heap?    also: flat_map, flat_set instead of map, set? --> no dynamic allocation
     void heapify_up(size_t index) {
         while (index != 0 && Q_smaller(heap[parent(index)] , heap[index])) {
             swap_positions(index, parent(index));
@@ -459,7 +466,7 @@ inline void print_variant(GpiVariant const& v, int depth=0) {boost::apply_visito
 // helper functions for handling lead monomials:
 
 //inline bool dp_larger_equal(GpiList const& T1, GpiList const& T2, int d1, int d2)
-inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1, std::pair<std::pair<int,int>,GpiList> const& Qentry2)
+inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1, std::pair<std::pair<int,int>,GpiList> const& Qentry2) //!!
 {
   GpiList T1 = get_list(Qentry1.second.back());
   GpiList T2 = get_list(Qentry2.second.back());
@@ -482,6 +489,11 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1
   }
   if(T1_comp < T2_comp) {return false;}
 
+  unsigned long tie_break1 = boost::get<unsigned long> (*std::prev(Qentry1.second.end(), 2));
+  unsigned long tie_break2 = boost::get<unsigned long> (*std::prev(Qentry2.second.end(), 2));
+
+  return (tie_break1 >= tie_break2);
+/*
   int i1 = Qentry1.first.first;
   int j1 = Qentry1.first.second;
   int i2 = Qentry2.first.first;
@@ -490,6 +502,7 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1
   if (i1>i2 || (i1==i2 && j1>=j2)) return true;
 
   return false;
+*/
 }
 
 
@@ -789,7 +802,7 @@ using sPairQueue = PriorityQueue<std::pair<int,int>,GpiList,QueueOrdering>;
 //using sPairQueue = PriorityQueue<std::pair<int,int>,GpiList>; //std::set<GpiList, Descending>;
 //using sPairQueue_by_indices = std::map<std::pair<int,int>,sPairQueue::iterator>;
 
-inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename, [[maybe_unused]] int state)
+inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename, [[maybe_unused]] int state) //!!
 {
   std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
   ijFile.close();
@@ -799,7 +812,9 @@ inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<in
 
   GpiList l_spoly = lead_of_spoly(Mi,Mj,lcm_vec);
 
-  GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, lcm};
+  unsigned long tie_break = Q.inserts();
+
+  GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, tie_break, lcm};
   Q.push(std::make_pair(i,j),data);
 }
 
@@ -913,6 +928,8 @@ inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
       FileQ << boost::get<int>(*Lit) << '\n';
     }
 
+    FileQ << boost::get<unsigned long>(*entry) << '\n'; ++entry; //tie-break
+
     //print_variant(*entry);
     GpiList lcm = get_list(*entry); ++entry;
     for(GpiList::iterator Lit=lcm.begin(); Lit!=lcm.end(); ++Lit) {
@@ -969,6 +986,9 @@ inline sPairQueue deserialize_queue(std::string filenameQ)
       l_spoly.emplace_back(std::stoi(currLine));
     }
     data.emplace_back(l_spoly);
+
+    std::getline(FileQ, currLine);
+    data.emplace_back(std::stoul(currLine)); //tie-break
 
     GpiList lcm;
     for(int kk=0; kk<nvars; kk++)
