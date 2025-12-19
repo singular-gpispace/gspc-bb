@@ -478,8 +478,8 @@ void singular_init(std::string const& base_filename,
   {
     intvec *sort   = idSort(F);
     for (int i=0; i<sort->length();++i)
-      //{F_sorted->m[i] = F->m[(*sort)[i]-1];} //!!
-      {F_sorted->m[i] = F->m[i];}
+      {F_sorted->m[i] = F->m[(*sort)[i]-1];} //!!
+      //{F_sorted->m[i] = F->m[i];}
     delete sort;
 
     idInsertPolyOnPos(FF,p_Copy(F_sorted->m[0], currRing),0); // insert first polynomial of F
