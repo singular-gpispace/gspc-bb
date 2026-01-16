@@ -210,7 +210,7 @@
 
 											// add (i,j) and information about lcm(fi,fj) to the queue:
 											queue_insert(Q, i, j, *Mi, *Mj, lcm_i_j, base_filename, state);
-											nvars = lcm_i_j.size();
+											nvars = lcm_i_j.size()-1;
 										}
 									}
 								}
@@ -300,7 +300,7 @@
 
 										// add (i,j) and information about lcm(fi,fj) to the queue:
 										queue_insert(Q, i, j, *Mi, *Mj, lcm_i_j, base_filename, 0);
-										nvars = lcm_i_j.size();
+										nvars = lcm_i_j.size()-1;
 									}
 								}
 							}
@@ -373,24 +373,26 @@
 						// init LOG file
 						std::ofstream logFile(base_filename+"LOG.txt");
 						logFile << r << '\n';
-						logFile << 0;
+						logFile << Q.size();
 						logFile.close();
 
 						std::ofstream debugfile(base_filename+"debug.txt");
 						debugfile << "initial lead monomials:\n";
 						for(std::vector<std::vector<int>> leadmon : Mvec)
 						{
-							debugfile << "[ ";
-							for(std::vector<int> entry : leadmon)
-							{
+							//debugfile << "[ ";
+							//for(std::vector<int> entry : leadmon)
+							std::vector<int> entry = leadmon.front();
+							//{
 								debugfile << "( ";
 								for (int x : entry) {
 									debugfile << x << " ";
 								}
-								debugfile << ") ";
+								//debugfile << ") ";
+								debugfile << ")\n";
 
-							}
-							debugfile << "]\n";
+							//}
+							//debugfile << "]\n";
 						}
 						debugfile << "\n";
 
@@ -398,15 +400,7 @@
 						std::remove((base_filename+"queue/NOT_STARTED").c_str());
 
 						std::cout << "\nQUEUE AFTER INIT:"<< std::endl;
-						for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); ++itQ)
-						{
-							int index_i = (itQ->first).first;
-							int index_j = (itQ->first).second;
-							#ifdef DEBUG_BBA
-							std::cout << "    ("<< index_i<<","<<index_j<<")" << std::endl;
-							#endif
-							debugfile << "("<< index_i<<","<<index_j<<") ";
-						}
+						displayQ(Q, debugfile);
 						debugfile << "\n\n";
 						debugfile.close();
 
@@ -872,6 +866,9 @@
 					GpiSet remove_from_running = {};
 
 					std::ofstream debugfile(base_filename+"debug.txt", std::ios::app);
+					debugfile << "QUEUE after deserialization:\n";
+					displayQ(Q, debugfile);
+					debugfile << "\n\n";
 
 
 					// (B) build vector version of M
@@ -958,24 +955,27 @@
 								}
 								if (abort) {break;}
 
-								debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") (old_r="<<old_r<<") with new lead [ ";
+								debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") with new lead ";
+								//debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") (old_r="<<old_r<<") with new lead ";
 								//std::cout << " NEW ELEMENT DUE TO S-PAIR ("<<index_i<<","<<index_j<<") ---------------------------------------------------------------------------------------" << std::endl;
 
 								// (2) add new element to M and increase r
 								std::vector<std::vector<int>> Mvec_new;
+								bool _first = true;
 								for(GpiList::iterator Mi=m.begin(); Mi!=m.end(); ++Mi)
 								{
 									std::vector<int> new_entry = list2vec(*Mi);
 									Mvec_new.emplace_back(new_entry);
 
-									debugfile << "( ";
+									if (_first)	{debugfile << "( ";
 									for (int x : new_entry) {
 										debugfile << x << " ";
 									}
-									debugfile << ") ";
+									debugfile << ")\n"; _first=false;}
+									//debugfile << ") ";
 
 								}
-								debugfile << "]\n";
+								//debugfile << "]\n";
 
 								Mvec.emplace_back(Mvec_new);
 								M.push_back(m);
@@ -1153,7 +1153,7 @@
 							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", old_r}));
 
 							paused_indices.push_back(si);
-							debugfile <<"("<<index_i<<","<<index_j<<","<<old_r<<") ";
+							debugfile <<"("<<index_i<<","<<index_j<<") ";//  ","<<old_r<<") ";
 						}
 					}
 					if (!first)	debugfile << "\n";
@@ -1193,15 +1193,7 @@
 					logFile.close();
 					// current Queue:
 					debugfile << "\n";
-					for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); ++itQ)
-					{
-						int index_i = (itQ->first).first;
-						int index_j = (itQ->first).second;
-						#ifdef DEBUG_BBA
-						std::cout << "    ("<< index_i<<","<<index_j<<")" << std::endl;
-						#endif
-						debugfile << "("<< index_i<<","<<index_j<<") ";
-					}
+					displayQ(Q, debugfile);
 					debugfile << "\n\n";
 					debugfile.close();
 
@@ -1633,6 +1625,7 @@
 			<defun>
 				<require key="get_NF_list" mandatory="true"/>
 				<in name="enable_get_NF_list" type="control"/>
+				<in name="nT_NF" type="unsigned long"/>
 				<inout name="NF_list" type="map"/>
 				<out name="NF_list_input" type="map"/>
 				<module name="singular_buchberger"
@@ -1654,9 +1647,10 @@
 				</module>
 			</defun>
 			<condition>
-				(map_size(${NF_list}) :gt: 0UL)
+				(map_size(${NF_list}) :gt: 0UL) :and: (${nT_NF} :eq: 0UL)
 			</condition>
 			<connect-in port="enable_get_NF_list" place="place_enable_get_NF_list"/>
+			<connect-number-of-tokens port="nT_NF" place="place_NF"/>
 			<connect-inout port="NF_list" place="place_NF_list"/>
 			<connect-out port="NF_list_input" place="place_NF_list_input"/>
 		</transition>

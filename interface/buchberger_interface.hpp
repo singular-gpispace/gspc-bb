@@ -83,6 +83,7 @@ public:
     iterator end()   { return entries.end(); }
     iterator hend()  { return head_end; }
 
+
     const_iterator begin() const { return entries.begin(); }
     const_iterator end()   const { return entries.end(); }
     const_iterator hend()  const { return head_end; }
@@ -472,7 +473,11 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1
   GpiList T2 = get_list(Qentry2.second.back());
   int d1 = boost::get<int>(*std::next(Qentry1.second.begin(),2));
   int d2 = boost::get<int>(*std::next(Qentry2.second.begin(),2));
-  if(T1.size()!=T2.size()) {throw std::runtime_error ("exponent vectors have different lengths in dp_larger_equal");}
+  //std::cout << " comparing T1 " << std::endl;
+  //print_variant(T1);
+  //std::cout << " ... and T2 " << std::endl;
+  //print_variant(T2);
+  if(T1.size()!=T2.size()) {throw std::runtime_error ("exponent vectors have different lengths ("+std::to_string(T1.size())+" and "+std::to_string(T2.size())+") in dp_larger_equal");}
   if(d1>d2) {return true;}
   if(d1<d2) {return false;}
 
@@ -488,6 +493,7 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1
     if(exp1>exp2) {return false;}
   }
   if(T1_comp < T2_comp) {return false;}
+  if(T1_comp > T2_comp) {return true;}
 
   unsigned long tie_break1 = boost::get<unsigned long> (*std::prev(Qentry1.second.end(), 2));
   unsigned long tie_break2 = boost::get<unsigned long> (*std::prev(Qentry2.second.end(), 2));
@@ -810,12 +816,16 @@ inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<in
   int deg_lcm = deg(lcm_vec);
   GpiList lcm = vec2list(lcm_vec);
 
+  //std::cout << "inserting element with lcm " << std::endl;
+  //print_variant(lcm);
+
   GpiList l_spoly = lead_of_spoly(Mi,Mj,lcm_vec);
 
   unsigned long tie_break = Q.inserts();
 
   GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, tie_break, lcm};
   Q.push(std::make_pair(i,j),data);
+  //std::cout << " inserted! " << std::endl;
 }
 
 inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filename, std::string to_filename, int* nrunning) // remove index (i,j) from Q
@@ -893,6 +903,7 @@ inline void fix_Q(sPairQueue& Q , sPairQueue_by_indices& Qind, int* nrunning)
 */
 inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
 {
+
 	std::ofstream FileQ(filenameQ);
 
   FileQ << nvars << '\n';
@@ -909,7 +920,6 @@ inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
   for(sPairQueue::iterator Qit=Q.begin(); Qit!=Q.end(); ++Qit)
   {
     GpiList::const_iterator entry = (*Qit).second.begin();
-
 
     //std::cout << ' ' << std::endl;
     //std::cout << boost::get<int>(*entry) << std::endl;
@@ -965,7 +975,7 @@ inline sPairQueue deserialize_queue(std::string filenameQ)
   //sPairQueue_by_indices Qind;
   for(int k=0; k<sizeQ; k++)
   {
-    GpiList data; //{i, j, deg_lcm, length, l_spoly, lcm};
+    GpiList data; //{i, j, deg_lcm, length, l_spoly, tie_break, lcm};
     std::getline(FileQ, currLine);
     int i = std::stoi(currLine); data.emplace_back(i); //i
     //std::cout << i << '\n';
@@ -980,7 +990,7 @@ inline sPairQueue deserialize_queue(std::string filenameQ)
     //std::cout << currLine << '\n';
 
     GpiList l_spoly;
-    for(int kk=0; kk<nvars; kk++)
+    for(int kk=0; kk<=nvars; kk++) // "smaller equal" since last entrywill be the component!
     {
       std::getline(FileQ, currLine);
       l_spoly.emplace_back(std::stoi(currLine));
@@ -991,7 +1001,7 @@ inline sPairQueue deserialize_queue(std::string filenameQ)
     data.emplace_back(std::stoul(currLine)); //tie-break
 
     GpiList lcm;
-    for(int kk=0; kk<nvars; kk++)
+    for(int kk=0; kk<=nvars; kk++) // "smaller equal" since last entrywill be the component!
     {
       std::getline(FileQ, currLine);
       lcm.emplace_back(std::stoi(currLine));
@@ -1011,6 +1021,21 @@ inline sPairQueue deserialize_queue(std::string filenameQ)
   FileQ.close();
 
   return Q;
+}
+
+
+//DEBUG
+inline void displayQ(sPairQueue Q, std::ofstream& debugfile)
+{
+  for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); ++itQ)
+  {
+    int index_i = (itQ->first).first;
+    int index_j = (itQ->first).second;
+    #ifdef DEBUG_BBA
+    std::cout << "    ("<< index_i<<","<<index_j<<")" << std::endl;
+    #endif
+    debugfile << "("<< index_i<<","<<index_j<<") ";
+  }
 }
 
 
