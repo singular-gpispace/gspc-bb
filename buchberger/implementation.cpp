@@ -639,8 +639,8 @@ NO_NAME_MANGLING
 void singular_buchberger_compute_NF(std::string const& base_filename,
                                     std::list<poly> const& generators,
                                     int r,
-                                    int Qback_i,
-                                    int Qback_j,
+                                    [[maybe_unused]] int Qback_i,
+                                    [[maybe_unused]] int Qback_j,
                                     int index_i,
                                     int index_j,
                                     int old_r,
@@ -661,7 +661,8 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
 
   poly NF_spoly;
 
-  if(old_r==r && index_i==Qback_i && index_j==Qback_j)
+  /*
+  if(old_r==r && index_i==Qback_i && index_j==Qback_j) //## should no longer be needed as that case is catched in update_Q now!
   {
     // (non-zero) reduction result from a previous computation with the same r that now moved to the back of the queue
     // pass straight to place_NF:
@@ -708,6 +709,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
 
     return;
   }
+  */
 
   //// calculate NF(spoly(F[i],F[j]), F) ////
   start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();

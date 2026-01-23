@@ -27,6 +27,25 @@ proc getcores()
   return(gc.procspernode);
 }
 
+proc leadmonoms(def I)
+{
+  if (typeof(I)=="ideal") {
+    ideal res;
+  }
+  else {if(typeof(I)=="module") {
+    module res;
+  }
+  else {
+    print("ERROR! Input must be ideal or module!");
+    return();
+  }}
+
+  for(int i=1; i<=size(I); i++) {
+    res[i] = leadmonom(I[i]);
+  }
+  return (res);
+}
+
 proc comp(def I, def J) // recursive compare-function for indexed types
 {
   string t = typeof(I);
@@ -537,6 +556,7 @@ number c4=prime(400)*t;
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
 ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), dp;
+
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
 /*ring rM1M2BIG = prime(2^29), (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp;
@@ -726,7 +746,9 @@ printf("deg=%s, size=%s", maxdeg(Mred), size(Mred));
 */
 //setring(rM1M2BIG);
 monitorON();
-degBound=0; printf("%n 4 CORES M:  %n",0); testParallelBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)));
+option(redSB); option(redTail);
+degBound=0; printf("%n 4 CORE M:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)));
+//degBound=0; printf("%n 4 CORE M:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_RAT", list(list(degBound,13-4)));
 
 
 //def Mred = MInew(module(M1_ordered),2);

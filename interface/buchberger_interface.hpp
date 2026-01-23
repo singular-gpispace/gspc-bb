@@ -38,14 +38,6 @@
 
 #define CONTROL_TOKEN we::type::literal::control{}
 
-/*
-#define RESOLVE_INTERFACE_FUNCTION(function) \
-      (fhg::util::scoped_dlhandle \
-      (config::implementation(), \
-      RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND) \
-      .sym<decltype(function)> \
-      (BOOST_PP_STRINGIZE(function)))
-*/
 #define RESOLVE_INTERFACE_FUNCTION(function) \
     (fhg::util::scoped_dlhandle \
     (boost::filesystem::path(config::implementation().string()), \
@@ -55,13 +47,151 @@
 
 
 
+// types needed from SINGULAR ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct spolyrec   *      poly;
+typedef struct sip_sideal *     ideal;
+typedef struct skStrategy * kStrategy;
 
 
-// Priority queue with delete:
+// types used by GPI-Space if the type of a place (or an "out-many" port) is set to "list", "set" or "map" ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// iterable container holding elements of type pair<K,V> sorted with respect to Compare with logarithmic insertion/removal and average constant time access by a key (of type K)
+using GpiVariant = pnet::type::value::value_type; // recursive variant type used for all tokens
+using GpiStruct  = pnet::type::value::structured_type; // type used for structs
+using GpiList    = std::list<GpiVariant>;
+using GpiSet     = std::set<GpiVariant>;
+using GpiMap     = std::map<GpiVariant,GpiVariant>;
+
+template <typename T>
+class variant_visitor : public boost::static_visitor<T&>
+{
+public:
+  T& operator() (T& data) const
+  {
+    return data;
+  }
+
+  template <typename U>
+  T& operator() (U&) const
+  {
+   static T instance{};
+   return instance;
+  }
+};
+
+inline GpiList&   get_list   (GpiVariant& v) {return boost::apply_visitor(variant_visitor<GpiList   >(), v);}
+inline GpiSet&    get_set    (GpiVariant& v) {return boost::apply_visitor(variant_visitor<GpiSet    >(), v);}
+inline GpiMap&    get_map    (GpiVariant& v) {return boost::apply_visitor(variant_visitor<GpiMap    >(), v);}
+inline GpiStruct& get_struct (GpiVariant& v) {return boost::apply_visitor(variant_visitor<GpiStruct >(), v);}
+
+inline GpiList   const& get_list   (GpiVariant  const& v) {return boost::apply_visitor(variant_visitor<GpiList   const>(), v);}
+inline GpiSet    const& get_set    (GpiVariant  const& v) {return boost::apply_visitor(variant_visitor<GpiSet    const>(), v);}
+inline GpiMap    const& get_map    (GpiVariant  const& v) {return boost::apply_visitor(variant_visitor<GpiMap    const>(), v);}
+inline GpiStruct const& get_struct (GpiVariant  const& v) {return boost::apply_visitor(variant_visitor<GpiStruct const>(), v);}
+
+class print_variant_visitor : public boost::static_visitor<void>
+{
+private:
+  int depth;
+public:
+  print_variant_visitor(int const& depth=0)
+  {
+    this->depth = depth;
+  }
+  void operator() (const we::type::literal::control&) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << "CONTROL_TOKEN";
+  }
+  void operator() (const GpiList& data) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << "List of " << data.size() << " elements:" << std::endl;
+    for(GpiList::const_iterator it=data.begin(); it!=data.end(); ++it)
+      {boost::apply_visitor(print_variant_visitor(this->depth + 1), *it);}
+  }
+  void operator() (const GpiSet& data) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << "Set of " << data.size() << " elements:" << std::endl;
+    for(GpiSet::const_iterator it=data.begin(); it!=data.end(); ++it)
+      {boost::apply_visitor(print_variant_visitor(this->depth + 1), *it);}
+  }
+  void operator() (const GpiMap& data) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << "Map of " << data.size() << " elements:" << std::endl;
+    for(GpiMap::const_iterator it=data.begin(); it!=data.end(); ++it) {
+      boost::apply_visitor(print_variant_visitor(this->depth + 1), it->first);
+      boost::apply_visitor(print_variant_visitor(this->depth + 1), it->second);
+    }
+  }
+  void operator() (const bool& data) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << data << std::endl;
+  }
+  void operator() (const int& data) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << data << "   (int)" << std::endl;
+  }
+  void operator() (const long& data) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << data << "   (long)" << std::endl;
+  }
+  void operator() (const std::string& data) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << data << "   (string)" << std::endl;
+  }
+
+  template <typename U>
+  void operator() (const U&) const {
+    std::string whitespace(this->depth * 4, ' ');
+    std::cout << whitespace << "type not implemented" << std::endl;
+  }
+};
+
+inline void print_variant(GpiVariant const& v, int depth=0) {boost::apply_visitor(print_variant_visitor(depth), v);}
+
+inline std::string joblist_to_string(GpiList L)
+{
+  std::string s = "";
+  for (GpiList::const_iterator it=L.begin(); it!=L.end(); ++it) {
+    if (it->which()==13) {continue;}
+    GpiList entry = get_list(*it);
+    GpiList::const_iterator it2 = entry.begin();
+    int i     = boost::get<int>(*it2); ++it2;
+    int j     = boost::get<int>(*it2); ++it2;
+    s = s+"("+std::to_string(i)+","+std::to_string(j);
+    if (it2!=entry.end()) {
+      int old_r = boost::get<int>(*it2);
+      s = s+","+std::to_string(old_r);
+    }
+    s = s +") ";
+  }
+  return s;
+}
+
+inline std::string joblist_to_string(GpiSet L)
+{
+  std::string s = "";
+  for (GpiSet::const_iterator it=L.begin(); it!=L.end(); ++it) {
+    if (it->which()==13) {continue;}
+    GpiList entry = get_list(*it);
+    GpiList::const_iterator it2 = entry.begin();
+    int i     = boost::get<int>(*it2); ++it2;
+    int j     = boost::get<int>(*it2); ++it2;
+    s = s+"("+std::to_string(i)+","+std::to_string(j);
+    if (it2!=entry.end()) {
+      int old_r = boost::get<int>(*it2);
+      s = s+","+std::to_string(old_r);
+    }
+    s = s +") ";
+  }
+  return s;
+}
+
+
+// Priority queue for managing s-poly reductions /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 template<typename K, typename V, typename Compare>
 class PriorityQueue {
+  // iterable container holding elements of type pair<K,V> sorted with respect to Compare with logarithmic insertion/removal and average constant time access by a key (of type K)
 private:
     using SetType = std::set<std::pair<K,V>, Compare>;
     using MapType = std::unordered_map<K,typename SetType::iterator>;
@@ -249,230 +379,24 @@ namespace std {
     };
 }
 
-
-/* OLD VERSION
-template<typename K, typename V>
-class PriorityQueue {
-private:
-    std::vector<std::pair<K,V>> heap;
-    std::unordered_map<K, size_t> positions;
-
-    // Helper to swap elements and update positions
-    void swap_positions(size_t i, size_t j) {
-        std::swap(heap[i], heap[j]);
-        positions[heap[i].first] = i;
-        positions[heap[j].first] = j;
-    }
-
-    // Heapify-up after insertion  use std::make_heap?    also: flat_map, flat_set instead of map, set? --> no dynamic allocation
-    void heapify_up(size_t index) {
-        while (index != 0 && Q_smaller(heap[parent(index)] , heap[index])) {
-            swap_positions(index, parent(index));
-            index = parent(index);
-        }
-    }
-
-    // Heapify-down after deletion
-    void heapify_down(size_t index) {
-        size_t left = left_child(index);
-        size_t right = right_child(index);
-        size_t largest = index;
-
-        if (left  < heap.size() && Q_larger(heap[left]  , heap[largest])) largest = left;
-        if (right < heap.size() && Q_larger(heap[right] , heap[largest])) largest = right;
-
-        if (largest != index) {
-            swap_positions(index, largest);
-            heapify_down(largest);
-        }
-    }
-
-    size_t parent(size_t index) { return (index - 1) / 2; }
-    size_t left_child(size_t index) { return 2 * index + 1; }
-    size_t right_child(size_t index) { return 2 * index + 2; }
-
-public:
-    PriorityQueue() = default;
-
-    bool empty() const { return heap.empty(); }
-
-    void push(const std::pair<K,V>& value) {
-        heap.push_back(value);
-        size_t index = heap.size() - 1;
-        positions[value.first] = index;
-        heapify_up(index);
-    }
-
-    void push(const K& key, const V& value) {
-        push(std::make_pair(key,value));
-    }
-
-    void pop() {
-        if (heap.empty()) return;
-
-        positions.erase(heap[0].first);
-        heap[0] = heap.back();
-        heap.pop_back();
-
-        if (!heap.empty()) {
-            positions[heap[0].first] = 0;
-            heapify_down(0);
-        }
-    }
-
-    const std::pair<K,V>& top() const {
-        if (heap.empty()) throw std::runtime_error("PriorityQueue is empty");
-        return heap[0];
-    }
-
-    const std::pair<K,V>& get(const K& key) const {
-      auto it = positions.find(key);
-      if (it == positions.end()) throw std::runtime_error("Element not in queue");
-      return heap[it->second];
-    }
-
-    const std::pair<K,V>& get_value(const K& key) const {
-      return get(key).second;
-    }
-
-    bool remove(const K& key) {
-        auto it = positions.find(key);
-        if (it == positions.end()) return false;
-
-        size_t index = it->second;
-        positions.erase(it);
-
-        heap[index] = heap.back();
-        heap.pop_back();
-
-        if (index < heap.size()) {
-            positions[heap[index].first] = index;
-            heapify_down(index);
-            heapify_up(index);
-        }
-        return true;
-    }
-};
-*/
-
-
-
-//extern int Kstd1_deg;
-
-
-// types needed from SINGULAR
-
-typedef struct spolyrec   *      poly;
-typedef struct sip_sideal *     ideal;
-typedef struct skStrategy * kStrategy;
-
-
-// types used by GPI-Space if you set the type of a place (or an "out-many" port) to "list", "set" or "map":
-
-using GpiVariant = pnet::type::value::value_type;
-using GpiStruct  = pnet::type::value::structured_type;
-using GpiList    = std::list<GpiVariant>;
-using GpiSet     = std::set<GpiVariant>;
-using GpiMap     = std::map<GpiVariant,GpiVariant>;
-
-// visitor functions to convert to proper lists, sets and maps:
-
-template <typename T>
-class variant_visitor : public boost::static_visitor<T&>
-{
-public:
-  T& operator() (T& data) const
-  {
-    return data;
-  }
-
-  template <typename U>
-  T& operator() (U&) const
-  {
-   static T instance{};
-   return instance;
-  }
+struct Qdata {
+          int i;
+          int j;
+  mutable int old_r;
+          int deg_lcm;
+          int length;
+          GpiList l_spoly; // maybe make vector?
+          GpiList lcm;     // same
+          unsigned long tie_break;
+  mutable GpiList new_lead; // data needed to add reduction result as new GB element later
 };
 
-inline GpiList& get_list(GpiVariant& v) {return boost::apply_visitor(variant_visitor<GpiList>(), v);}
-inline GpiSet&  get_set (GpiVariant& v) {return boost::apply_visitor(variant_visitor<GpiSet >(), v);}
-inline GpiMap&  get_map (GpiVariant& v) {return boost::apply_visitor(variant_visitor<GpiMap >(), v);}
-
-inline GpiList const& get_list(GpiVariant  const& v) {return boost::apply_visitor(variant_visitor<GpiList const>(), v);}
-inline GpiSet const&  get_set (GpiVariant  const& v) {return boost::apply_visitor(variant_visitor<GpiSet  const>(), v);}
-inline GpiMap const&  get_map (GpiVariant  const& v) {return boost::apply_visitor(variant_visitor<GpiMap  const>(), v);}
-
-
-// for debugging
-
-class print_variant_visitor : public boost::static_visitor<void>
+inline bool dp_larger_equal(std::pair<std::pair<int,int>,Qdata> const& Qentry1, std::pair<std::pair<int,int>,Qdata> const& Qentry2)
 {
-private:
-  int depth;
-public:
-  print_variant_visitor(int const& depth=0)
-  {
-    this->depth = depth;
-  }
-  void operator() (const we::type::literal::control&) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << "CONTROL_TOKEN";
-  }
-  void operator() (const GpiList& data) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << "List of " << data.size() << " elements:" << std::endl;
-    for(GpiList::const_iterator it=data.begin(); it!=data.end(); ++it)
-      {boost::apply_visitor(print_variant_visitor(this->depth + 1), *it);}
-  }
-  void operator() (const GpiSet& data) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << "Set of " << data.size() << " elements:" << std::endl;
-    for(GpiSet::const_iterator it=data.begin(); it!=data.end(); ++it)
-      {boost::apply_visitor(print_variant_visitor(this->depth + 1), *it);}
-  }
-  void operator() (const GpiMap& data) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << "Map of " << data.size() << " elements:" << std::endl;
-    for(GpiMap::const_iterator it=data.begin(); it!=data.end(); ++it) {
-      boost::apply_visitor(print_variant_visitor(this->depth + 1), it->first);
-      boost::apply_visitor(print_variant_visitor(this->depth + 1), it->second);
-    }
-  }
-  void operator() (const bool& data) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << data << std::endl;
-  }
-  void operator() (const int& data) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << data << "   (int)" << std::endl;
-  }
-  void operator() (const long& data) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << data << "   (long)" << std::endl;
-  }
-  void operator() (const std::string& data) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << data << "   (string)" << std::endl;
-  }
-
-  template <typename U>
-  void operator() (const U&) const {
-    std::string whitespace(this->depth * 4, ' ');
-    std::cout << whitespace << "type not implemented" << std::endl;
-  }
-};
-
-inline void print_variant(GpiVariant const& v, int depth=0) {boost::apply_visitor(print_variant_visitor(depth), v);}
-
-// helper functions for handling lead monomials:
-
-//inline bool dp_larger_equal(GpiList const& T1, GpiList const& T2, int d1, int d2)
-inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1, std::pair<std::pair<int,int>,GpiList> const& Qentry2) //!!
-{
-  GpiList T1 = get_list(Qentry1.second.back());
-  GpiList T2 = get_list(Qentry2.second.back());
-  int d1 = boost::get<int>(*std::next(Qentry1.second.begin(),2));
-  int d2 = boost::get<int>(*std::next(Qentry2.second.begin(),2));
+  GpiList T1 = Qentry1.second.lcm;
+  GpiList T2 = Qentry2.second.lcm;
+  int d1 = Qentry1.second.deg_lcm;
+  int d2 = Qentry2.second.deg_lcm;
   //std::cout << " comparing T1 " << std::endl;
   //print_variant(T1);
   //std::cout << " ... and T2 " << std::endl;
@@ -495,10 +419,7 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1
   if(T1_comp < T2_comp) {return false;}
   if(T1_comp > T2_comp) {return true;}
 
-  unsigned long tie_break1 = boost::get<unsigned long> (*std::prev(Qentry1.second.end(), 2));
-  unsigned long tie_break2 = boost::get<unsigned long> (*std::prev(Qentry2.second.end(), 2));
-
-  return (tie_break1 >= tie_break2);
+  return (Qentry1.second.tie_break >= Qentry2.second.tie_break);
 /*
   int i1 = Qentry1.first.first;
   int j1 = Qentry1.first.second;
@@ -511,10 +432,7 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,GpiList> const& Qentry1
 */
 }
 
-
-
-
-inline bool posInL110_larger_equal(GpiList & Qentry1, GpiList & Qentry2)
+inline bool posInL110_larger_equal(GpiList & Qentry1, GpiList & Qentry2) // deprecated! Still uses old list-format instead of the Qdata struct.
 {
   //GpiList lcm1 = get_list(Qentry1.back());
   //GpiList lcm2 = get_list(Qentry2.back());
@@ -551,22 +469,29 @@ inline bool posInL110_larger_equal(GpiList & Qentry1, GpiList & Qentry2)
   return true;
 }
 
-inline bool Q_smaller(std::pair<std::pair<int,int>,GpiList> & Qentry1, std::pair<std::pair<int,int>,GpiList> & Qentry2)
+inline bool Q_smaller(std::pair<std::pair<int,int>,Qdata> & Qentry1, std::pair<std::pair<int,int>,Qdata> & Qentry2)
 {
   return (!Q_larger_equal(Qentry1, Qentry2));
 }
 
-inline bool Q_larger(std::pair<std::pair<int,int>,GpiList> & Qentry1, std::pair<std::pair<int,int>,GpiList> & Qentry2)
+inline bool Q_larger(std::pair<std::pair<int,int>,Qdata> & Qentry1, std::pair<std::pair<int,int>,Qdata> & Qentry2)
 {
   return (Q_smaller(Qentry2, Qentry1));
 }
 
 struct QueueOrdering {
-    bool operator()(std::pair<std::pair<int,int>,GpiList> a, std::pair<std::pair<int,int>,GpiList> b) const {
+    bool operator()(std::pair<std::pair<int,int>,Qdata> a, std::pair<std::pair<int,int>,Qdata> b) const {
         return !sel_strat_larger_equal(a, b); // "<", i.e. a comes first w.r.t. Singulars s-pair selection strategy
     }
 };
 
+using sPairQueue = PriorityQueue<std::pair<int,int>,Qdata,QueueOrdering>;
+// keys:    s-pair indices (i,j) where i<j
+// values:  struct of necessary information to sort s-pairs (degree, lead monomial, length, etc.)
+// Compare: ordering of s-polnomials, should be the same as in Singular (has access to keys AND values)
+
+
+// helper functions for handling lead monomials (represented as exponent vectors) ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 inline bool equal(std::vector<int> const& m1, std::vector<int> const& m2)
 {
@@ -617,7 +542,6 @@ inline int deg(std::vector<int> const& monom)
   return d;
 }
 
-
 inline bool over_deg_bound(std::vector<int> const& monom, GpiList const& degBounds)
 {
   long i=0;
@@ -657,7 +581,7 @@ inline std::vector<int> lcm(std::vector<int> const& m1, std::vector<int> const& 
 }
 
 
-// vector <--> list
+// std::vector<int> <--> GpiList /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 inline GpiList vec2list(std::vector<int> vec)
 {
@@ -668,6 +592,7 @@ inline GpiList vec2list(std::vector<int> vec)
   }
   return L;
 }
+
 inline GpiList vec2list(std::vector<std::vector<int>> vec)
 {
   GpiList L;
@@ -677,6 +602,7 @@ inline GpiList vec2list(std::vector<std::vector<int>> vec)
   }
   return L;
 }
+
 inline GpiList vec2list(std::vector<std::vector<std::vector<int> > > vec)
 {
   GpiList L;
@@ -711,7 +637,6 @@ inline std::vector<int> list2vec_long(GpiList L)
   }
   return vec;
 }
-
 
 inline GpiList lead_of_spoly(std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm)
 {
@@ -760,57 +685,12 @@ inline GpiList lead_of_spoly(std::vector<std::vector<int>> const&  Mi, std::vect
 }
 
 
-// Product and Chain Criterion
+// Queue operations //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-inline bool test_PC(std::vector<int> const& Mi, std::vector<int> const& Mj)
-{
-  int Mi_comp = Mi.back();
-  int Mj_comp = Mj.back();
-  if(Mi_comp==0) // ideals & polynomials
-  {
-    //std::cout << "COMPONENT 0 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
-    return coprime_monom(Mi, Mj); // product-criterion: if mi and mj are coprime then (i,j) can be discarded
-  }
-  else // modules & vectors
-  {
-    return (Mi_comp!=Mj_comp); // for modules: test instead if the leads lie in different components (thus spoly=0 trivially)
-  }
-}
-
-inline bool test_CC(std::vector<int> const& lcm_i_j, std::vector<int> const& Mi, std::vector<int> const& Mj, std::vector<int> const& Mk)
-{
-  int Mi_comp = Mi.back();
-  int Mj_comp = Mj.back();
-  int Mk_comp = Mk.back();
-
-  if(Mi_comp==Mj_comp && Mi_comp==Mk_comp)
-  {
-    return (divides_monom(Mk, lcm_i_j));  // chain-criterion: if mk divides lcm(mi,mj) then (i,j) can be discarded
-  }
-  return false;
-}
-
-// helper functions for the queue (using a "static" queue)
-
-/*
-struct Descending {
-    bool operator()(GpiList a, GpiList b) const {
-        return sel_strat_larger_equal(a, b); // descending order
-    }
-};
-*/
-
-using sPairQueue = PriorityQueue<std::pair<int,int>,GpiList,QueueOrdering>;
-// keys:    s-pair indices (i,j) where i<j
-// values:  list of necessary information to sort s-pairs (degree, lead monomial, length, etc.)
-// Compare: ordering of s-polnomials, should be the same as in Singular (has access to keys AND values)
-
-//using sPairQueue = PriorityQueue<std::pair<int,int>,GpiList>; //std::set<GpiList, Descending>;
-//using sPairQueue_by_indices = std::map<std::pair<int,int>,sPairQueue::iterator>;
-
-inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename, [[maybe_unused]] int state) //!!
+inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename)
 {
   std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
+  ijFile << (int) 0; // initialize old_r
   ijFile.close();
 
   int deg_lcm = deg(lcm_vec);
@@ -823,9 +703,38 @@ inline void queue_insert(sPairQueue& Q, int i, int j, std::vector<std::vector<in
 
   unsigned long tie_break = Q.inserts();
 
-  GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, tie_break, lcm};
+  //GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, tie_break, lcm};
+  Qdata data = {i, j, old_r, deg_lcm, (int) 0, l_spoly, lcm, tie_break, GpiList({})};
   Q.push(std::make_pair(i,j),data);
   //std::cout << " inserted! " << std::endl;
+}
+
+inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiList m, std::string base_filename, int* nrunning) // remove index (i,j) from Q
+{
+	int old_r = boost::get<int>(m.back());
+  #ifdef DEBUG_BBA
+  size_t Qs = Q.size();
+  std::cout << "queue_mark_paused_i_j (" << i << "," << j << "), size="<<Qs<<"\n";
+  #endif
+  std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
+  //std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j))).c_str());
+  std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
+  ijFile << old_r;
+  ijFile.close();
+
+  sPairQueue::iterator itQ = Q.find(indices);
+  if (itQ!=Q.end()) {
+    (*nrunning)--;
+    (itQ->second).old_r = old_r; //##
+    (itQ->second).new_lead = m; //##
+  }
+  //Q.erase(Qind[indices]);
+  //Qind.erase(indices);
+  #ifdef DEBUG_BBA
+  std::cout << "queue size in queue_mark_paused_i_j: "<<Qs<<" ---> "<<Q.size()<<"\n";
+  #endif
+
+  return itQ;
 }
 
 inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filename, std::string to_filename, int* nrunning) // remove index (i,j) from Q
@@ -835,14 +744,11 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, std::s
   std::cout << "queue_delete_i_j (" << i << "," << j << "), size="<<Qs<<"\n";
   #endif
   std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
+
   std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j))).c_str());
   std::ofstream ijFile(base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
   ijFile.close();
 
-  //std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
-  //std::cout << "\n("<<std::min(i,j)<<","<<std::max(i,j)<<")" << " == " << "("<< boost::get<int>((*Qind[indices]).front()) <<","<< boost::get<int>(*std::next((*Qind[indices]).begin())) <<")" << "\n";
-  //std::cout << "\n(which, size)" << " == " << "("<< (*Qind[indices]).front().which() <<","<< (*Qind[indices]).size() <<")" << "\n";
-  //GpiList data = Q.get(std::make_pair(i,j));// *(Qind[indices]);
   sPairQueue::iterator itQ = Q.end();
   if (Q.contains_key(indices)) {
     (*nrunning)--;
@@ -850,7 +756,7 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, std::s
   }
   //Q.erase(Qind[indices]);
   //Qind.erase(indices);
-	#ifdef DEBUG_BBA
+  #ifdef DEBUG_BBA
   std::cout << "queue size in queue_delete_i_j: "<<Qs<<" ---> "<<Q.size()<<"\n";
   #endif
 
@@ -885,26 +791,11 @@ inline void queue_delete_i(sPairQueue& Q, int i, int r, std::string base_filenam
   std::cout << "queue size in queue_delete_i: "<<Qs<<" ---> "<<Q.size()<<"\n";
   #endif
 }
-/*
-inline void fix_Q(sPairQueue& Q , sPairQueue_by_indices& Qind, int* nrunning)
-{
-  (*nrunning) = 0;
-  for(sPairQueue::iterator it=Q.begin(); it!=Q.end(); ++it)
-  {
-    int i = boost::get<int>((*it).front());
-    int j = boost::get<int>(*std::next((*it).begin()));
-    Qind[std::make_pair(i,j)] = it;
-    if(boost::get<int>((*it).back())==1)
-    {
-      (*nrunning)++;
-    }
-  }
-}
-*/
+
 inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
 {
 
-	std::ofstream FileQ(filenameQ);
+  std::ofstream FileQ(filenameQ);
 
   FileQ << nvars << '\n';
   FileQ << Q.size() << '\n';
@@ -919,37 +810,25 @@ inline void serialize_queue(sPairQueue Q , std::string filenameQ, int nvars)
 
   for(sPairQueue::iterator Qit=Q.begin(); Qit!=Q.end(); ++Qit)
   {
-    GpiList::const_iterator entry = (*Qit).second.begin();
+    Qdata entry = (*Qit).second;
 
-    //std::cout << ' ' << std::endl;
-    //std::cout << boost::get<int>(*entry) << std::endl;
-    FileQ << boost::get<int>(*entry) << '\n'; ++entry; // i
-    //std::cout << boost::get<int>(*entry) << std::endl;
-    FileQ << boost::get<int>(*entry) << '\n'; ++entry; // j
-    //std::cout << boost::get<int>(*entry) << std::endl;
-    FileQ << boost::get<int>(*entry) << '\n'; ++entry; // deg_lcm
-    //std::cout << boost::get<int>(*entry) << std::endl;
-    FileQ << boost::get<int>(*entry) << '\n'; ++entry; // length
+    FileQ << entry.i       << '\n';
+    FileQ << entry.j       << '\n';
+    FileQ << entry.old_r   << '\n'; //added!
+    FileQ << entry.deg_lcm << '\n';
+    FileQ << entry.length  << '\n';
 
-    //print_variant(*entry);
-    GpiList l_spoly = get_list(*entry); ++entry;
-    for(GpiList::iterator Lit=l_spoly.begin(); Lit!=l_spoly.end(); ++Lit) {
-      //std::cout << " l_spoly " << (*Lit).which() << std::endl;
+    for(GpiList::iterator Lit=entry.l_spoly.begin(); Lit!=entry.l_spoly.end(); ++Lit) {
       FileQ << boost::get<int>(*Lit) << '\n';
     }
 
-    FileQ << boost::get<unsigned long>(*entry) << '\n'; ++entry; //tie-break
-
-    //print_variant(*entry);
-    GpiList lcm = get_list(*entry); ++entry;
-    for(GpiList::iterator Lit=lcm.begin(); Lit!=lcm.end(); ++Lit) {
-      //std::cout << " lcm " << (*Lit).which() << std::endl;
+    for(GpiList::iterator Lit=entry.lcm.begin(); Lit!=entry.lcm.end(); ++Lit) {
       FileQ << boost::get<int>(*Lit) << '\n';
     }
 
-    //FileQ << boost::get<int>(*entry) << '\n'; // status
+    FileQ << entry.tie_break << '\n';
   }
-	FileQ.close();
+  FileQ.close();
 }
 
 inline sPairQueue deserialize_queue(std::string filenameQ)
@@ -957,48 +836,46 @@ inline sPairQueue deserialize_queue(std::string filenameQ)
   std::ifstream FileQ(filenameQ);
   std::string currLine;
 
-  std::cout << "\nDESERIALIZING QUEUE..." << std::endl;
+  //std::cout << "\nDESERIALIZING QUEUE..." << std::endl;
   std::getline(FileQ, currLine);
   int nvars = std::stoi(currLine);
-  std::cout << "nvars: " << nvars << std::endl;
+  //std::cout << "nvars: " << nvars << std::endl;
 
   std::getline(FileQ, currLine);
   int sizeQ = std::stoi(currLine);
-  std::cout << "size: " << sizeQ << std::endl;
+  //std::cout << "size: " << sizeQ << std::endl;
 
   std::getline(FileQ, currLine);
   int head_size = std::stoi(currLine);
-  std::cout << "head_size (deserialize): " << head_size << std::endl;
+  //std::cout << "head_size (deserialize): " << head_size << std::endl;
 
   sPairQueue Q(head_size);
 
   //sPairQueue_by_indices Qind;
   for(int k=0; k<sizeQ; k++)
   {
-    GpiList data; //{i, j, deg_lcm, length, l_spoly, tie_break, lcm};
     std::getline(FileQ, currLine);
-    int i = std::stoi(currLine); data.emplace_back(i); //i
+    int i = std::stoi(currLine); //i
     //std::cout << i << '\n';
     std::getline(FileQ, currLine);
-    int j = std::stoi(currLine); data.emplace_back(j); //j
+    int j = std::stoi(currLine); //j
     //std::cout << j << '\n';
     std::getline(FileQ, currLine);
-    data.emplace_back(std::stoi(currLine)); //deg_lcm
+    int old_r = std::stoi(currLine); //old_r
+    //std::cout << old_r << '\n';
+    std::getline(FileQ, currLine);
+    int deg_lcm = std::stoi(currLine); //deg_lcm
     //std::cout << currLine << '\n';
     std::getline(FileQ, currLine);
-    data.emplace_back(std::stoi(currLine)); //length
+    int length = std::stoi(currLine); //length
     //std::cout << currLine << '\n';
 
     GpiList l_spoly;
-    for(int kk=0; kk<=nvars; kk++) // "smaller equal" since last entrywill be the component!
+    for(int kk=0; kk<=nvars; kk++) // "smaller equal" since last entry will be the component!
     {
       std::getline(FileQ, currLine);
       l_spoly.emplace_back(std::stoi(currLine));
     }
-    data.emplace_back(l_spoly);
-
-    std::getline(FileQ, currLine);
-    data.emplace_back(std::stoul(currLine)); //tie-break
 
     GpiList lcm;
     for(int kk=0; kk<=nvars; kk++) // "smaller equal" since last entrywill be the component!
@@ -1006,116 +883,64 @@ inline sPairQueue deserialize_queue(std::string filenameQ)
       std::getline(FileQ, currLine);
       lcm.emplace_back(std::stoi(currLine));
     }
-    data.emplace_back(lcm);
 
-    //std::getline(FileQ, currLine);
-    //data.emplace_back(std::stoi(currLine)); //status
+    std::getline(FileQ, currLine);
+    unsigned long tie_break = std::stoul(currLine); //tie_break
 
-    Q.push(std::make_pair(i,j),data);
-    //Qind[std::make_pair(i,j)] = (--Q.end());
-    //Qind[std::make_pair(i,j)] = res.first;
-    //std::cout << "("<<i<<","<<j<<")" << " == " << "("<< boost::get<int>((*Qind[std::make_pair(i,j)]).front()) <<","<< boost::get<int>(*std::next((*Qind[std::make_pair(i,j)]).begin())) <<")" << "\n\n";
+    Qdata entry = {i, j, old_r, deg_lcm, length, l_spoly, lcm, tie_break, GpiList({})};
+    Q.push(std::make_pair(i,j),entry);
   }
-  //std::cout << " TEST: ("<<11<<","<<13<<")" << " == " << "("<< boost::get<int>((*Qind[std::make_pair(11,13)]).front()) <<","<< boost::get<int>(*std::next((*Qind[std::make_pair(11,13)]).begin())) <<")" << "\n\n";
-  //print_variant(*Qind[std::make_pair(11,13)]);
+
   FileQ.close();
 
   return Q;
 }
 
-
-//DEBUG
-inline void displayQ(sPairQueue Q, std::ofstream& debugfile)
+inline void displayQ(sPairQueue Q, std::ofstream& debugfile) // for debugging
 {
   for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); ++itQ)
   {
     int index_i = (itQ->first).first;
     int index_j = (itQ->first).second;
+    int old_r = (itQ->second).old_r;
     #ifdef DEBUG_BBA
-    std::cout << "    ("<< index_i<<","<<index_j<<")" << std::endl;
+    std::cout << "    ("<< index_i<<","<<index_j<<","<<old_r<<")" << std::endl;
     #endif
-    debugfile << "("<< index_i<<","<<index_j<<") ";
+    debugfile << "("<< index_i<<","<<index_j<<","<<old_r<<") ";
   }
 }
 
+// Product and Chain Criterion ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// helper functions for the queue (deprecated)
-
-/*
-inline void queue_insert(GpiList& Q, int i, int j, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename)
+inline bool test_PC(std::vector<int> const& Mi, std::vector<int> const& Mj)
 {
-  std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
-  ijFile.close();
-
-  int deg_lcm = deg(lcm_vec);
-  GpiList lcm = vec2list(lcm_vec);
-
-  GpiList l_spoly = lead_of_spoly(Mi,Mj,lcm_vec);
-
-  GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, lcm};
-  if(Q.size()==0)
+  int Mi_comp = Mi.back();
+  int Mj_comp = Mj.back();
+  if(Mi_comp==0) // ideals & polynomials
   {
-    Q.push_back(data);
-    return;
+    //std::cout << "COMPONENT 0 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+    return coprime_monom(Mi, Mj); // product-criterion: if mi and mj are coprime then (i,j) can be discarded
   }
-  int k=0;
-  for(GpiList::iterator it=Q.begin(); it!=Q.end(); ++it)
+  else // modules & vectors
   {
-    k++; //std::cout << "    k=" << k << std::endl;
-    GpiList entry = get_list(*it);
-    //if(!sel_strat_larger_equal(get_list(entry.back()), lcm, boost::get<int>(*std::next(entry.begin(),2)), deg_lcm))
-    if(!sel_strat_larger_equal(entry, data))
-    {
-      Q.push(it, data);
-      return;
-    }
+    return (Mi_comp!=Mj_comp); // for modules: test instead if the leads lie in different components (thus spoly=0 trivially)
   }
-  Q.push_back(data);
 }
 
-inline void queue_delete_i_j(GpiList& Q, int i, int j, std::string base_filename, std::string to_filename) // remove index (i,j) from Q
+inline bool test_CC(std::vector<int> const& lcm_i_j, std::vector<int> const& Mi, std::vector<int> const& Mj, std::vector<int> const& Mk)
 {
-  for (GpiList::iterator Qk=Q.begin(); Qk!=Q.end(); )
+  int Mi_comp = Mi.back();
+  int Mj_comp = Mj.back();
+  int Mk_comp = Mk.back();
+
+  if(Mi_comp==Mj_comp && Mi_comp==Mk_comp)
   {
-    int ii = boost::get<int>(get_list(*Qk).front());
-    int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
-    if(ii==i && jj==j)
-    {
-      Qk = Q.erase(Qk);
-      std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
-      std::ofstream ijFile(base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj)));
-      std::cout << "writing file " << base_filename+to_filename+"/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj)) << std::endl;
-      ijFile.close();
-      break;
-    }
-    else
-    {
-      ++Qk;
-    }
+    return (divides_monom(Mk, lcm_i_j));  // chain-criterion: if mk divides lcm(mi,mj) then (i,j) can be discarded
   }
+  return false;
 }
 
-inline void queue_delete_i(GpiList& Q, int i, std::string base_filename, std::string to_filename) // remove indices (i,j) and (j,i) from Q (for all j)
-{
-  for (GpiList::iterator Qk=Q.begin(); Qk!=Q.end(); )
-  {
-    int ii = boost::get<int>(get_list(*Qk).front());
-    int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
-    if(ii==i || jj==i)
-    {
-      Qk = Q.erase(Qk);
-      std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
-      std::ofstream ijFile (base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj)));
-      std::cout << "writing file " << base_filename+to_filename+"/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj)) << std::endl;
-      ijFile.close();
-    }
-    else
-    {
-      ++Qk;
-    }
-  }
-}
-*/
+
 
 
 NO_NAME_MANGLING
