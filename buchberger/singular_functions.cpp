@@ -13,6 +13,19 @@
 const std::string STRUCT_NAME = "token";
 const std::string STRUCT_DESC = "list fieldnames, list data";
 
+
+
+
+// subtract c from each component
+void p_SubtractComp(poly p, unsigned long c, ring r)
+{
+  while (p!=NULL) {
+    __p_GetComp(p,r) -= c;
+    //if(__p_GetComp(p,r)<=0) {std::cout<<"GOT COMPONENT "<<__p_GetComp(p,r)<<"!!!"<<std::endl;}
+    pIter(p);
+  }
+}
+
 void writePolySSI(poly P, std::string out_filename)
 {
   si_link f  = ssi_open_for_write (out_filename + "_incomplete");
@@ -76,6 +89,36 @@ ideal readIdealSSI(std::string filename, BOOLEAN delete_file)
   ssi_close_and_remove (f);
   if(delete_file) {std::remove(filename.c_str());}
   return (ideal) data->data;
+}
+
+void writeRingSSI(ring r, std::string out_filename)
+{
+  si_link f  = ssi_open_for_write (out_filename + "_incomplete");
+  sleftv data;
+  data.Init();
+  data.rtyp = RING_CMD;
+  data.data = (void*) r;
+  if (ssiWrite(f,&data))
+  {
+    throw std::runtime_error ("saving ring to ssi failed");
+  }
+  ssi_close_and_remove (f);
+
+  std::rename((out_filename + "_incomplete").c_str(),out_filename.c_str());
+}
+
+ring readRingSSI(std::string filename, BOOLEAN delete_file)
+{
+  si_link f  = ssi_open_for_read (filename);
+  leftv data = ssiRead1(f);
+
+  if (data->rtyp != RING_CMD)
+  {
+    throw std::runtime_error ("reading ring from ssi failed");
+  }
+  ssi_close_and_remove (f);
+  if(delete_file) {std::remove(filename.c_str());}
+  return (ring) data->data;
 }
 
 BOOLEAN jjRINGLIST(leftv res, leftv v)

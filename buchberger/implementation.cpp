@@ -265,41 +265,108 @@ void singular_init(std::string const& base_filename,
                    std::string const& input,
                    bool prev_queue_had_started,
                    std::vector<std::vector<std::vector<int> > >* Mvec,
-                   GpiList* degBounds,
-                   long* redSB,
                    long* nworkers,
+                   GpiList* degBounds,
+                   long* target_time,
+                   long* max_batch_size,
+                   double* head_size_factor,
+                   std::pair<unsigned int,unsigned int>* si_opt,
                    int* prev_r,
+                   long* syz_comp,
+                   long* red_syz,
+                   int* rank,
                    GpiMap* runtime)
 {
   std::string ids = worker();
   init_singular (config::singularLibrary().string());
 
-  long start_time,stop_time;
-  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  double start_time,stop_time;
+  start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  long force_continue;
 
   // read ideal from input
   std::pair<int,void*> input_token = deserialize(input, ids, true);
   lists inputList = (lists) (((lists) input_token.second)->m[3]).data;
   ideal F = (ideal) inputList->m[0].data;
-  // read degree bound(s)
-  if( write_singular_output(std::make_pair((inputList->m[1]).Typ(), static_cast<void*> ((inputList->m[1]).Data())), degBounds, base_filename, "init") )
-    { throw std::runtime_error (ids + ": error reading degree bounds list in init!"); }
-  // read redSB
-  if( write_singular_output(std::make_pair((inputList->m[2]).Typ(), static_cast<void*> ((inputList->m[2]).Data())), redSB, base_filename, "init") )
-    { throw std::runtime_error (ids + ": error reading redSB in init!"); }
   // read nworkers
-  if( write_singular_output(std::make_pair((inputList->m[3]).Typ(), static_cast<void*> ((inputList->m[3]).Data())), nworkers, base_filename, "init") )
-    { throw std::runtime_error (ids + ": error reading nworkers in init!"); }
+  if( write_singular_output(std::make_pair((inputList->m[1]).Typ(), static_cast<void*> ((inputList->m[1]).Data())), nworkers, base_filename, "init") )
+  { throw std::runtime_error (ids + ": error reading nworkers in init!"); }
+  // read degree bound(s)
+  if( write_singular_output(std::make_pair((inputList->m[2]).Typ(), static_cast<void*> ((inputList->m[2]).Data())), degBounds, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading degree bounds list in init!"); }
   // read force_continue
-  long force_continue=0;
-  if( write_singular_output(std::make_pair((inputList->m[4]).Typ(), static_cast<void*> ((inputList->m[4]).Data())), &force_continue, base_filename, "init") )
-    { throw std::runtime_error (ids + ": error reading force_continue in init!"); }
+  if( write_singular_output(std::make_pair((inputList->m[3]).Typ(), static_cast<void*> ((inputList->m[3]).Data())), &force_continue, base_filename, "init") )
+  { throw std::runtime_error (ids + ": error reading force_continue in init!"); }
+  // read target_time
+  if( write_singular_output(std::make_pair((inputList->m[4]).Typ(), static_cast<void*> ((inputList->m[4]).Data())), target_time, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading target_time in init!"); }
+  // read max_batch_size
+  if( write_singular_output(std::make_pair((inputList->m[5]).Typ(), static_cast<void*> ((inputList->m[5]).Data())), max_batch_size, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading max_batch_size in init!"); }
+  // read head_size_factor
+  long head_size_factor_long;
+  if( write_singular_output(std::make_pair((inputList->m[6]).Typ(), static_cast<void*> ((inputList->m[6]).Data())), &head_size_factor_long, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading head_size_factor in init!"); }
+  (*head_size_factor) = static_cast<double>(head_size_factor_long)/100.0;
+  if( write_singular_output(std::make_pair((inputList->m[7]).Typ(), static_cast<void*> ((inputList->m[7]).Data())), syz_comp, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading syz_comp in init!"); }
+  if( write_singular_output(std::make_pair((inputList->m[8]).Typ(), static_cast<void*> ((inputList->m[8]).Data())), red_syz, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading red_syz in init!"); }
 
+
+  if(*red_syz<0)
+    *red_syz=0;
+  if(*red_syz>2)
+    *red_syz=2;
+  if(*syz_comp<0)
+    *syz_comp=0;
+
+  if(*syz_comp>0) {
+    //k=si_max(id_RankFreeModule(mod,currRing),id_RankFreeModule(submod,currRing));
+    //k=si_max(k,(int)mod->rank);
+
+
+
+    ring orig_ring=currRing;
+    writeRingSSI(orig_ring, base_filename + "basering");
+
+    ring syz_ring=rAssure_SyzOrder(orig_ring,TRUE);
+    rSetSyzComp(*syz_comp,syz_ring);
+
+    if (orig_ring != syz_ring) {
+      rChangeCurrRing(syz_ring);
+      ideal F_tmp = F;
+      //F = idrCopyR_NoSort(F,orig_ring,syz_ring);
+      F = idrCopyR(F,orig_ring,syz_ring);
+      id_Delete(&F_tmp, orig_ring);
+      rDelete(orig_ring);
+    }
+/*
+    if (TEST_OPT_RETURN_SB || *red_syz) {
+      *syz_comp *= -1;
+      // Deactivate syzComp so the computation will be done in the changed ring,
+      // but syzygies will be treated like normal GB elements. Thus these syzygy
+      // elements will be a GB of the syzygy module and the other elements form
+      // a GB of the input ideal/module.
+      // Same if only red_syz is set (though then the syzygies will ONLY be
+      // used as reducers, so the syzygies will be interreduced but no GB).
+    }
+*/
+  }
+
+
+  if(*syz_comp>0) {*rank = (int) *syz_comp;}
+  else            {*rank = (int) F->nrows;}
+
+
+  // SINGULAR options (result of 'option(get);')
+  si_opt->first  = si_opt_1;
+  si_opt->second = si_opt_2;
 
   // check if a previous computation with the same inout used the same directory and, if so, continue from there, else abort.
   // see if there is a checksum file, if so compare to input:
   std::hash<std::string> string_hash_fct;
-  std::string degBounds_string = (std::string) lString((lists) ((inputList->m[1]).data), true, 1);
+  std::string degBounds_string = (std::string) lString((lists) ((inputList->m[2]).data), true, 1);
   size_t degBounds_checksum = string_hash_fct (degBounds_string);
   //long degBounds_checksum_long = static_cast<long int>(degBounds_checksum % static_cast<size_t>(LONG_MAX));
 
@@ -418,7 +485,7 @@ void singular_init(std::string const& base_filename,
     csFile.close();
   }
 
-  if (force_continue!=2) // remove previous incomplete files from previous computation(s)
+  if (force_continue!=2) // remove incomplete files from previous computation(s)
   {
     int nfiles = (*prev_r) + 1;
     for (int i=1; i<=nfiles; i++)
@@ -453,10 +520,10 @@ void singular_init(std::string const& base_filename,
     }
   }
 
-  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "reading input ideal in init"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+  stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "reading input ideal in init"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
 
-  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   ideal F_sorted = idInit(IDELEMS(F),F->rank);
   ideal FF = idInit(1,1);
   if ((*prev_r)>0 && prev_queue_had_started) // read in from files f1,f2,...
@@ -492,55 +559,11 @@ void singular_init(std::string const& base_filename,
 
       // take next polynomial...
       poly new_f = F_sorted->m[i];
-      if (USE_KNF)
-      {
-        if (TEST_OPT_INTSTRATEGY) {new_f = kNF(FF,currRing->qideal,new_f,0,4);}
-        else                      {new_f = kNF(FF,currRing->qideal,new_f);}
-      }
-      else
-      {
-        kStrategy strat=new skStrategy;
-        // update strat
-        strat->ak = id_RankFreeModule(FF,currRing);
-        strat->kModW=kModW=NULL;
-        strat->kHomW=kHomW=NULL;
-        initBuchMoraCrit(strat);
-        initBuchMoraPos(strat);
-        initBba(strat);
-        initBuchMora(FF, currRing->qideal,strat);
-        //initBuchMora:
-        strat->tail = pInit();
-        //- set s -
-        strat->sl = -1;
-        //- set L -
-        strat->Lmax = ((IDELEMS(FF)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
-        strat->Ll = -1;
-        strat->L = initL(strat->Lmax);
-        //- set B -
-        strat->Bmax = setmaxL;
-        strat->Bl = -1;
-        strat->B = initL();
-        //- set T -
-        strat->tl = -1;
-        strat->tmax = setmaxT;
-        strat->T = initT();
-        strat->R = initR();
-        strat->sevT = initsevT();
-        //- init local data struct.----------------------------------------
-        strat->P.ecart=0;
-        strat->P.length=0;
-        strat->P.pLength=0;
-        initS(FF, currRing->qideal,strat); //sets also S, ecartS, fromQ
-        strat->fromT = FALSE;
-        strat->noTailReduction = FALSE;
+      //std::cout<<"-----> 1 <-----"<<std::endl;
+      //std::cout<<"-----> 2 <-----"<<std::endl;
+      new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+      //std::cout<<"-----> 3 <-----"<<std::endl;
 
-        int sl=strat->sl;
-
-        // reduce new_f by previously added elements:
-        new_f = redNF(new_f,sl,TRUE,strat);
-
-        delete(strat);
-      }
 
       if (TEST_OPT_INTSTRATEGY) {
         //!!FF->m[i] = p_Cleardenom(FF->m[i], currRing);
@@ -580,22 +603,34 @@ void singular_init(std::string const& base_filename,
 
   //building Mvec
   //std::vector<std::vector<int>> Mvec;
+  //std::cout<<"-----> 4 <-----"<<std::endl;
   for (int i=0; i<FF->ncols; i++)
   {
-    poly first  = FF->m[i];     // first term
-    poly second = first->next;  // second term
-
     std::vector<int> Mjvec;
     std::vector<int> Mjvec2;
     std::vector<int> Mjvec_extra;
+
+    //std::cout<<"-----> 5 <-----"<<std::endl;
+    poly first  = FF->m[i];     // first term
+    //while (p_GetComp(first, currRing) > *syz_comp)
+    //  pIter(first);
 
     for (int j=1; j<=currRing->N; j++)
     {
       Mjvec.emplace_back(p_GetExp(first, j, currRing));
     }
-    Mjvec.emplace_back(p_GetComp(first,currRing)); // last entry = component
+    Mjvec.emplace_back(p_GetComp(first, currRing)); // last entry = component
 
-    if(second==NULL) {
+
+    //std::cout<<"-----> 6 <-----"<<std::endl;
+    poly second = first->next;  // second term
+    //std::cout<<"-----> 6.1 <-----"<<std::endl;
+    //while (second!=NULL && p_GetComp(second, currRing) > *syz_comp) {
+    //  //std::cout<<"-----> 6.2 <-----"<<std::endl;
+    //  pIter(second);
+    //}
+    //std::cout<<"-----> 7 <-----"<<std::endl;
+    if(second==NULL || (*red_syz<2 && isSyzygy(second, *syz_comp))) {
       for (int j=1; j<=currRing->N; j++)
         {Mjvec2.emplace_back(0);}
       Mjvec2.emplace_back(-1); // last entry = component
@@ -603,17 +638,19 @@ void singular_init(std::string const& base_filename,
     else  {
       for (int j=1; j<=currRing->N; j++)
         {Mjvec2.emplace_back(p_GetExp(second, j, currRing));}
-      Mjvec2.emplace_back(p_GetComp(second,currRing)); // last entry = component
+      Mjvec2.emplace_back(p_GetComp(second, currRing)); // last entry = component
     }
+    //std::cout<<"-----> 8 <-----"<<std::endl;
 
     int len=0;
-    Mjvec_extra.emplace_back((int) currRing->pLDeg(first, &len, currRing)); // degree
+    Mjvec_extra.emplace_back((int) currRing->pLDeg(first, &len, currRing)); // degree     // degree will only be correct for a degree ordering !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Mjvec_extra.emplace_back((int) len);                                    // length
     //Mjvec_extra.emplace_back(...);                                        // ...
     //...
     std::vector<std::vector<int>> Mjvec_entry = {Mjvec, Mjvec2, Mjvec_extra};
     (*Mvec).emplace_back(Mjvec_entry);
   }
+  //std::cout<<"-----> 9 <-----"<<std::endl;
 
   id_Delete(&F, currRing);
 
@@ -626,12 +663,12 @@ void singular_init(std::string const& base_filename,
 
   omUpdateInfo();
   long max_mem = om_Info.MaxBytesSystem / 1024;
-  (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1L, -1L, -1L, max_mem});
-  long current_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[ids] = GpiList({-1L, -1L, current_time, max_mem});
+  (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1.0, -1.0, -1.0, max_mem});
+  double current_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[ids] = GpiList({-1.0, -1.0, current_time, max_mem});
 
-  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "saving initial ideal elements in init"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+  stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "saving initial ideal elements in init"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
 }
 
 
@@ -639,80 +676,28 @@ NO_NAME_MANGLING
 void singular_buchberger_compute_NF(std::string const& base_filename,
                                     std::list<poly> const& generators,
                                     int r,
-                                    [[maybe_unused]] int Qback_i,
-                                    [[maybe_unused]] int Qback_j,
                                     int index_i,
                                     int index_j,
                                     int old_r,
+                                    bool PC,
+                   [[maybe_unused]] GpiList const& M,
+                                    long syz_comp,
+                                    long red_syz,
                                     GpiMap* runtime,
-                                    GpiList* finished_indices,
                                     GpiList* NF)
 {
-  #ifdef DEBUG_BBA
-  std::cout << "current Qback: ("<<Qback_i<<","<<Qback_j<<")"<< std::endl;
-  #endif
 
 	std::string ids = worker();
   std::string save_filename = base_filename+"temporary_files/intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
 
+
 	//// start Singular ////
 	init_singular (config::singularLibrary().string());
-  long start_time,stop_time;
-
-  poly NF_spoly;
-
-  /*
-  if(old_r==r && index_i==Qback_i && index_j==Qback_j) //## should no longer be needed as that case is catched in update_Q now!
-  {
-    // (non-zero) reduction result from a previous computation with the same r that now moved to the back of the queue
-    // pass straight to place_NF:
-    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    NF_spoly = readPolySSI(save_filename, false);
-    std::rename(save_filename.c_str(), (base_filename + "intermediate_files/f"+std::to_string(r+1)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator f{r+1}
-    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    (*runtime)[(std::string) "reading partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
-
-    GpiList m;
-    GpiList m2;
-    GpiList m_extra;
-    int n = currRing->N; // number of variables
-    for(int k=1; k<=n; k++)
-    {
-      m.emplace_back((int) p_GetExp(NF_spoly,k,currRing));
-    }
-    m.emplace_back((int) p_GetComp(NF_spoly, currRing));
-
-    poly NF_spoly_second = NF_spoly->next;
-    if(NF_spoly_second==NULL) {
-      for(int k=1; k<=n; k++)
-      {
-        m2.emplace_back((int) 0);
-      }
-      m2.emplace_back((int) -1);
-    }
-    else {
-      for(int k=1; k<=n; k++)
-      {
-        m2.emplace_back((int) p_GetExp(NF_spoly_second,k,currRing));
-      }
-      m2.emplace_back((int) p_GetComp(NF_spoly_second, currRing));
-    }
-
-    int len;
-    m_extra.emplace_back((int) currRing->pLDeg(NF_spoly, &len, currRing));
-    m_extra.emplace_back((int) len);
+  double start_time,stop_time;
 
 
-    (*NF).emplace_back(GpiList({index_i, index_j, GpiList({m,m2,m_extra,r})}));
-
-    p_Delete(&NF_spoly, currRing);
-
-    return;
-  }
-  */
-
-  //// calculate NF(spoly(F[i],F[j]), F) ////
-  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  //// init ideal F of reducers ////
+  start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   ideal F = idInit(r,1);
   std::list<poly>::const_iterator gen = generators.begin();
   for(int ii=1; ii<=r; ii++)
@@ -721,38 +706,74 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
   }
   F->rank = id_RankFreeModule(F, currRing, currRing);
   if (F->rank==0) F->rank=1;
-  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "reading generators in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+  stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "reading generators in NF_of_spoly"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
 
-  if (old_r == 0)
+  //// compute NF(spoly(F[i],F[j]), F) ////
+  poly NF_spoly;
+  if (old_r == 0) // new reduction
   {
-    /*
-    std::cout << "CHECKPOINT1 0" << std::endl;
-    std::cout << "CHECKPOINT1 0a (" << index_i << "," << index_j << ")" <<  std::endl;
-    std::cout << p_String(F->m[index_i-1], currRing, currRing) << std::endl;
-    std::cout << p_String(F->m[index_j-1], currRing, currRing) << std::endl;
-    */
+    poly spoly;
     LObject Pair;
+    //std::cout<<"----- NF_spoly -----> 1 <-----"<<std::endl;
+    //if(TEST_syz_comp_ARG==0) {
     Pair.Init();
     Pair.p1=F->m[index_i-1];
     Pair.p2=F->m[index_j-1];
-    ksCreateSpoly(&Pair);
-
-    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    if (USE_KNF)
-    {
+    start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    if (!PC) {
+      ksCreateSpoly(&Pair);
+      spoly = Pair.p;
       /*
-      std::cout << p_String(Pair.p1, currRing, currRing) << std::endl;
-      std::cout << p_String(F->m[index_i-1], currRing, currRing) << std::endl;
-      std::cout << p_String(Pair.p2, currRing, currRing) << std::endl;
-      std::cout << p_String(F->m[index_j-1], currRing, currRing) << std::endl;
+      }
+      else
+      {
+        // get lead exponents
+        GpiList::const_iterator itM = std::next(M.begin(), index_i-1);
+        std::vector<int> m1 = list2vec(get_list(get_list(*itM).front()));
+        itM = std::next(itM, index_j-index_i);
+        std::vector<int> m2 = list2vec(get_list(get_list(*itM).front()));
+        std::vector<int>::const_iterator it1 = m1.begin();
+        std::vector<int>::const_iterator it2 = m2.begin();
+        std::vector<int> a1,a2;
+        int nvars = m1.size()-1;
+        //std::cout<<"----- NF_spoly -----> 2 <-----"<<std::endl;
+        for(int k=0; k<nvars; ++it1, ++it2, k++)
+        {
+          a1.emplace_back(std::max(0,*it2-*it1));
+          a2.emplace_back(std::max(0,*it1-*it2));
+        }
+        poly p1 = p_Copy(F->m[index_i-1], currRing);
+        poly p2 = p_Copy(F->m[index_j-1], currRing);
+        //std::cout<<"----- NF_spoly -----> 3 <-----"<<std::endl;
+        // so spoly = p1*a1 - p2*a2  (interpreting a1,a2 as monomials)
+        poly p1_term=p1;
+        poly p2_term=p2;
+        for (; p1_term!=NULL; pIter(p1_term)) {
+          for (int k=0; k<nvars; k++)
+          p1_term->exp[k] += a1[k];
+        }
+        for (; p2_term!=NULL; pIter(p2_term)) {
+          for (int k=0; k<nvars; k++)
+          p2_term->exp[k] += a2[k];
+        }
+        //std::cout<<"----- NF_spoly -----> 4 <-----"<<std::endl;
+        spoly = p_Add_q(p1, p_Neg(p2, currRing), currRing);
+      }
       */
+      //std::cout<<p_String(spoly, currRing, currRing)<<std::endl;
+      //std::cout<<"----- NF_spoly -----> 5 <-----"<<std::endl;
+
       #ifdef DEBUG_BBA
       std::cout << "spoly("<<index_i<<","<<index_j<<"):" << std::endl;
-      std::cout << p_String(Pair.p, currRing, currRing) << std::endl;
+      //std::cout << p_String(Pair.p, currRing, currRing) << std::endl;
+      std::cout << p_String(spoly, currRing, currRing) << std::endl;
       #endif
-      if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,Pair.p,0,4);}
-      else                      {NF_spoly = kNF(F,currRing->qideal,Pair.p);}
+      //if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,Pair.p,syz_comp,4);}
+      //else                      {NF_spoly = kNF(F,currRing->qideal,Pair.p,syz_comp);}
+      //std::cout<<"----- NF_spoly -----> 6 <-----"<<std::endl;
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+      //std::cout<<"----- NF_spoly -----> 7 <-----"<<std::endl;
 
       #ifdef DEBUG_BBA
       std::cout << "NF(spoly("<<index_i<<","<<index_j<<"),G_"<<r<<"):" << std::endl;
@@ -760,191 +781,199 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       std::cout << p_String(NF_spoly, currRing, currRing) << std::endl;
       #endif
     }
-    else
-    {
-      kStrategy strat=new skStrategy;
-      strat->ak = id_RankFreeModule(F,currRing);
-      strat->kModW=kModW=NULL;
-      strat->kHomW=kHomW=NULL;
-      initBuchMoraCrit(strat);
-      initBuchMoraPos(strat);
-      initBba(strat);
-      initBuchMora(F, currRing->qideal,strat);
-      /*initBuchMora:*/
-      strat->tail = pInit();
-      /*- set s -*/
-      strat->sl = -1;
-      /*- set L -*/
-      strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
-      strat->Ll = -1;
-      strat->L = initL(strat->Lmax);
-      /*- set B -*/
-      strat->Bmax = setmaxL;
-      strat->Bl = -1;
-      strat->B = initL();
-      /*- set T -*/
-      strat->tl = -1;
-      strat->tmax = setmaxT;
-      strat->T = initT();
-      strat->R = initR();
-      strat->sevT = initsevT();
-      /*- init local data struct -*/
-      strat->P.ecart=0;
-      strat->P.length=0;
-      strat->P.pLength=0;
-      initS(F, currRing->qideal,strat);
-      strat->fromT = FALSE;
-      strat->noTailReduction = FALSE;
+    else {
+      // directly construct syzygy from product criterion
+      poly last;
 
-      int sl = strat->sl;
-      //long start_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      NF_spoly = redNF(Pair.p,sl,TRUE,strat);
-      //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      //(*runtime)[(std::string) "just the call to redNF(..) in NF_of_spoly"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
-      delete(strat);
+      poly p1_poly=p_Copy(Pair.p1, currRing);
+      poly p1_lift = p1_poly;
+      while (p1_lift!=NULL && p_GetComp(p1_lift, currRing)==1) {
+        __p_GetComp(p1_lift,currRing) = 0;
+        last = p1_lift;
+        p1_lift = pNext(p1_lift);
+      }
+      pNext(last) = NULL;
+
+      poly p2_poly=p_Copy(Pair.p2, currRing);
+      poly p2_lift = p2_poly;
+      while (p2_lift!=NULL && p_GetComp(p2_lift, currRing)==1) {
+        __p_GetComp(p2_lift,currRing) = 0;
+        last = p2_lift;
+        p2_lift = pNext(p2_lift);
+      }
+      pNext(last) = NULL;
+
+      NF_spoly = p_Sub( p_Mult_q(p1_poly, p2_lift, currRing), p_Mult_q(p2_poly, p1_lift, currRing), currRing);
+      if (TEST_OPT_INTSTRATEGY)
+      {
+        //!!f = p_Cleardenom(f, currRing);
+        number c;
+        p_Cleardenom_n(NF_spoly, currRing, c);
+        n_Delete(&c, currRing->cf);
+      }
+      else
+      {
+        p_Norm(NF_spoly, currRing);
+      }
     }
+
+    //std::cout<<"----- NF_spoly -----> 8 <-----"<<std::endl;
 
     Pair.Delete();
 
-    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
-    }
-  else
+    stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
+  }
+  else // continue a previous reduction (now with more reducers)
   {
-    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    //std::cout<<"----- re-reduction -----> 1 <-----"<<std::endl;
+    start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     poly prev_result = readPolySSI(save_filename, true);
-    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    (*runtime)[(std::string) "reading partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+    stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    (*runtime)[(std::string) "reading partially reduced poly in NF_of_spoly"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
 
-    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    if (USE_KNF)
-    {
-      if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,prev_result,0,4);}
-      else                      {NF_spoly = kNF(F,currRing->qideal,prev_result);}
-    }
-    else
-    {
-      kStrategy strat=new skStrategy;
-      strat->ak = id_RankFreeModule(F,currRing);
-      strat->kModW=kModW=NULL;
-      strat->kHomW=kHomW=NULL;
-      initBuchMoraCrit(strat); /*set Gebauer, honey, sugarCrit*/
-      initBuchMoraPos(strat);
-      initBba(strat);
-      initBuchMora(F, currRing->qideal,strat);
-      /*initBuchMora:*/
-      strat->tail = pInit();
-      /*- set s -*/
-      strat->sl = -1;
-      /*- set L -*/
-      strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
-      strat->Ll = -1;
-      strat->L = initL(strat->Lmax);
-      /*- set B -*/
-      strat->Bmax = setmaxL;
-      strat->Bl = -1;
-      strat->B = initL();
-      /*- set T -*/
-      strat->tl = -1;
-      strat->tmax = setmaxT;
-      strat->T = initT();
-      strat->R = initR();
-      strat->sevT = initsevT();
-      /*- init local data struct.---------------------------------------- -*/
-      strat->P.ecart=0;
-      strat->P.length=0;
-      strat->P.pLength=0;
-      initS(F, currRing->qideal,strat); /*sets also S, ecartS, fromQ */
-      strat->fromT = FALSE;
-      strat->noTailReduction = FALSE;
+    //std::cout<<"----- re-reduction -----> 2 <-----"<<std::endl;
+    start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    //std::cout<<"----- re-reduction -----> 3 <-----"<<std::endl;
+    NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+    //std::cout<<"----- re-reduction -----> 4 <-----"<<std::endl;
 
-      int sl = strat->sl;
-
-      //long start_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      NF_spoly = redNF(prev_result,sl,TRUE,strat);
-      //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      //(*runtime)[(std::string) "just the call to redNF(..) in NF_of_spoly"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
-      delete(strat);
-    }
+    //std::cout<<"----- re-reduction -----> 5 <-----"<<std::endl;
 
     p_Delete(&prev_result, currRing);
+    //std::cout<<"----- re-reduction -----> 6-8 <-----"<<std::endl;
 
-    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+    stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
   }
+  //std::cout<<"----- NF_spoly -----> 9 <-----"<<std::endl;
 
   long elems = (long) F->nrows * (long) F->ncols;
   if (elems>0) {omFreeSize((ADDRESS) (F->m),sizeof(poly)*elems);}
   omFreeBin((ADDRESS) F, sip_sideal_bin);
 
-  if (NF_spoly==NULL) // reduction to 0 ==> pair is finished (and to be removed from Q)
+  //std::cout<<"----- NF_spoly -----> 10 <-----"<<std::endl;
+
+  //// save result ////
+  bool is_syz = red_syz==0 && isSyzygy(NF_spoly, syz_comp);
+  //std::cout<<"----- NF_spoly -----> 10.01 <-----"<<std::endl;
+  if (is_syz) // 0-reduction and non-trivial syzygy must be saved (if red_syz>0 this will be done in a later step)
   {
-    (*finished_indices).emplace_back(index_i);
-    (*finished_indices).emplace_back(index_j);
+    //std::cout<<"----- NF_spoly -----> 10.02 <-----"<<std::endl;
+    //writePolySSI(NF_spoly, save_filename);
+    //std::cout<<"----- NF_spoly -----> 10.03 <-----"<<std::endl;
+
+    ring syz_ring = currRing;
+    ring orig_ring = readRingSSI(base_filename + "basering", false);
+    //std::cout<<"----- NF_spoly -----> 10.04 <-----"<<std::endl;
+
+    pSubtractComp(NF_spoly,syz_comp);
+
+    //std::cout<<"----- NF_spoly -----> 10.05 <-----"<<std::endl;
+    poly syzygy = NF_spoly;
+    if(syz_ring!=orig_ring)
+    {
+      //std::cout<<"----- NF_spoly -----> 10.06 <-----"<<std::endl;
+      rChangeCurrRing(orig_ring);
+      syzygy = prMoveR(NF_spoly, syz_ring, orig_ring);
+      //std::cout<<"----- NF_spoly -----> 10.07 <-----"<<std::endl;
+      //rDelete(syz_ring);
+    }
+    //std::cout<<"----- NF_spoly -----> 10.08 <-----"<<std::endl;
+
+    writePolySSI(syzygy, save_filename); // save the syzygy in the original basering
+    //std::cout<<"----- NF_spoly -----> 10.09 <-----"<<std::endl;
+
+    //change back to prevent error
+    if(syz_ring!=orig_ring) {
+      //if (TEST_OPT_REDSB)
+      p_Delete(&syzygy, currRing);
+      rChangeCurrRing(syz_ring);
+      rDelete(orig_ring);
+    }
+
+  }
+  //std::cout<<"----- NF_spoly -----> 10.1 <-----"<<std::endl;
+  if (NF_spoly==NULL || is_syz) // 0-reduction
+  {
+    //std::cout<<"----- NF_spoly -----> 10.2 <-----"<<std::endl;
+    GpiVariant result;
+    poke("i",result, index_i);
+    poke("j",result, index_j);
+    poke("old_r",result, r);
+    poke("lead_data", result, GpiList({}));
+    NF->push_back(result);
+    //std::cout<<"----- NF_spoly -----> 10.3 <-----"<<std::endl;
   }
   else // did NOT reduce to 0
   {
-    /*
-    if (index_i==Qback_i && index_j==Qback_j) // element at end of Q ==> add as new GB element
+    //std::cout<<"----- NF_spoly -----> 10.4 <-----"<<std::endl;
+    GpiList m;
+    GpiList m2;
+    GpiList m_extra;
+    int n = currRing->N; // number of variables
+    poly NF_spoly_lead = NF_spoly;
+    //while (p_GetComp(NF_spoly_lead, currRing) > syz_comp)
+    //  pIter(NF_spoly_lead);
+    for(int k=1; k<=n; k++)
     {
-    */
+      m.emplace_back((int) p_GetExp(NF_spoly_lead,k,currRing));
+    }
+    m.emplace_back((int) p_GetComp(NF_spoly_lead, currRing));
 
-      // do this later, in update_Q by renaming a file!
-      //writePolySSI(NF_spoly, base_filename + "intermediate_files/f"+std::to_string(r+1));
+    //int is_syzygy = (int) (syz_comp<0 && p_GetComp(NF_spoly_lead, currRing)>-syz_comp); // element is actually a syzygy
 
-      GpiList m;
-      GpiList m2;
-      GpiList m_extra;
-      int n = currRing->N; // number of variables
+    poly NF_spoly_second_lead = NF_spoly_lead->next;
+    //while (NF_spoly_second_lead!=NULL && p_GetComp(NF_spoly_second_lead, currRing) > syz_comp)
+    //  pIter(NF_spoly_second_lead);
+    if(NF_spoly_second_lead==NULL || (red_syz<2 && isSyzygy(NF_spoly_second_lead,syz_comp))) {
       for(int k=1; k<=n; k++)
-      {
-        m.emplace_back((int) p_GetExp(NF_spoly,k,currRing));
-      }
-      m.emplace_back((int) p_GetComp(NF_spoly, currRing));
-
-      poly NF_spoly_second = NF_spoly->next;
-      if(NF_spoly_second==NULL) {
-        for(int k=1; k<=n; k++)
-          {m2.emplace_back((int) 0);}
-        m2.emplace_back((int) -1);
-      }
-      else {
-        for(int k=1; k<=n; k++)
-          {m2.emplace_back((int) p_GetExp(NF_spoly_second,k,currRing));}
-        m2.emplace_back((int) p_GetComp(NF_spoly_second, currRing));
-      }
-
-      int len;
-      m_extra.emplace_back((int) currRing->pLDeg(NF_spoly, &len, currRing));
-      m_extra.emplace_back((int) len);
-
-
-      (*NF).emplace_back(GpiList({index_i, index_j, GpiList({m,m2,m_extra,r})}));
-    /*
+        {m2.emplace_back((int) 0);}
+      m2.emplace_back((int) -1);
     }
-    else // element not at end of Q ==> put back to started indices (to be reduced further in future)
-    {
-    */
-      start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      writePolySSI(NF_spoly, save_filename);
-      stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      (*runtime)[(std::string) "saving partially reduced poly in NF_of_spoly"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
-
-      //(*started_indices_out).emplace_back(index_i);
-      //(*started_indices_out).emplace_back(index_j);
-    /*
+    else {
+      for(int k=1; k<=n; k++)
+        {m2.emplace_back((int) p_GetExp(NF_spoly_second_lead,k,currRing));}
+      m2.emplace_back((int) p_GetComp(NF_spoly_second_lead, currRing));
     }
-    */
 
-    p_Delete(&NF_spoly, currRing);
+    int len;
+    m_extra.emplace_back((int) currRing->pLDeg(NF_spoly_lead, &len, currRing)); // degree will only be correct for a degree ordering !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    m_extra.emplace_back((int) len);
+    //m_extra.emplace_back(is_syzygy);
+
+
+    GpiVariant result;
+    poke("i", result, index_i);
+    poke("j", result, index_j);
+    poke("old_r", result, r);
+    poke("lead_data", result, GpiList({m,m2,m_extra}));
+    NF->push_back(result);
+    start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    writePolySSI(NF_spoly, save_filename);
+    stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    (*runtime)[(std::string) "saving partially reduced poly in NF_of_spoly"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
+    //std::cout<<"----- NF_spoly -----> 10.5 <-----"<<std::endl;
   }
+  //std::cout<<"----- NF_spoly -----> 10.6 <-----"<<std::endl;
 
-  omUpdateInfo();
-  long max_mem = om_Info.MaxBytesSystem / 1024;
-  (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1L, -1L, -1L, max_mem});
-  long current_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[ids] = GpiList({-1L, -1L, current_time, max_mem});
+  p_Delete(&NF_spoly, currRing);
 
+  //std::cout<<"----- NF_spoly -----> 11 <-----"<<std::endl;
+
+  //std::cout<<"----- NF_spoly -----> 11.1 <-----"<<std::endl;
+  //omUpdateInfo(); // MEMORY measurement broken
+  //std::cout<<"----- NF_spoly -----> 11.2 <-----"<<std::endl;
+  //long max_mem = om_Info.MaxBytesSystem / 1024; // MEMORY measurement broken
+  long max_mem = 1L;
+  //std::cout<<"----- NF_spoly -----> 11.3 <-----"<<std::endl;
+  (*runtime)[(std::string) "memory used in NF_of_spoly"] = GpiList({-1.0, -1.0, -1.0, max_mem});
+  //std::cout<<"----- NF_spoly -----> 11.4 <-----"<<std::endl;
+  double current_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  //std::cout<<"----- NF_spoly -----> 11.5 <-----"<<std::endl;
+  (*runtime)[ids] = GpiList({-1.0, -1.0, current_time, max_mem});
+
+  //std::cout<<"----- NF_spoly -----> 12 <-----"<<std::endl;
   #ifdef DEBUG_BBA
   std::cout << "memory(2): " << max_mem << std::endl;
   #endif
@@ -963,26 +992,29 @@ poly read_generator (std::string const& base_filename,
 NO_NAME_MANGLING
 void singular_buchberger_reduce_GB (std::string const& base_filename,
                                     std::list<poly> const& generators,
-                                    long needed_indices,
-                                    int current_index,
-                                    int final_r,
-                                    long redSB,
+                                    int generator_name,
+                                    int generator_index,
+                                    int save_index,
+                                    bool is_syzygy,
+                                    int ngens,
+                                    long syz_comp,
+                                    long red_syz,
                                     GpiMap* runtime)
 {
   init_singular (config::singularLibrary().string());
 
   poly f; // poly to be reduced and saved in a file
 
-  long start_time,stop_time;
+  double start_time,stop_time;
 
-  if (redSB)
+  if (TEST_OPT_REDSB)
   {
-    ideal F = idInit(final_r-1,1);
+    ideal F = idInit(ngens-1,1);
     std::list<poly>::const_iterator gen = generators.begin();
     int ii=0;
-    for(int i=0; i<final_r; i++)
+    for(int i=0; i<ngens; i++)
     {
-      if(i==current_index)
+      if(i==generator_index)
       {
         //!!f = p_Copy(*gen, currRing, currRing);
         f = *gen;
@@ -998,71 +1030,23 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
     if (F->rank==0) F->rank=1;
 
     // start reduction
-    start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    if (USE_KNF)
-    {
-      if (TEST_OPT_INTSTRATEGY) {f = kNF(F,currRing->qideal,f,0,4);}
-      else                      {f = kNF(F,currRing->qideal,f);}
-    }
-    else
-    {
-      kStrategy strat=new skStrategy;
-      strat->ak = id_RankFreeModule(F,currRing);
-      strat->kModW=kModW=NULL;
-      strat->kHomW=kHomW=NULL;
-      initBuchMoraCrit(strat); /*set Gebauer, honey, sugarCrit*/
-      initBuchMoraPos(strat);
-      initBba(strat);
-      initBuchMora(F, currRing->qideal,strat);
-      /*initBuchMora:*/
-      strat->tail = pInit();
-      /*- set s -*/
-      strat->sl = -1;
-      /*- set L -*/
-      strat->Lmax = ((IDELEMS(F)+setmaxLinc-1)/setmaxLinc)*setmaxLinc;
-      strat->Ll = -1;
-      strat->L = initL(strat->Lmax);
-      /*- set B -*/
-      strat->Bmax = setmaxL;
-      strat->Bl = -1;
-      strat->B = initL();
-      /*- set T -*/
-      strat->tl = -1;
-      strat->tmax = setmaxT;
-      strat->T = initT();
-      strat->R = initR();
-      strat->sevT = initsevT();
-      /*- init local data struct -*/
-      strat->P.ecart=0;
-      strat->P.length=0;
-      strat->P.pLength=0;
-      initS(F, currRing->qideal,strat);
-      strat->fromT = FALSE;
-      strat->noTailReduction = FALSE;
-
-      int sl = strat->sl;
-
-      //long start_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      f = redNF(f,sl,TRUE,strat);
-      //long stop_time_redNF = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      //(*runtime)[(std::string) "just the call to redNF(..) in reduce_GB"] = GpiList({-1L, stop_time_redNF, stop_time_redNF-start_time_redNF, 1L});
-      delete(strat);
-    }
+    start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    f = kNF(F, currRing->qideal, f, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
 
     //id_Delete(&F, currRing);
     long elems = (long) F->nrows * (long) F->ncols;
     if (elems>0) {omFreeSize((ADDRESS) (F->m),sizeof(poly)*elems);}
     omFreeBin((ADDRESS) F, sip_sideal_bin);
 
-    stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    (*runtime)[(std::string) "applying NF in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+    stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    (*runtime)[(std::string) "applying NF in reduce_GB"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
   }
   else
   {
-    f = readPolySSI(base_filename+"intermediate_files/f"+std::to_string(needed_indices),false);
+    f = readPolySSI(base_filename+"intermediate_files/f"+std::to_string(generator_name),false);
   }
 
-  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   if (TEST_OPT_INTSTRATEGY)
   {
     //!!f = p_Cleardenom(f, currRing);
@@ -1074,16 +1058,64 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   {
     p_Norm(f, currRing);
   }
-  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "clearing denominators in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+  stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "clearing denominators in reduce_GB"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
 
 
-  start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  writePolySSI(f, base_filename + "result/g" + std::to_string(current_index+1));
-  if (redSB)
-  {
+  ring syz_ring, orig_ring;
+  if(syz_comp>0) {
+    syz_ring = currRing;
+    orig_ring = readRingSSI(base_filename + "basering", false);
+
+    poly f_lift = f;
+    poly f_last;
+    while (f_lift!=NULL && p_GetComp(f_lift, currRing)<=syz_comp) {
+      f_last = f_lift;
+      f_lift = pNext(f_lift);
+    }
+    pNext(f_last) = NULL; // use p_Split instead?
+
+    pSubtractComp(f_lift,syz_comp);
+
+    poly f_orig = f;
+    poly f_lift_orig = f_lift;
+    if(syz_ring!=orig_ring)
+    {
+      rChangeCurrRing(orig_ring);
+      f_orig      = prMoveR(f     , syz_ring, orig_ring);
+      f_lift_orig = prMoveR(f_lift, syz_ring, orig_ring);
+      //rDelete(syz_ring);
+    }
+
+    start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    if(is_syzygy) {
+      writePolySSI(f_lift_orig, base_filename + "result/s" + std::to_string(save_index));
+    }
+    else {
+      writePolySSI(f_orig     , base_filename + "result/g" + std::to_string(save_index));
+      writePolySSI(f_lift_orig, base_filename + "result/l" + std::to_string(save_index));
+    }
+
+    //change back to prevent error
+    if(syz_ring!=orig_ring) {
+      //if (TEST_OPT_REDSB)
+      p_Delete(&f_orig     , currRing);
+      p_Delete(&f_lift_orig, currRing);
+      rChangeCurrRing(syz_ring);
+      rDelete(orig_ring);
+    }
+    p_Delete(&f     , currRing);
+    p_Delete(&f_lift, currRing);
+
+  }
+  else {
+    start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    writePolySSI(f, base_filename + "result/g" + std::to_string(save_index));
+    //if (TEST_OPT_REDSB)
     p_Delete(&f, currRing);
   }
-  stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  (*runtime)[(std::string) "saving GB in files in reduce_GB"] = GpiList({-1L, stop_time, stop_time-start_time, 1L});
+
+
+  stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  (*runtime)[(std::string) "saving GB in files in reduce_GB"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
 }

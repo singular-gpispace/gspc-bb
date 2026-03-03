@@ -12,7 +12,7 @@ gc.tmpdir = "testdir";
 gc.installdir = "";
 
 gc.nodefile = "nodefile"; // file containing names of the nodes used in the compputation (absolute path or relative to install directory)
-gc.procspernode = 6;      // number of cores used per node
+gc.procspernode = 4;      // number of cores used per node
 gc.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
 
 // call once if you use gspc-monitor:
@@ -26,6 +26,34 @@ proc getcores()
 {
   return(gc.procspernode);
 }
+
+proc test_opt(string opt) {
+  intvec state = option(get);
+  option(opt);
+  if(state==option(get)) {
+    return (1);
+  }
+  else {
+    option("no"+opt);
+    return (0);
+  }
+}
+
+proc normalize(def container) {
+  if (test_opt("intStrategy")) {
+    for(int i=1; i<=size(container); i++) {
+      container[i] = container[i] / content(container[i]);
+    }
+    return(container);
+  }
+  else {
+    for(int i=1; i<=size(container); i++) {
+      container[i] = container[i] / leadcoef(container[i]);
+    }
+    return(container);
+  }
+}
+
 
 proc leadmonoms(def I)
 {
@@ -85,28 +113,46 @@ proc parallelStd(def I, list #) // test the parallel implementation of Buchberge
 
 proc testSTD(def I, list #) // test Singular's implementation of Buchberger's algorithm (std)
 {
-  system("--ticks-per-sec", 1000); option(prot);
+  system("--ticks-per-sec", 1000);
   int time = rtimer;
   print("std:");
   def G = std(I);
   printf(" took %sms", rtimer-time);
-  option(noprot);
   return(G);
 }
 
 proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #) // test the parallel implementation of Buchberger's algorithm (gspc_buchberger) + display runtimes
 {
+  int i,j;
   gc.procspernode = ncores;
   def GB;
-  int r_all;
+  module L,S;
+  int r_all, target_time, max_batch_size, head_size_factor, syz_comp;
   list indices;
   list runtimes;
   list degBounds;
   if (size(#)>1) {degBounds = #[2];}
   else           {degBounds = list(list(degBound,nvars(basering)));}
-  GB, r_all, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers, degBounds, force_continue);
+  if (size(#)>2) {target_time = #[3];}
+  else           {target_time = 100;}
+  if (size(#)>3) {max_batch_size = #[4];}
+  else           {max_batch_size = 50;}
+  if (size(#)>4) {head_size_factor = #[5];}
+  else           {head_size_factor = 150;}
+  if (size(#)>5) {syz_comp = #[6];}
+  else           {syz_comp = 0;}
+  if(syz_comp==-1) {
+    module I_in = module(I);
+    syz_comp = nrows(I_in);
+    for(i=1; i<=size(I_in); i++) {
+      I_in[i] = I_in[i] + gen(syz_comp+i);
+    }
+  }
+  else {
+    def I_in=I;
+  }
+  GB, L, S, r_all, indices, runtimes = gspc_buchberger_extraData(I_in, gc, nworkers, degBounds, force_continue, target_time, max_batch_size, head_size_factor, syz_comp);
   if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers.ssi",list(I, GB, r_all, indices, runtimes));}
-
 
   if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
   else {printf("%nI (%s elements): ...",size(I));}
@@ -114,7 +160,6 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
   else {printf("%nGB (%s elements): ...",size(GB));}
   printf("%nmax number of elements during the BB algorithm: %s%n",r_all,0);
 
-  int i,j;
   bigint irl_time = runtimes[2][1][2]-runtimes[2][1][1];
   print("TIMINGS (in ms):");
   //printf("starttime:                                  %s ms",  runtimes[2][1][1]);
@@ -131,30 +176,45 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
     s="";
     if (runtimes[2][i][3]<0 && runtimes[2][i][1]==-1) //count
       {
-        for(j=size(string(-1-runtimes[2][i][3])); j<=12; j++) {s = " "+s;}
-        printf(runtimes[1][i]+": %s"+s+" (max: %s)", runtimes[2][i][2], -1-runtimes[2][i][3]);
+        for(j=size(string(runtimes[2][i][2])); j<=8; j++) {s = " "+s;}
+        printf(runtimes[1][i]+": %s"+s+"     (max: %s)", runtimes[2][i][2], -1-runtimes[2][i][3]);
       }
     else // timing
       {
-      for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
-      printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);
+        for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
+        printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);
       }
   }
 
-  export(GB,indices,runtimes);
+  if(syz_comp>0) {
+    if(size(module((matrix(I)*matrix(S))))==0)       {print("syzygy module CORRECT !!!");}
+    else                                             {print("syzygy module WRONG !!!");}
+    if(comp(module(GB),module(matrix(I)*matrix(L)))) {print("         lift CORRECT !!!");}
+    else                                             {print("         lift WRONG !!!");}
+  }
+
+  export(GB,L,S,indices,runtimes);
 }
 
 proc testBB(def I, int ncores, int nworkers, int force_continue, list #) // compare both implementations
 {
   gc.procspernode = ncores;
 
+  int syz_comp;
+  if (size(#)>5) {syz_comp = #[6];}
+  else           {syz_comp = 0;}
+
   print("parallelStd:");
   testParallelBB(I, ncores, nworkers, force_continue, #);
 
   def G = testSTD(I, #);
 
-  if(comp(G, GB)) {printf("%nEQUAL to std(I) !!!",0);}
-  else            {printf("%nNOT equal to std(I) !!!",0);}
+  int equ;
+  if(syz_comp==0)               {equ = comp(       G ,           GB );}
+  else { if(typeof(G)=="ideal") {equ = comp(module(G), normalize(GB));}
+  else                          {equ = comp(       G , normalize(GB));} }
+  if(equ) {printf("%nEQUAL to std(I) !!!",0);}
+  else    {printf("%nNOT equal to std(I) !!!",0);}
 
   if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers_SINGULAR_std.ssi",list(G, comp(G, GB)));}
 
@@ -431,7 +491,6 @@ proc timestd(def I, list #)
   int tps=1;
   if(size(#)>0) {tps=#[1];}
   system("--ticks-per-sec",tps);
-  option(prot);
   int t=rtimer;
   def G = std(I);
   printf("time: %s (%s ticks per second)",rtimer-t,tps);
@@ -555,7 +614,7 @@ number c4=prime(400)*t;
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4));
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
-ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), dp;
+ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), (dp);
 
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
@@ -579,7 +638,28 @@ module m2 = z1*gen(1), z2*gen(2), z3*gen(3), z4*gen(4), z5*gen(5), z6*gen(6), z7
 
 module m1 = module(m1_original[intvec(1,3,5,7,9)]) + module(m1_original[intvec(2,4,6,8,10)]);
 
+matrix m1_mat = matrix(m1);
+matrix m1block_mat =                                             submat(m1_mat,1,1..10);
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,4,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,8,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,2,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,6,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,7,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,9,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,3,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,5,1..10))));
+module m1block = module(m1block_mat);
+module m2block = z1*gen(1), z4*gen(2), gen(3), z2*gen(4), z6*gen(5), z7*gen(6), gen(7), z3*gen(8), z5*gen(9);
+module mblock = m1block + m2block;
+
+module m1d = m1;
+m1d[1] = m1d[1] + z8^10*gen(10);
+
+
 module m=m1+m2;
+
+module m_unit       = module(transpose(concat(transpose(matrix(m)),unitmat(size(m)))));
+module m_small_unit = m1 + module(transpose(concat(transpose(matrix(m2)),unitmat(size(m2)))));
 
 module m_sorted = module(m[intvec(18,19,17..7,1,6,5,2,4,3)]);
 
@@ -746,8 +826,17 @@ printf("deg=%s, size=%s", maxdeg(Mred), size(Mred));
 */
 //setring(rM1M2BIG);
 monitorON();
-option(redSB); option(redTail);
-degBound=0; printf("%n 4 CORE M:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)));
+option(noredSB); option(redTail); option(prot);
+//degBound=0; printf("%n 4 CORE M, 100:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 100); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M, 125:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 125); // last 3 arguments: target_time, max_batch_size, head_size_factor
+
+//degBound=0; int tTt=rtimer; def S = syz(m); print(rtimer-tTt);
+//degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_small_unit, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 150); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+
+//degBound=0; printf("%n 4 CORE M, 175:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 175); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M, 200:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 200); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M, 225:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 225); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M, 250:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 250); // last 3 arguments: target_time, max_batch_size, head_size_factor
 //degBound=0; printf("%n 4 CORE M:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_RAT", list(list(degBound,13-4)));
 
 
@@ -784,3 +873,28 @@ for (i=1;i<=7;i++)
 */
 
 //testParallelBB(m, 48, 47, "BIG_M1_PLUS_M2", list(list(4,9),list(4,4)));
+
+
+
+
+// small test example
+ring testring = 0, x(1..7), dp;
+
+system("--random",42);
+ideal I = randomid(maxideal(2),5);
+module Im = module(I);
+module M;
+for(int ii=1; ii<=size(Im); ii++) {
+  M[ii] = Im[ii] + gen(ii+1);
+}
+
+
+
+option(redSB); option(redTail); option(prot); option(noreturnSB);
+//testParallelBB(M, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, 1); // last 4 arguments: target_time, max_batch_size, head_size_factor, syz_comp //!!
+testBB(I, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1); // last 4 arguments: target_time, max_batch_size, head_size_factor, syz_comp //!!
+module SS;
+matrix LL;
+int ti = rtimer; def GG = liftstd(I,LL,SS); ti=rtimer-ti; printf("liftstd: %sms",ti);
+int ti2 = rtimer; def SGB = std(S); ti2=rtimer-ti2;       printf("std(S):  %sms",ti2);
+int ti3 = rtimer; def Lred = NF(L,SGB); ti3=rtimer-ti3;   printf("NF(L,S): %sms",ti3);

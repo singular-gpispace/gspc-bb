@@ -1,20 +1,47 @@
 <structs>
 
   <struct name="running_reduction">
-    <field name="i" type="int"/>
-    <field name="j" type="int"/>
+    <field name="i"     type="int"/>
+    <field name="j"     type="int"/>
     <field name="old_r" type="int"/>
+    <field name="PC"    type="bool"/>
 	</struct>
+
+  <struct name="needed_index">
+    <field name="generator" type="int"/>
+    <field name="generator_index" type="int"/>
+    <field name="save_index" type="int"/>
+    <field name="is_syzygy" type="bool"/>
+  </struct>
 
   <struct name="index_pair">
     <field name="i" type="int"/>
     <field name="j" type="int"/>
   </struct>
 
+  <struct name="reduction_result">
+    <field name="i" type="int"/>
+    <field name="j" type="int"/>
+    <field name="old_r" type="int"/>
+    <field name="lead_data" type="list"/>
+  </struct>
+
+  <struct name="timing">
+    <field name="start" type="double"/>
+    <field name="stop"  type="double"/>
+  </struct>
+
+  <struct name="moving_avg">
+    <field name="avg"   type="double"/>
+    <field name="total" type="double"/>
+    <field name="count" type="double"/>
+    <field name="start" type="double"/>
+  </struct>
+
   <struct name="tuple__index_pair__int__set">
-    <field name="first" type="index_pair"/>
+    <field name="first"  type="index_pair"/>
     <field name="second" type="int"/>
-    <field name="third" type="set"/>
+    <field name="third"  type="set"/>
   </struct>
 
 </structs>

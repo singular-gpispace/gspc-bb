@@ -7,12 +7,16 @@
 #include <Singular/newstruct.h>
 #include <boost/variant.hpp>
 #include <vector>
+#include <polys/prCopy.h>
 
 
 // Singular defines this in ssiLink.cc
 #define SSI_VERSION 13
 
+#define pSubtractComp(p,c) p_SubtractComp(p,c,currRing)
 
+//ideal idrCopyR_NoSort(ideal id, ring src_r, ring dest_r);
+//poly  prMoveR_NoSort (poly  &p, ring src_r, ring dest_r);
 
 // these are from ssiLink.cc
 char* ssiReadString(const ssiInfo *d);
@@ -40,10 +44,14 @@ class ScopedLeftv
     bool chained = false;
 };
 
+void p_SubtractComp(poly p, unsigned long c, ring r);
+
 void writePolySSI(poly P, std::string out_filename);
-poly readPolySSI(std::string filename, BOOLEAN delete_file);
+poly  readPolySSI  (std::string filename, BOOLEAN delete_file);
 void  writeIdealSSI(ideal I, std::string out_filename);
-ideal readIdealSSI(std::string filename, BOOLEAN delete_file);
+ideal readIdealSSI (std::string filename, BOOLEAN delete_file);
+void  writeRingSSI (ring r, std::string out_filename);
+ring  readRingSSI  (std::string filename, BOOLEAN delete_file);
 
 BOOLEAN jjRINGLIST(leftv res, leftv v);
 

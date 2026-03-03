@@ -1,7 +1,10 @@
+#define PROT            0
+
 #include <interface/Workflow.hpp>
 
 #include <iostream>
 #include <fstream>
+#include <cmath>
 
 namespace buchberger_module
 {
@@ -49,6 +52,8 @@ namespace buchberger_module
   }
 
   // types used by GPI-Space if you set the type of a place (or an "out-many" port) to "list", "set" or "map":
+  using bitset     = bitsetofint::type;
+  using bytearray  = we::type::bytearray;
   using GpiVariant = pnet::type::value::value_type;
   using GpiStruct  = pnet::type::value::structured_type;
   using GpiList    = std::list<GpiVariant>;
@@ -102,16 +107,21 @@ namespace buchberger_module
   	}
 
 
-    // summarize runtimes
+    // summarize runtimes (measured in ms since start of algorithm; will cause int overflow only on 32-bit systems and after 24 days of runtime)
 
     lists transition_list = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[1].data;
     lists runtimes_list   = (lists) ((lists) ((lists) ((lists) out_list)->m[0].data)->m[3].data)->m[2].data;
     lists times_start_stop = (lists) (runtimes_list->m[0].data);
     lists times_sum_total  = (lists) (runtimes_list->m[1].data);
 
-    long algorithm_starttime = 0L;
+    double algorithm_starttime = 0L;
+    bool prot;
     for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
   	{
+      if( boost::get<std::string>(it->first ) == "singular_options")
+      {
+        prot = boost::get<bitset>(it->second).is_element(PROT);
+      }
   		if( boost::get<std::string>(it->first ) == "runtime")
   		{
   			GpiMap runtime = get_map(it->second);
@@ -122,12 +132,15 @@ namespace buchberger_module
   				std::string transition = boost::get<std::string>(time_it->first);
           if(transition==((std::string) "TRANSITION init TOTAL"))
           {
-            algorithm_starttime = boost::get<long>(get_list(time_it->second).front()); // count start of init transition as beginning of the algorithm
+            algorithm_starttime = boost::get<double>(get_list(time_it->second).front()); // count start of init transition as beginning of the algorithm
           }
         }
       }
     }
 
+    long prod_crit_counter  = 0L;
+    long diff_comp_counter  = 0L;
+    long chain_crit_counter = 0L;
     std::map<std::string,std::map<long,long>> memory;
     for(std::multimap<std::string, pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
     {
@@ -141,9 +154,10 @@ namespace buchberger_module
           std::string transition = boost::get<std::string>(time_it->first);
           GpiList times = get_list(time_it->second);
           GpiList::const_iterator list_it = times.begin();
-          long start    = boost::get<long>(*list_it); list_it++;
-          long stop     = boost::get<long>(*list_it); list_it++;
-          long duration = boost::get<long>(*list_it); list_it++;
+
+          long start    = static_cast<long>(std::llround(boost::get<double>(*list_it) - algorithm_starttime)); list_it++;
+          long stop     = static_cast<long>(std::llround(boost::get<double>(*list_it) - algorithm_starttime)); list_it++;
+          long duration = static_cast<long>(std::llround(boost::get<double>(*list_it))); list_it++;
           long count    = boost::get<long>(*list_it);
 
           if(stop==-1L && duration>=0) // memory measurement (here start, duration and count will instead store the workers id, current time and current memory usage)
@@ -171,7 +185,7 @@ namespace buchberger_module
                     times_sum_total->m[1].data = (void*) (char*)        ( ((long) times_sum_total->m[1].data) + count);
                     times_sum_total->m[2].data = (void*) (char*) std::max(((long) times_sum_total->m[2].data) , duration);
 
-                    times_start_stop->m[1].data = (void*) (char*) std::max(((long) times_start_stop->m[1].data) , stop-algorithm_starttime); // count end of last activated transition as ending of the algorithm
+                    times_start_stop->m[1].data = (void*) (char*) std::max(((long) times_start_stop->m[1].data) , stop); // count end of last activated transition as ending of the algorithm
                   }
                 }
                 else
@@ -188,9 +202,34 @@ namespace buchberger_module
               }
             }
           }
+          if(prot)
+          {
+            if(transition==((std::string) "PRODUCT CRITERION"))
+            {
+              prod_crit_counter += count;
+            }
+            if(transition==((std::string) "DIFFERENT COMPONENT"))
+            {
+              diff_comp_counter += count;
+            }
+            if(transition==((std::string) "CHAIN CRITERION"))
+            {
+              chain_crit_counter += count;
+            }
+          }
         }
       }
     }
+
+    if (prot) {
+      std::ofstream prot_file(_basefilename+"prot.txt", std::ios::app);
+      if (diff_comp_counter==0)
+        prot_file << "\nproduct criterion:" << prod_crit_counter <<  " chain criterion:" << chain_crit_counter;
+      else
+        prot_file << "\nproduct criterion:" << prod_crit_counter <<  " chain criterion:" << chain_crit_counter << " different component:" << diff_comp_counter;
+      prot_file.close();
+    }
+
     for (std::map<std::string,std::map<long,long>>::const_iterator worker_it = memory.begin(); worker_it != memory.end(); ++worker_it)
     {
       std::string worker_id = worker_it->first;
