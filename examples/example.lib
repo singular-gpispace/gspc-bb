@@ -3,6 +3,7 @@ LIB "random.lib";
 LIB "matrix.lib";
 
 
+
 option(redSB); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis
 
 gspcConfigToken gc = configure_gspc();
