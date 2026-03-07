@@ -1264,6 +1264,7 @@
 
 						unsigned long nrunning = nT_started_indices;
 
+
 						long batch_size = static_cast<long>(std::llround(static_cast<double>(target_time)/current_time.avg));
 						batch_size = std::min(batch_size, static_cast<long>(job_queue.size()/(nworkers-nrunning)));
 						batch_size = std::min(batch_size, max_batch_size);
