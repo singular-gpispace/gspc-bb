@@ -9,7 +9,7 @@ option(redSB); // if option redSB is set: gspc_buchberger will calculate a uniqu
 gspcConfigToken gc = configure_gspc();
 
 // directory used by GPI-Space to save temporary files (absolute path or else relative to the current directory)
-gc.tmpdir = "testdir";
+gc.tmpdir = "tempdir";
 gc.installdir = "";
 
 gc.nodefile = "nodefile"; // file containing names of the nodes used in the compputation (absolute path or relative to install directory)
