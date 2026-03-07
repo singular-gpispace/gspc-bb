@@ -13,7 +13,7 @@ gc.tmpdir = "tempdir";
 gc.installdir = "";
 
 gc.nodefile = "nodefile"; // file containing names of the nodes used in the compputation (absolute path or relative to install directory)
-gc.procspernode = 4;      // number of cores used per node
+gc.procspernode = 8;      // number of cores used per node
 gc.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
 
 // call once if you use gspc-monitor:
