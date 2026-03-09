@@ -128,7 +128,7 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
   gc.procspernode = ncores;
   def GB;
   module L,S;
-  int r_all, target_time, max_batch_size, head_size_factor, syz_comp;
+  int r_all, target_time, max_batch_size, head_size_factor, syz_comp, red_syz;
   list indices;
   list runtimes;
   list degBounds;
@@ -142,6 +142,8 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
   else           {head_size_factor = 150;}
   if (size(#)>5) {syz_comp = #[6];}
   else           {syz_comp = 0;}
+  if (size(#)>6) {red_syz = #[7];}
+  else           {red_syz = 1;}
   if(syz_comp==-1) {
     module I_in = module(I);
     syz_comp = nrows(I_in);
@@ -152,7 +154,7 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
   else {
     def I_in=I;
   }
-  GB, L, S, r_all, indices, runtimes = gspc_buchberger_extraData(I_in, gc, nworkers, degBounds, force_continue, target_time, max_batch_size, head_size_factor, syz_comp);
+  GB, L, S, r_all, indices, runtimes = gspc_buchberger_extraData(I_in, gc, nworkers, degBounds, force_continue, target_time, max_batch_size, head_size_factor, syz_comp, red_syz);
   if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers.ssi",list(I, GB, r_all, indices, runtimes));}
 
   if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
@@ -893,7 +895,7 @@ for(int ii=1; ii<=size(Im); ii++) {
 
 option(redSB); option(redTail); option(prot); option(noreturnSB);
 //testParallelBB(M, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, 1); // last 4 arguments: target_time, max_batch_size, head_size_factor, syz_comp //!!
-testBB(I, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1); // last 4 arguments: target_time, max_batch_size, head_size_factor, syz_comp //!!
+testBB(I, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 2); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 module SS;
 matrix LL;
 int ti = rtimer; def GG = liftstd(I,LL,SS); ti=rtimer-ti; printf("liftstd: %sms",ti);

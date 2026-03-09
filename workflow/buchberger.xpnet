@@ -229,6 +229,7 @@
 												poke("i"    , si, i);
 												poke("j"    , si, j);
 												poke("old_r", si, old_r);
+												//poke("PC", si, PC); // FIX restart system!
 
 												#ifdef DEBUG_BBA
 												std::cout << runtime_start << ": init: adding ("<<i<<","<<j<<") to started_indices" << std::endl;
@@ -350,8 +351,9 @@
 						long head_size = batch_size * nworkers * head_size_factor;
 						for(sPairQueue::iterator entry=Q.begin(); insert_counter<head_size && entry!=Q.end(); ++entry)
 						{
-							std::pair<int,int> indices = (*entry).first;
-							job_queue.emplace_back(GpiList({indices.first,indices.second,(int) 0}));
+							std::pair<int,int> indices = entry->first;
+							bool PC = (entry->second).PC;
+							job_queue.emplace_back(GpiList({indices.first,indices.second,(int) 0, PC}));
 							insert_counter++;
 						}
 
@@ -1280,18 +1282,12 @@
 						while (job_queue.size()>0 && nrunning < nworkers) { // only have as many jobs running as there are NF_of_spoly transitions
 							GpiList batch = {};
 							for(int ind=0; ind<batch_size && job_queue.size()>0; ind++) {
-								std::cout << 111 << std::endl;
-								GpiList::const_iterator it = get_list(job_queue.front()).begin();
-								std::cout << 222 << std::endl;
+								GpiList job = get_list(job_queue.front());
+								GpiList::const_iterator it = job.begin();
 								int i	 		= boost::get<int>(*it); ++it;
-								std::cout << 333 << std::endl;
 								int j    	= boost::get<int>(*it); ++it;
-								std::cout << 444 << std::endl;
 								int old_r = boost::get<int>(*it); ++it;
-								std::cout << 555 << std::endl;
-								std::cout << it->which() << std::endl;
 								bool PC   = boost::get<bool>(*it);
-								std::cout << 666 << std::endl;
 
 								GpiVariant si;
 								poke("i"    , si, i);
