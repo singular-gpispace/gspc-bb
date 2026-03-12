@@ -881,10 +881,11 @@ for (i=1;i<=7;i++)
 
 
 // small test example
-ring testring = 0, x(1..7), dp;
+int N=8;
+ring testring = 0, x(1..N), dp;
 
 system("--random",42);
-ideal I = randomid(maxideal(2),5);
+ideal I = randomid(maxideal(2),N-2);
 module Im = module(I);
 module M;
 for(int ii=1; ii<=size(Im); ii++) {
@@ -895,9 +896,10 @@ for(int ii=1; ii<=size(Im); ii++) {
 
 option(redSB); option(redTail); option(prot); option(noreturnSB);
 //testParallelBB(M, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, 1); // last 4 arguments: target_time, max_batch_size, head_size_factor, syz_comp //!!
-testBB(I, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 2); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+testBB(I, 32, 32, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 module SS;
 matrix LL;
 int ti = rtimer; def GG = liftstd(I,LL,SS); ti=rtimer-ti; printf("liftstd: %sms",ti);
 int ti2 = rtimer; def SGB = std(S); ti2=rtimer-ti2;       printf("std(S):  %sms",ti2);
 int ti3 = rtimer; def Lred = NF(L,SGB); ti3=rtimer-ti3;   printf("NF(L,S): %sms",ti3);
+printf("liftstd 'without' std(S) and NF(L,S): %sms",ti-ti2-ti3);

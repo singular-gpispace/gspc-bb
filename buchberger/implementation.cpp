@@ -1012,6 +1012,8 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
     ideal F = idInit(ngens-1,1);
     std::list<poly>::const_iterator gen = generators.begin();
     int ii=0;
+    std::cout<<"----- reduce_GB -----> building ideal F of reducers <-----"<<std::endl;
+    std::cout<<"----- reduce_GB -----> ngens: "<<ngens<<" generator_index: "<<generator_index<<" generator_name: "<<generator_name<<" save_index: "<<save_index<<" is_syzygy: "<<(is_syzygy ? "true" : "false")<<" syz_comp: "<<syz_comp<<" red_syz: "<<red_syz<<" <-----"<<std::endl;
     for(int i=0; i<ngens; i++)
     {
       if(i==generator_index)
@@ -1051,8 +1053,12 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   {
     //!!f = p_Cleardenom(f, currRing);
     number c;
+    std::cout<<"----- reduce_GB -----> clearing denominators <-----"<<std::endl;
+    std::cout<<"----- f==NULL -----> "<<(f==NULL ? "true" : "false")<<" <-----"<<std::endl;
     p_Cleardenom_n(f, currRing, c);
+    std::cout<<"----- reduce_GB -----> clearing denominators (done) <-----"<<std::endl;
     n_Delete(&c, currRing->cf);
+    std::cout<<"----- reduce_GB -----> clearing denominators done <-----"<<std::endl;
   }
   else
   {
@@ -1060,62 +1066,98 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   }
   stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "clearing denominators in reduce_GB"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
-
-
+  
+  
   ring syz_ring, orig_ring;
   if(syz_comp>0) {
+    std::cout<<"----- reduce_GB -----> reading ring <-----"<<std::endl;  
     syz_ring = currRing;
     orig_ring = readRingSSI(base_filename + "basering", false);
-
-    poly f_lift = f;
+    
+    std::cout<<"----- reduce_GB -----> splitting poly <-----"<<std::endl;  
+    poly f_tail = f;
     poly f_last;
-    while (f_lift!=NULL && p_GetComp(f_lift, currRing)<=syz_comp) {
-      f_last = f_lift;
-      f_lift = pNext(f_lift);
+    std::cout<<"----- reduce_GB -----> 1 <-----"<<std::endl;  
+    while (f_tail!=NULL && p_GetComp(f_tail, currRing)<=syz_comp) {
+      std::cout<<"----- reduce_GB -----> loop <-----"<<std::endl;  
+      f_last = f_tail;
+      f_tail = pNext(f_tail);
     }
-    pNext(f_last) = NULL; // use p_Split instead?
-
-    pSubtractComp(f_lift,syz_comp);
-
+    std::cout<<"----- reduce_GB -----> 2 <-----"<<std::endl;  
+    std::cout<<"----- f_last==NULL -----> "<<(f_last==NULL ? "true" : "false")<<" <-----"<<std::endl;  
+    std::cout<<"----- is_syzygy -----> "<<(is_syzygy ? "true" : "false")<<" <-----"<<std::endl;  
+    if(!is_syzygy) {
+      pNext(f_last) = NULL; // use p_Split instead?
+      std::cout<<"----- reduce_GB -----> 3 <-----"<<std::endl;  
+    }
+      
+    pSubtractComp(f_tail,syz_comp);
+    std::cout<<"----- reduce_GB -----> 4 <-----"<<std::endl;  
+      
     poly f_orig = f;
-    poly f_lift_orig = f_lift;
+    poly f_tail_orig = f_tail;
+    std::cout<<"----- reduce_GB -----> 5 <-----"<<std::endl;  
     if(syz_ring!=orig_ring)
     {
+      std::cout<<"----- reduce_GB -----> syz_ring!=orig_ring <-----"<<std::endl;  
       rChangeCurrRing(orig_ring);
-      f_orig      = prMoveR(f     , syz_ring, orig_ring);
-      f_lift_orig = prMoveR(f_lift, syz_ring, orig_ring);
+      if(!is_syzygy) {
+        f_orig      = prMoveR(f     , syz_ring, orig_ring);
+      }
+      f_tail_orig = prMoveR(f_tail, syz_ring, orig_ring);
       //rDelete(syz_ring);
     }
+    
+    std::cout<<"----- reduce_GB -----> saving result <-----"<<std::endl;
 
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     if(is_syzygy) {
-      writePolySSI(f_lift_orig, base_filename + "result/s" + std::to_string(save_index));
+      writePolySSI(f_tail_orig, base_filename + "result/s" + std::to_string(save_index));
     }
     else {
       writePolySSI(f_orig     , base_filename + "result/g" + std::to_string(save_index));
-      writePolySSI(f_lift_orig, base_filename + "result/l" + std::to_string(save_index));
+      writePolySSI(f_tail_orig, base_filename + "result/l" + std::to_string(save_index));
     }
+
+    std::cout<<"----- reduce_GB -----> ring change <-----"<<std::endl;
 
     //change back to prevent error
     if(syz_ring!=orig_ring) {
       //if (TEST_OPT_REDSB)
-      p_Delete(&f_orig     , currRing);
-      p_Delete(&f_lift_orig, currRing);
+      std::cout<<"----- reduce_GB -----> a <-----"<<std::endl;  
+      if(!is_syzygy) {
+        p_Delete(&f_orig     , currRing);
+      }
+      std::cout<<"----- reduce_GB -----> b <-----"<<std::endl;  
+      p_Delete(&f_tail_orig, currRing);
+      std::cout<<"----- reduce_GB -----> c <-----"<<std::endl;  
       rChangeCurrRing(syz_ring);
+      std::cout<<"----- reduce_GB -----> d <-----"<<std::endl;  
       rDelete(orig_ring);
+      std::cout<<"----- reduce_GB -----> e <-----"<<std::endl;  
     }
-    p_Delete(&f     , currRing);
-    p_Delete(&f_lift, currRing);
-
+    if(!is_syzygy) {
+      p_Delete(&f     , currRing);
+    }
+    std::cout<<"----- reduce_GB -----> f <-----"<<std::endl;  
+    p_Delete(&f_tail, currRing);
+    std::cout<<"----- reduce_GB -----> g <-----"<<std::endl;  
+    
   }
   else {
+    std::cout<<"----- reduce_GB -----> aa <-----"<<std::endl;  
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    std::cout<<"----- reduce_GB -----> bb <-----"<<std::endl;  
     writePolySSI(f, base_filename + "result/g" + std::to_string(save_index));
     //if (TEST_OPT_REDSB)
+    std::cout<<"----- reduce_GB -----> cc <-----"<<std::endl;  
     p_Delete(&f, currRing);
+    std::cout<<"----- reduce_GB -----> dd <-----"<<std::endl;  
   }
-
-
+  
+  
+  std::cout<<"----- reduce_GB -----> h <-----"<<std::endl;  
   stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "saving GB in files in reduce_GB"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
+  std::cout<<"----- reduce_GB -----> i <-----"<<std::endl;  
 }

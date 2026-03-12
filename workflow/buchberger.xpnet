@@ -213,14 +213,14 @@
 										{
 											// move from started to degree_bound
 											ijFileIn.close();
-											std::ofstream ijFileOut(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)); ijFileOut.close();
-											std::remove((base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
+											//FIX: std::ofstream ijFileOut(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)); ijFileOut.close();
+											//FIX: std::remove((base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
 										}
 										else
 										{
 											// move from degree_bound to started
-											std::ofstream ijFileOut(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j)); ijFileOut.close();
-											std::remove((base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
+											//FIX: std::ofstream ijFileOut(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j)); ijFileOut.close();
+											//FIX: std::remove((base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)).c_str());
 
 											std::ifstream ijResFileIn(base_filename+"temporary_files/intermediate_result_"+std::to_string(i)+"_"+std::to_string(j));
 											if(ijResFileIn.good())
@@ -264,7 +264,7 @@
 									{
 										add_to_Q=false;
 										degbound_counter++;
-										std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+										//FIX: std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
 									}
 									int PC_res = test_PC((*Mi)[0],(*Mj)[0],rank); // 1: PC positive,  2: different lead components,  0: else
 									if (PC_res!=0) // apply PC
@@ -272,11 +272,11 @@
 										add_to_Q = false;
 										if (PC_res==1) {
 											prodcrit_counter++;
-											std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+											//FIX: std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 										}
 										else {
 											diff_comp_counter++;
-											std::ofstream ijFile(base_filename+"queue/different_component/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+											//FIX: std::ofstream ijFile(base_filename+"queue/different_component/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 										}
 
 										if(syz_comp>0 && PC_res==1) {
@@ -298,7 +298,7 @@
 													{
 														add_to_Q = false;
 														chaincrit_counter++;
-														std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+														//FIX: std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
 														break;
 													}
 													else { if(k<j)
@@ -308,7 +308,7 @@
 														{
 															add_to_Q = false;
 															chaincrit_counter++;
-															std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+															//FIX: std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
 															break;
 														}
 													}
@@ -320,7 +320,7 @@
 														{
 															add_to_Q = false;
 															chaincrit_counter++;
-															std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
+															//FIX: std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(j)); ijFile.close();
 															break;
 														}
 													}}
@@ -576,7 +576,7 @@
 
 
 
-		<transition name="update_Q">
+		<transition name="update_Q" priority="2">
 			<defun>
 				<require key="update_Q" mandatory="true"/>
 				<in name="nT_started_indices" type="unsigned long"/>
@@ -818,7 +818,7 @@
 										{
 											add_to_Q=false;
 											degbound_counter++;
-											std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+											//FIX: std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 										}
 										int PC_res = test_PC((*Mi)[0],Mr[0],rank); // 1: PC positive,  2: different lead components,  0: else
 										if (PC_res!=0) // apply PC
@@ -826,11 +826,11 @@
 											add_to_Q = false;
 											if (PC_res==1) {
 												prodcrit_counter++;
-												std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+												//FIX: std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 											}
 											else {
 												diff_comp_counter++;
-												std::ofstream ijFile(base_filename+"queue/different_component/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+												//FIX: std::ofstream ijFile(base_filename+"queue/different_component/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 											}
 
 											if(syz_comp>0 && PC_res==1) {
@@ -852,7 +852,7 @@
 														{
 															add_to_Q = false;
 															chaincrit_counter++;
-															std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+															//FIX: std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 															break;
 														}
 														else // thus i<k<r  (k>r is not possible)
@@ -862,7 +862,7 @@
 															{
 																add_to_Q = false;
 																chaincrit_counter++;
-																std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+																//FIX: std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 																break;
 															}
 														}
@@ -917,8 +917,8 @@
 											//Qind.erase(std::make_pair(ii,jj));
 											chaincrit_counter++;
 											cancelled_s_pair_counter++;
-											std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
-											std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
+											//FIX: std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
+											//FIX: std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
 											#ifdef DEBUG_BBA
 											debugfile << "("<<ii<<","<<jj<<","<<(Qk->second).old_r<<") ";
 											#endif
@@ -1441,7 +1441,7 @@
 
 
 
-		<transition name="minimize_GB">
+		<transition name="minimize_GB" priority="1">
 			<defun>
 				<require key="NF_of_spoly_Qback" mandatory="true"/>
 				<in name="base_filename" type="string"/>
@@ -1495,12 +1495,11 @@
 						}
 
 						bool needed;
-						bool skip_syzygies = red_syz==1 && syz_comp>0;
 						int si1=1;
 						int si2=1;
 						for(int i=0; i<r; i++)
 						{
-							if(skip_syzygies && syzygy_indices.find(i+1)!=syzygy_indices.end()) {
+							if(red_syz==1 && syz_comp>0 && syzygy_indices.find(i+1)!=syzygy_indices.end()) {
 								std::string syz_filename = base_filename + "intermediate_files/f"+std::to_string(i+1);
 								std::filesystem::copy_file(
 								    syz_filename, (base_filename + "result/s"+std::to_string(n_syzygies+1)),
@@ -1525,7 +1524,7 @@
 
 								GpiVariant needed_index;
 								poke("generator", needed_index, i+1);  // name of generator file to read from (f1,f2,...)
-								poke("generator_index", needed_index, si1+si2-2);
+								poke("generator_index", needed_index, si1+si2-2); // index of that generator in the list of needed reducers
 								if(red_syz==2 && syz_comp>0 && syzygy_indices.find(i+1)!=syzygy_indices.end()) {
 									n_syzygies++;
 									poke("save_index"     , needed_index, si1); // name the result will be saved as (s1,s2,...)
@@ -1540,13 +1539,15 @@
 								needed_indices.emplace_back(needed_index);
 							}
 						}
-						int final_r = size(needed_indices);
+						int final_r = si2-1; //size(needed_indices);
 
 						if (singular_options.is_element(PROT) && singular_options.is_element(REDSB)) {
 							std::ofstream prot_file(base_filename+"prot.txt", std::ios::app);
 							prot_file << "\n(S:" << final_r << ")";
 							prot_file.close();
 						}
+
+						std::cout << "minimized Gröbner basis has " << final_r << " elements (of which: "<<n_syzygies<<" syzygies)" << std::endl;
 
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
@@ -1561,12 +1562,15 @@
 						bool silent = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename+"intermediate_files/", args_read, args_in, args_inout, out, out_many, delete_files, silent);
 
+						std::cout<<"----- reduce_GB (outer) -----> 1 <-----"<<std::endl;  
+						
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": " << needed_indices.size() << " elements left" << std::endl;
 						#endif
-
+						
 						double runtime_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						std::cout<<"----- reduce_GB (outer) -----> 2 <-----"<<std::endl;  
 
 						//std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>

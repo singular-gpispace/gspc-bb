@@ -748,11 +748,11 @@ inline GpiList lead_of_spoly(std::vector<std::vector<int>> const&  Mi, std::vect
 
 // Queue operations //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, std::string base_filename, bool PC=0)
+inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, [[maybe_unused]] std::string base_filename, bool PC=0)
 {
-  std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
-  ijFile << (int) 0; // initialize old_r
-  ijFile.close();
+  //FIX: std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
+  //FIX: ijFile << (int) 0; // initialize old_r
+  //FIX: ijFile.close();
 
   int deg_lcm = deg(lcm_vec);
   GpiList lcm = vec2list(lcm_vec);
@@ -780,8 +780,8 @@ inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, G
   #endif
   std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
   std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
-  ijFile << old_r;
-  ijFile.close();
+  //FIX: ijFile << old_r;
+  //FIX: ijFile.close();
 
   sPairQueue::iterator itQ = Q.find(indices);
   if (itQ!=Q.end()) {
@@ -796,7 +796,7 @@ inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, G
   return itQ;
 }
 
-inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, std::string base_filename, std::string to_filename, int* nrunning) // remove index (i,j) from Q
+inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[maybe_unused]] std::string base_filename, [[maybe_unused]] std::string to_filename, int* nrunning) // remove index (i,j) from Q
 {
   #ifdef DEBUG_BBA
   size_t Qs = Q.size();
@@ -804,9 +804,8 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, std::s
   #endif
   std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
 
-  std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j))).c_str());
-  std::ofstream ijFile(base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
-  ijFile.close();
+  //FIX: std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j))).c_str());
+  //FIX: std::ofstream ijFile(base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j))); ijFile.close();
 
   sPairQueue::iterator itQ = Q.end();
   if (Q.contains_key(indices)) {
@@ -822,7 +821,7 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, std::s
   return itQ;
 }
 
-inline void queue_delete_i(sPairQueue& Q, int i, int r, std::string base_filename, std::string to_filename, int* nrunning) // remove indices (i,j) and (j,i) from Q (for all j)
+inline void queue_delete_i(sPairQueue& Q, int i, int r, [[maybe_unused]] std::string base_filename, [[maybe_unused]] std::string to_filename, int* nrunning) // remove indices (i,j) and (j,i) from Q (for all j)
 {
   #ifdef DEBUG_BBA
   size_t Qs = Q.size();
@@ -840,9 +839,8 @@ inline void queue_delete_i(sPairQueue& Q, int i, int r, std::string base_filenam
         (*nrunning)--;
         Q.erase(indices);
       }
-      std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))).c_str());
-      std::ofstream ijFile (base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k)));
-      ijFile.close();
+      //FIX: std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))).c_str());
+      //FIX: std::ofstream ijFile (base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))); ijFile.close();
     }
   }
 

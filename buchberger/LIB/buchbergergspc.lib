@@ -225,12 +225,16 @@ proc gspc_buchberger_extraData(def I, gspcConfigToken gc, list #)
 
     int syz_comp=#[7];
 
+
+
     def output = gspc_buchberger_static(t, gc);
+
 
 
     int r = output[1].data[1];
     int r_all = output[1].data[4];
     list indices = output[1].data[5];
+    printf("r: %s, r_all: %s",r,r_all);
 
     string DIR = gc.tmpdir + "/";
 
