@@ -1,6 +1,6 @@
 #pragma once
 
-#include <we/type/value.hpp>
+#include <gspc/we/type/value.hpp>
 
 #include <map>
 #include <string>
@@ -11,7 +11,7 @@ namespace buchberger_module
     {
         public:
             using Key = std::string;
-            using Value = pnet::type::value::value_type;
+            using Value = gspc::we::type::value::value_type;
             using Map = std::multimap<Key, Value>;
 
             ValuesOnPorts (Map map);

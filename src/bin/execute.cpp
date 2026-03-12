@@ -2,13 +2,11 @@
 #include <interface/Workflow.hpp>
 #include <installation.hpp>
 
-#include <drts/client.hpp>
-#include <drts/drts.hpp>
-#include <drts/scoped_rifd.hpp>
+#include <gspc/drts/client.hpp>
+#include <gspc/drts/drts.hpp>
+#include <gspc/drts/scoped_rifd.hpp>
 
-#include <util-generic/executable_path.hpp>
-
-#include <boost/filesystem/path.hpp>
+#include <gspc/util/executable_path.hpp>
 
 #include <string>
 

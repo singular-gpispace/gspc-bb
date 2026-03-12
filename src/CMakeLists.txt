@@ -4,7 +4,7 @@ extended_add_library (NAME installation
   TYPE SHARED
   NAMESPACE SINGULAR-buchberger
   SOURCES "installation.cpp"
-  LIBRARIES Util::Generic GPISpace::execution
+  LIBRARIES gspc_util_generic GPISpace::execution
   POSITION_INDEPENDENT
   INSTALL
 )
@@ -25,7 +25,7 @@ extended_add_library (NAME module
           "${CMAKE_SOURCE_DIR}/buchberger/singular_functions.cpp" 
   INCLUDE_DIRECTORIES PRIVATE "${CMAKE_SOURCE_DIR}"
   COMPILE_DEFINITIONS SING_NDEBUG OM_NDEBUG
-  LIBRARIES SINGULAR-buchberger::installation Util::Generic GPISpace::execution Singular
+  LIBRARIES SINGULAR-buchberger::installation gspc_util_generic GPISpace::execution Singular
   POSITION_INDEPENDENT
   INSTALL
   INSTALL_DESTINATION "${CMAKE_INSTALL_PREFIX}"

@@ -1,11 +1,11 @@
 #include <interface/WorkflowResult.hpp>
 
-#include <we/signature_of.hpp>
-#include <we/type/signature/show.hpp>
-#include <we/type/value/show.hpp>
+#include <gspc/we/signature_of.hpp>
+#include <gspc/we/type/signature/show.hpp>
+#include <gspc/we/type/value/show.hpp>
 
-#include <util-generic/cxx17/holds_alternative.hpp>
-#include <util-generic/join.hpp>
+#include <gspc/util/cxx17/holds_alternative.hpp>
+#include <gspc/util/join.hpp>
 
 #include <boost/format.hpp>
 
@@ -27,11 +27,11 @@ namespace buchberger_module
               % expected_count
               % key
               % count
-              % fhg::util::join
+              % gspc::util::join
                 ( _values_on_ports, ","
                 , [] (auto& os, auto const& kv) -> decltype (os)
                   {
-                    return os << kv.first << " = " << pnet::type::value::show (kv.second);
+                    return os << kv.first << " = " << gspc::we::type::value::show (kv.second);
                   }
                 )
               )
@@ -46,13 +46,13 @@ namespace buchberger_module
 
     auto const& value (_values_on_ports.find (key)->second);
 
-    if (!fhg::util::cxx17::holds_alternative<T> (value))
+    if (!gspc::util::cxx17::holds_alternative<T> (value))
     {
       throw std::logic_error
         (str ( boost::format ("Inconsistency: Expected type '%1%'. Got value '%2%' with signature '%3%'.")
              % type_description
-             % pnet::type::value::show (value)
-             % pnet::type::signature::show (pnet::signature_of (value))
+             % gspc::we::type::value::show (value)
+             % gspc::we::type::signature::show (gspc::we::signature_of (value))
              )
         );
     }

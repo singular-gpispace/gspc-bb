@@ -1,6 +1,6 @@
 #pragma once
 
-#include <drts/drts.hpp>
+#include <gspc/drts/drts.hpp>
 
 //#include <boost/filesystem/path.hpp>
 #include <filesystem>
@@ -15,7 +15,7 @@ namespace singular_buchberger
   {
   public:
     installation();
-    installation (boost::filesystem::path const& ip);
+    installation (std::filesystem::path const& ip);
     installation (std::filesystem::path const&);
     installation (std::filesystem::path const&,
      std::filesystem::path const&);

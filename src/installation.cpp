@@ -1,6 +1,6 @@
 #include <installation.hpp>
 
-#include <util-generic/executable_path.hpp>
+#include <gspc/util/executable_path.hpp>
 
 #include <filesystem>
 //#include <boost/filesystem.hpp>
@@ -70,14 +70,14 @@ namespace singular_buchberger
         (std::filesystem::path(SP_INSTALL_PATH))
   {}
 
-  installation::installation (boost::filesystem::path const& ip)
+  installation::installation (std::filesystem::path const& ip)
     : installation
         (std::filesystem::path(ip.string()))
   {}
 
   installation::installation (std::filesystem::path const& ip)
     : installation ( ip
-                   , std::filesystem::path (fhg::util::executable_path
+                   , std::filesystem::path (gspc::util::executable_path
                        (
                          static_cast<void(*)(boost::program_options::variables_map&, const std::filesystem::path&)>(gspc::set_gspc_home)
                          //static_cast<void(*)(boost::program_options::variables_map&, const std::filesystem::path&)>(gspc::set_gspc_home) // deprecated

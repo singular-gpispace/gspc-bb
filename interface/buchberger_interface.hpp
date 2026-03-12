@@ -84,12 +84,12 @@
 #include <iostream>
 #include <fstream>
 
-#include <we/type/literal/control.hpp>
-#include <we/type/bitsetofint.hpp>
-#include <we/type/bytearray.hpp>
-#include <we/type/value.hpp>
-#include <we/type/value/poke.hpp>
-#include <we/type/value/peek.hpp>
+#include <gspc/we/type/literal/control.hpp>
+#include <gspc/we/type/bitsetofint.hpp>
+#include <gspc/we/type/bytearray.hpp>
+#include <gspc/we/type/value.hpp>
+#include <gspc/we/type/value/poke.hpp>
+#include <gspc/we/type/value/peek.hpp>
 
 #include <map>
 #include <vector>
@@ -98,11 +98,11 @@
 
 #include <cassert>
 
-#define CONTROL_TOKEN we::type::literal::control{}
+#define CONTROL_TOKEN gspc::we::type::literal::control{}
 
 #define RESOLVE_INTERFACE_FUNCTION(function) \
-    (fhg::util::scoped_dlhandle \
-    (boost::filesystem::path(config::implementation().string()), \
+    (gspc::util::scoped_dlhandle \
+    (std::filesystem::path(config::implementation().string()), \
     RTLD_GLOBAL | RTLD_NOW | RTLD_DEEPBIND) \
     .sym<decltype(function)> \
     (BOOST_PP_STRINGIZE(function)))
@@ -119,15 +119,15 @@ typedef struct skStrategy * kStrategy;
 // types used by GPI-Space ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 using bitset     = bitsetofint::type;
-using bytearray  = we::type::bytearray;
-using GpiVariant = pnet::type::value::value_type; // recursive variant type used for all tokens
-using GpiStruct  = pnet::type::value::structured_type; // type used for structs
+using bytearray  = gspc::we::type::bytearray;
+using GpiVariant = gspc::we::type::value::value_type; // recursive variant type used for all tokens
+using GpiStruct  = gspc::we::type::value::structured_type; // type used for structs
 using GpiList    = std::list<GpiVariant>;
 using GpiSet     = std::set<GpiVariant>;
 using GpiMap     = std::map<GpiVariant,GpiVariant>;
 
-using pnet::type::value::poke;
-using pnet::type::value::peek;
+using gspc::we::type::value::poke;
+using gspc::we::type::value::peek;
 
 template <typename T>
 class variant_visitor : public boost::static_visitor<T&>
@@ -165,7 +165,7 @@ public:
   {
     this->depth = depth;
   }
-  void operator() (const we::type::literal::control&) const {
+  void operator() (const gspc::we::type::literal::control&) const {
     std::string whitespace(std::max(0,this->depth * 4), ' ');
     std::cout << whitespace << "CONTROL_TOKEN";
   }

@@ -5,9 +5,9 @@
 
 #include <installation.hpp>
 
-#include <util-generic/executable_path.hpp>
-#include <util-generic/print_exception.hpp>
-#include <util-generic/read_lines.hpp>
+#include <gspc/util/executable_path.hpp>
+#include <gspc/util/print_exception.hpp>
+#include <gspc/util/read_lines.hpp>
 
 #include "Singular/libsingular.h"
 #include <buchberger/singular_functions.hpp>
@@ -20,7 +20,7 @@
 void sggspc_print_current_exception (std::string s)
 {
     WerrorS (("singular_buchberger: (" + s + ") " +
-     fhg::util::current_exception_printer (": ").string()).c_str());
+     gspc::util::current_exception_printer (": ").string()).c_str());
 }
 
 BOOLEAN sggspc_buchberger (leftv res, leftv args)
