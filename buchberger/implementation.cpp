@@ -561,7 +561,13 @@ void singular_init(std::string const& base_filename,
       poly new_f = F_sorted->m[i];
       //std::cout<<"-----> 1 <-----"<<std::endl;
       //std::cout<<"-----> 2 <-----"<<std::endl;
+
+      #ifdef OLD_REDTAIL
       new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+      #else
+      new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+      #endif
+
       //std::cout<<"-----> 3 <-----"<<std::endl;
 
 
@@ -679,7 +685,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     int index_i,
                                     int index_j,
                                     int old_r,
-                                    bool PC,
+                                    int syzygy,
                    [[maybe_unused]] GpiList const& M,
                                     long syz_comp,
                                     long red_syz,
@@ -721,7 +727,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     Pair.p1=F->m[index_i-1];
     Pair.p2=F->m[index_j-1];
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    if (!PC) {
+    if (syzygy<2) { // 0: spair of GB elements, 1: spair of syzygies, 2: product criterion pair
       ksCreateSpoly(&Pair);
       spoly = Pair.p;
       /*
@@ -772,7 +778,13 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       //if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,Pair.p,syz_comp,4);}
       //else                      {NF_spoly = kNF(F,currRing->qideal,Pair.p,syz_comp);}
       //std::cout<<"----- NF_spoly -----> 6 <-----"<<std::endl;
+
+      #ifdef OLD_REDTAIL
       NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+      #else
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+      #endif
+
       //std::cout<<"----- NF_spoly -----> 7 <-----"<<std::endl;
 
       #ifdef DEBUG_BBA
@@ -781,8 +793,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       std::cout << p_String(NF_spoly, currRing, currRing) << std::endl;
       #endif
     }
-    else {
-      // directly construct syzygy from product criterion
+    else { // directly construct spoly from product criterion
       poly last;
 
       poly p1_poly=p_Copy(Pair.p1, currRing);
@@ -803,7 +814,15 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       }
       pNext(last) = NULL;
 
-      NF_spoly = p_Sub( p_Mult_q(p1_poly, p2_lift, currRing), p_Mult_q(p2_poly, p1_lift, currRing), currRing);
+      spoly = p_Sub( p_Mult_q(p1_poly, p2_lift, currRing), p_Mult_q(p2_poly, p1_lift, currRing), currRing);
+
+      #ifdef OLD_REDTAIL
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+      #else
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+      #endif
+
+      /*
       if (TEST_OPT_INTSTRATEGY)
       {
         //!!f = p_Cleardenom(f, currRing);
@@ -815,6 +834,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       {
         p_Norm(NF_spoly, currRing);
       }
+      */
     }
 
     //std::cout<<"----- NF_spoly -----> 8 <-----"<<std::endl;
@@ -835,7 +855,13 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     //std::cout<<"----- re-reduction -----> 2 <-----"<<std::endl;
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     //std::cout<<"----- re-reduction -----> 3 <-----"<<std::endl;
+    
+    #ifdef OLD_REDTAIL
     NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+    #else
+    NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+    #endif
+
     //std::cout<<"----- re-reduction -----> 4 <-----"<<std::endl;
 
     //std::cout<<"----- re-reduction -----> 5 <-----"<<std::endl;
@@ -847,6 +873,24 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
   }
   //std::cout<<"----- NF_spoly -----> 9 <-----"<<std::endl;
+
+
+  // normalizing to lead coeff 1 or content 1 depending on option(intStrategy)
+  if (NF_spoly!=NULL)
+  {
+    if (TEST_OPT_INTSTRATEGY)
+    {
+      //!!f = p_Cleardenom(f, currRing);
+      number c;
+      p_Cleardenom_n(NF_spoly, currRing, c);
+      n_Delete(&c, currRing->cf);
+    }
+    else
+    {
+      p_Norm(NF_spoly, currRing);
+    }
+  }
+
 
   long elems = (long) F->nrows * (long) F->ncols;
   if (elems>0) {omFreeSize((ADDRESS) (F->m),sizeof(poly)*elems);}
@@ -995,7 +1039,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
                                     int generator_name,
                                     int generator_index,
                                     int save_index,
-                                    bool is_syzygy,
+                                    int is_syzygy,
                                     int ngens,
                                     long syz_comp,
                                     long red_syz,
@@ -1012,8 +1056,6 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
     ideal F = idInit(ngens-1,1);
     std::list<poly>::const_iterator gen = generators.begin();
     int ii=0;
-    std::cout<<"----- reduce_GB -----> building ideal F of reducers <-----"<<std::endl;
-    std::cout<<"----- reduce_GB -----> ngens: "<<ngens<<" generator_index: "<<generator_index<<" generator_name: "<<generator_name<<" save_index: "<<save_index<<" is_syzygy: "<<(is_syzygy ? "true" : "false")<<" syz_comp: "<<syz_comp<<" red_syz: "<<red_syz<<" <-----"<<std::endl;
     for(int i=0; i<ngens; i++)
     {
       if(i==generator_index)
@@ -1047,18 +1089,13 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   {
     f = readPolySSI(base_filename+"intermediate_files/f"+std::to_string(generator_name),false);
   }
-
   start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   if (TEST_OPT_INTSTRATEGY)
   {
     //!!f = p_Cleardenom(f, currRing);
     number c;
-    std::cout<<"----- reduce_GB -----> clearing denominators <-----"<<std::endl;
-    std::cout<<"----- f==NULL -----> "<<(f==NULL ? "true" : "false")<<" <-----"<<std::endl;
     p_Cleardenom_n(f, currRing, c);
-    std::cout<<"----- reduce_GB -----> clearing denominators (done) <-----"<<std::endl;
     n_Delete(&c, currRing->cf);
-    std::cout<<"----- reduce_GB -----> clearing denominators done <-----"<<std::endl;
   }
   else
   {
@@ -1070,36 +1107,25 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   
   ring syz_ring, orig_ring;
   if(syz_comp>0) {
-    std::cout<<"----- reduce_GB -----> reading ring <-----"<<std::endl;  
     syz_ring = currRing;
     orig_ring = readRingSSI(base_filename + "basering", false);
     
-    std::cout<<"----- reduce_GB -----> splitting poly <-----"<<std::endl;  
     poly f_tail = f;
     poly f_last;
-    std::cout<<"----- reduce_GB -----> 1 <-----"<<std::endl;  
     while (f_tail!=NULL && p_GetComp(f_tail, currRing)<=syz_comp) {
-      std::cout<<"----- reduce_GB -----> loop <-----"<<std::endl;  
       f_last = f_tail;
       f_tail = pNext(f_tail);
     }
-    std::cout<<"----- reduce_GB -----> 2 <-----"<<std::endl;  
-    std::cout<<"----- f_last==NULL -----> "<<(f_last==NULL ? "true" : "false")<<" <-----"<<std::endl;  
-    std::cout<<"----- is_syzygy -----> "<<(is_syzygy ? "true" : "false")<<" <-----"<<std::endl;  
     if(!is_syzygy) {
       pNext(f_last) = NULL; // use p_Split instead?
-      std::cout<<"----- reduce_GB -----> 3 <-----"<<std::endl;  
     }
-      
+    
     pSubtractComp(f_tail,syz_comp);
-    std::cout<<"----- reduce_GB -----> 4 <-----"<<std::endl;  
-      
+    
     poly f_orig = f;
     poly f_tail_orig = f_tail;
-    std::cout<<"----- reduce_GB -----> 5 <-----"<<std::endl;  
     if(syz_ring!=orig_ring)
     {
-      std::cout<<"----- reduce_GB -----> syz_ring!=orig_ring <-----"<<std::endl;  
       rChangeCurrRing(orig_ring);
       if(!is_syzygy) {
         f_orig      = prMoveR(f     , syz_ring, orig_ring);
@@ -1108,8 +1134,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
       //rDelete(syz_ring);
     }
     
-    std::cout<<"----- reduce_GB -----> saving result <-----"<<std::endl;
-
+    
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     if(is_syzygy) {
       writePolySSI(f_tail_orig, base_filename + "result/s" + std::to_string(save_index));
@@ -1118,46 +1143,73 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
       writePolySSI(f_orig     , base_filename + "result/g" + std::to_string(save_index));
       writePolySSI(f_tail_orig, base_filename + "result/l" + std::to_string(save_index));
     }
-
-    std::cout<<"----- reduce_GB -----> ring change <-----"<<std::endl;
-
+    
+    
     //change back to prevent error
     if(syz_ring!=orig_ring) {
       //if (TEST_OPT_REDSB)
-      std::cout<<"----- reduce_GB -----> a <-----"<<std::endl;  
       if(!is_syzygy) {
         p_Delete(&f_orig     , currRing);
       }
-      std::cout<<"----- reduce_GB -----> b <-----"<<std::endl;  
       p_Delete(&f_tail_orig, currRing);
-      std::cout<<"----- reduce_GB -----> c <-----"<<std::endl;  
       rChangeCurrRing(syz_ring);
-      std::cout<<"----- reduce_GB -----> d <-----"<<std::endl;  
       rDelete(orig_ring);
-      std::cout<<"----- reduce_GB -----> e <-----"<<std::endl;  
     }
     if(!is_syzygy) {
       p_Delete(&f     , currRing);
     }
-    std::cout<<"----- reduce_GB -----> f <-----"<<std::endl;  
     p_Delete(&f_tail, currRing);
-    std::cout<<"----- reduce_GB -----> g <-----"<<std::endl;  
     
   }
   else {
-    std::cout<<"----- reduce_GB -----> aa <-----"<<std::endl;  
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    std::cout<<"----- reduce_GB -----> bb <-----"<<std::endl;  
     writePolySSI(f, base_filename + "result/g" + std::to_string(save_index));
     //if (TEST_OPT_REDSB)
-    std::cout<<"----- reduce_GB -----> cc <-----"<<std::endl;  
     p_Delete(&f, currRing);
-    std::cout<<"----- reduce_GB -----> dd <-----"<<std::endl;  
   }
   
   
-  std::cout<<"----- reduce_GB -----> h <-----"<<std::endl;  
   stop_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   (*runtime)[(std::string) "saving GB in files in reduce_GB"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
-  std::cout<<"----- reduce_GB -----> i <-----"<<std::endl;  
+}
+
+void tail_reduce(std::list<poly>  * generators,
+                 std::string const& from_filename,
+                 std::string const& to_filename)
+{
+  init_singular (config::singularLibrary().string());
+
+  // read from file (and delete file)
+  poly f = readPolySSI(from_filename, true);
+
+  // build reducer ideal
+  int ngens = generators->size();
+  ideal F = idInit(ngens,1);
+  std::list<poly>::const_iterator gen = generators->begin();
+  for(int i=0; i<ngens; i++)
+  {
+    idInsertPolyOnPos(F, *gen, i);
+    ++gen;
+  }
+  F->rank = id_RankFreeModule(F, currRing, currRing);
+  if (F->rank==0) F->rank=1;
+
+  // (tail-)reduce
+  f = kNF(F, currRing->qideal, f, 0, 4*TEST_OPT_INTSTRATEGY);
+
+  // normalize
+  if (TEST_OPT_INTSTRATEGY)
+  {
+    number c;
+    p_Cleardenom_n(f, currRing, c);
+    n_Delete(&c, currRing->cf);
+  }
+  else
+  {
+    p_Norm(f, currRing);
+  }
+  
+  // write to file and add to update_Q's generator list
+  writePolySSI(f, to_filename);
+  generators->push_back(f);
 }

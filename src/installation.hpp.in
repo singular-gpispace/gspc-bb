@@ -15,7 +15,7 @@ namespace singular_buchberger
   {
   public:
     installation();
-    installation (std::filesystem::path const& ip);
+    //installation (std::filesystem::path const& ip);
     installation (std::filesystem::path const&);
     installation (std::filesystem::path const&,
      std::filesystem::path const&);

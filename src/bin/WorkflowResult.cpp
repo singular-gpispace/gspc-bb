@@ -31,7 +31,7 @@ namespace buchberger_module
                 ( _values_on_ports, ","
                 , [] (auto& os, auto const& kv) -> decltype (os)
                   {
-                    return os << kv.first << " = " << gspc::we::type::value::show (kv.second);
+                    return os << kv.first << " = " << gspc::pnet::type::value::show (kv.second);
                   }
                 )
               )
@@ -51,8 +51,8 @@ namespace buchberger_module
       throw std::logic_error
         (str ( boost::format ("Inconsistency: Expected type '%1%'. Got value '%2%' with signature '%3%'.")
              % type_description
-             % gspc::we::type::value::show (value)
-             % gspc::we::type::signature::show (gspc::we::signature_of (value))
+             % gspc::pnet::type::value::show (value)
+             % gspc::pnet::type::signature::show (gspc::pnet::signature_of (value))
              )
         );
     }

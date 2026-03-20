@@ -1,17 +1,17 @@
 <structs>
 
   <struct name="running_reduction">
-    <field name="i"     type="int"/>
-    <field name="j"     type="int"/>
-    <field name="old_r" type="int"/>
-    <field name="PC"    type="bool"/>
+    <field name="i"      type="int"/>
+    <field name="j"      type="int"/>
+    <field name="old_r"  type="int"/>
+    <field name="syzygy" type="int"/>
 	</struct>
 
   <struct name="needed_index">
     <field name="generator" type="int"/>
     <field name="generator_index" type="int"/>
     <field name="save_index" type="int"/>
-    <field name="is_syzygy" type="bool"/>
+    <field name="is_syzygy" type="int"/>
   </struct>
 
   <struct name="index_pair">

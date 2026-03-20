@@ -52,10 +52,10 @@ namespace buchberger_module
   }
 
   // types used by GPI-Space if you set the type of a place (or an "out-many" port) to "list", "set" or "map":
-  using bitset     = bitsetofint::type;
+  using bitset     = gspc::pnet::type::bitsetofint::type;
   using bytearray  = gspc::we::type::bytearray;
-  using GpiVariant = gspc::we::type::value::value_type;
-  using GpiStruct  = gspc::we::type::value::structured_type;
+  using GpiVariant = gspc::pnet::type::value::value_type;
+  using GpiStruct  = gspc::pnet::type::value::structured_type;
   using GpiList    = std::list<GpiVariant>;
   using GpiSet     = std::set<GpiVariant>;
   using GpiMap     = std::map<GpiVariant,GpiVariant>;
@@ -95,9 +95,9 @@ namespace buchberger_module
   	//int i {0};
   	std::pair<int, lists> entry;
     auto& valuesOnPortsMap = results.buchberger_module::ValuesOnPorts::map();
-  	for(std::multimap<std::string, gspc::we::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
+  	for(std::multimap<std::string, gspc::pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
   	{
-  		if( boost::get<std::string>(it->first ) == "output")
+  		if( it->first == "output")
   		{
   			entry = deserialize(boost::get<std::string>(it->second),"Result extraction", parameters.at("deleteoutputfiles").as<bool>());
   			out_list->m[0].rtyp = entry.first;
@@ -116,13 +116,13 @@ namespace buchberger_module
 
     double algorithm_starttime = 0L;
     bool prot;
-    for(std::multimap<std::string, gspc::we::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
+    for(std::multimap<std::string, gspc::pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
   	{
-      if( boost::get<std::string>(it->first ) == "singular_options")
+      if( it->first == "singular_options")
       {
         prot = boost::get<bitset>(it->second).is_element(PROT);
       }
-  		if( boost::get<std::string>(it->first ) == "runtime")
+  		if( it->first == "runtime")
   		{
   			GpiMap runtime = get_map(it->second);
 
@@ -142,9 +142,9 @@ namespace buchberger_module
     long diff_comp_counter  = 0L;
     long chain_crit_counter = 0L;
     std::map<std::string,std::map<long,long>> memory;
-    for(std::multimap<std::string, gspc::we::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
+    for(std::multimap<std::string, gspc::pnet::type::value::value_type>::const_iterator it = valuesOnPortsMap.begin(); it != valuesOnPortsMap.end(); it++)
     {
-      if( boost::get<std::string>(it->first ) == "runtime")
+      if( it->first == "runtime")
       {
         GpiMap runtime = get_map(it->second);
 

@@ -11,7 +11,7 @@ namespace buchberger_module
     {
         public:
             using Key = std::string;
-            using Value = gspc::we::type::value::value_type;
+            using Value = gspc::pnet::type::value::value_type;
             using Map = std::multimap<Key, Value>;
 
             ValuesOnPorts (Map map);

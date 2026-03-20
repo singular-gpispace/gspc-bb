@@ -69,12 +69,12 @@ namespace singular_buchberger
     : installation
         (std::filesystem::path(SP_INSTALL_PATH))
   {}
-
+/*
   installation::installation (std::filesystem::path const& ip)
-    : installation
-        (std::filesystem::path(ip.string()))
+  : installation
+  (std::filesystem::path(ip.string()))
   {}
-
+*/
   installation::installation (std::filesystem::path const& ip)
     : installation ( ip
                    , std::filesystem::path (gspc::util::executable_path

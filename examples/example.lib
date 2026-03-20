@@ -144,7 +144,9 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
   else           {syz_comp = 0;}
   if (size(#)>6) {red_syz = #[7];}
   else           {red_syz = 1;}
+  int auto_syz_comp = 0;
   if(syz_comp==-1) {
+    auto_syz_comp = 1;
     module I_in = module(I);
     syz_comp = nrows(I_in);
     for(i=1; i<=size(I_in); i++) {
@@ -189,7 +191,7 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
       }
   }
 
-  if(syz_comp>0) {
+  if(auto_syz_comp==1) {
     if(size(module((matrix(I)*matrix(S))))==0)       {print("syzygy module CORRECT !!!");}
     else                                             {print("syzygy module WRONG !!!");}
     if(comp(module(GB),module(matrix(I)*matrix(L)))) {print("         lift CORRECT !!!");}
@@ -829,12 +831,12 @@ printf("deg=%s, size=%s", maxdeg(Mred), size(Mred));
 */
 //setring(rM1M2BIG);
 monitorON();
-option(noredSB); option(redTail); option(prot);
+option(redSB); option(redTail); option(prot);
 //degBound=0; printf("%n 4 CORE M, 100:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 100); // last 3 arguments: target_time, max_batch_size, head_size_factor
 //degBound=0; printf("%n 4 CORE M, 125:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 125); // last 3 arguments: target_time, max_batch_size, head_size_factor
 
 //degBound=0; int tTt=rtimer; def S = syz(m); print(rtimer-tTt);
-//degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_small_unit, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 150); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_small_unit, 48, 48, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
 
 //degBound=0; printf("%n 4 CORE M, 175:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 175); // last 3 arguments: target_time, max_batch_size, head_size_factor
 //degBound=0; printf("%n 4 CORE M, 200:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 200); // last 3 arguments: target_time, max_batch_size, head_size_factor
@@ -880,12 +882,26 @@ for (i=1;i<=7;i++)
 
 
 
+
+
+
+
+/*
+
+
 // small test example
 int N=8;
 ring testring = 0, x(1..N), dp;
 
 system("--random",42);
-ideal I = randomid(maxideal(2),N-2);
+
+ideal I = randomid(maxideal(2), N-2);
+
+//ideal I = randomid(maxideal(2),N-2,2^30);
+//for(int ii=1; ii<=size(I); ii++) {
+//  I[ii] = I[ii] * (bigint(2)^prime(100*ii)-1) + var(ii)^2;
+//}
+
 module Im = module(I);
 module M;
 for(int ii=1; ii<=size(Im); ii++) {
@@ -896,10 +912,15 @@ for(int ii=1; ii<=size(Im); ii++) {
 
 option(redSB); option(redTail); option(prot); option(noreturnSB);
 //testParallelBB(M, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, 1); // last 4 arguments: target_time, max_batch_size, head_size_factor, syz_comp //!!
-testBB(I, 32, 32, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+testBB(I, 48, 48, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 1); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 module SS;
 matrix LL;
-int ti = rtimer; def GG = liftstd(I,LL,SS); ti=rtimer-ti; printf("liftstd: %sms",ti);
-int ti2 = rtimer; def SGB = std(S); ti2=rtimer-ti2;       printf("std(S):  %sms",ti2);
-int ti3 = rtimer; def Lred = NF(L,SGB); ti3=rtimer-ti3;   printf("NF(L,S): %sms",ti3);
-printf("liftstd 'without' std(S) and NF(L,S): %sms",ti-ti2-ti3);
+
+//int ti = rtimer; def GG = liftstd(I,LL,SS); ti=rtimer-ti; printf("liftstd: %sms",ti);
+//int ti2 = rtimer; def SGB = std(S); ti2=rtimer-ti2;       printf("std(S):  %sms",ti2);
+//int ti3 = rtimer; def Lred = NF(L,SGB); ti3=rtimer-ti3;   printf("NF(L,S): %sms",ti3);
+//printf("liftstd 'without' std(S) and NF(L,S): %sms",ti-ti2-ti3);
+
+
+
+*/

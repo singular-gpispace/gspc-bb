@@ -1,6 +1,7 @@
 #pragma once
 
 //#define DEBUG_BBA
+//#define OLD_REDTAIL
 
 #define HEAD_SIZE_FACTOR 1.0
 #define TIME_SCALE_FACTOR 2
@@ -118,16 +119,16 @@ typedef struct skStrategy * kStrategy;
 
 // types used by GPI-Space ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-using bitset     = bitsetofint::type;
+using bitset     = gspc::pnet::type::bitsetofint::type;
 using bytearray  = gspc::we::type::bytearray;
-using GpiVariant = gspc::we::type::value::value_type; // recursive variant type used for all tokens
-using GpiStruct  = gspc::we::type::value::structured_type; // type used for structs
+using GpiVariant = gspc::pnet::type::value::value_type; // recursive variant type used for all tokens
+using GpiStruct  = gspc::pnet::type::value::structured_type; // type used for structs
 using GpiList    = std::list<GpiVariant>;
 using GpiSet     = std::set<GpiVariant>;
 using GpiMap     = std::map<GpiVariant,GpiVariant>;
 
-using gspc::we::type::value::poke;
-using gspc::we::type::value::peek;
+using gspc::pnet::type::value::poke;
+using gspc::pnet::type::value::peek;
 
 template <typename T>
 class variant_visitor : public boost::static_visitor<T&>
@@ -748,7 +749,7 @@ inline GpiList lead_of_spoly(std::vector<std::vector<int>> const&  Mi, std::vect
 
 // Queue operations //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, [[maybe_unused]] std::string base_filename, bool PC=0)
+inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, [[maybe_unused]] std::string base_filename, bool PC=false)
 {
   //FIX: std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
   //FIX: ijFile << (int) 0; // initialize old_r
@@ -772,8 +773,8 @@ inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std
 
 inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiVariant NF, std::string base_filename, int* nrunning) // remove index (i,j) from Q
 {
-  GpiList new_lead = get_list(*peek("lead_data",NF));
-	int old_r = boost::get<int>(*peek("old_r",NF));
+  GpiList new_lead = get_list(peek("lead_data",NF)->get());
+	int old_r = boost::get<int>(peek("old_r",NF)->get());
   #ifdef DEBUG_BBA
   size_t Qs = Q.size();
   std::cout << "queue_mark_paused_i_j (" << i << "," << j << "), size="<<Qs<<"\n";
@@ -1076,7 +1077,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     int index_i,
                                     int index_j,
                                     int old_r,
-                                    bool PC,
+                                    int syzygy,
                    [[maybe_unused]] GpiList const& M,
                                     long syz_comp,
                                     long red_syz,
@@ -1093,8 +1094,13 @@ void singular_buchberger_reduce_GB(std::string const& base_filename,
                                    int generator_name,
                                    int generator_index,
                                    int save_index,
-                                   bool is_syzygy,
+                                   int is_syzygy,
                                    int ngens,
                                    long syz_comp,
                                    long red_syz,
                                    GpiMap* runtime);
+
+NO_NAME_MANGLING
+void tail_reduce(std::list<poly>  * generators,
+                 std::string const& from_filename,
+                 std::string const& to_filename);

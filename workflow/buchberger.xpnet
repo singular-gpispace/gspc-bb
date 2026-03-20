@@ -97,7 +97,7 @@
 							  require_function_unloads_without_rest="false"
 							  function="function_init(NF_list, started_indices, installdir, degBounds, nworkers, nrunning, runtime, base_filename, input, Qback, r, M, singular_options, balNF, blacklist, BB_finished, syz_comp, red_syz, job_queue, job_queue_running, max_batch_size, head_size_factor, target_time, current_time, mv_avg_base, rank, syzygy_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
 					<cinclude href="fstream"/>
@@ -353,7 +353,7 @@
 						{
 							std::pair<int,int> indices = entry->first;
 							bool PC = (entry->second).PC;
-							job_queue.emplace_back(GpiList({indices.first,indices.second,(int) 0, PC}));
+							job_queue.emplace_back(GpiList({indices.first,indices.second,(int) 0, (int) (PC ? 2 : 0)}));
 							insert_counter++;
 						}
 
@@ -464,10 +464,58 @@
 		</transition>
 
 
-
 		<transition name="NF_of_spoly">
 			<defun>
 				<require key="worker" mandatory="true"/>
+				<properties name="gspc">
+					<properties name="monitor">
+						<properties name="color">
+							<property key="started">
+							    "
+								${ncols} := 8;
+								${YELLOW}  :=  ${ncols}-min(${ncols},abs(mod(${ncols}*0 + ${r}-1, ${ncols}*3)-${ncols}));
+								${CYAN}    :=  ${ncols}-min(${ncols},abs(mod(${ncols}*1 + ${r}-1, ${ncols}*3)-${ncols}));
+								${MAGENTA} :=  ${ncols}-min(${ncols},abs(mod(${ncols}*2 + ${r}-1, ${ncols}*3)-${ncols}));
+								${color} := (${YELLOW} * 0x010100 + ${CYAN} * 0x000101 + ${MAGENTA} * 0x010001);								
+								${complement} := 0x010101 * ${ncols} - ${color};
+								${tmp} := stack_top(${started_indices});
+								(31-10*${tmp.syzygy}) * ${color};
+								"
+							</property>
+							<property key="finished">
+							   	"
+							   	${ncols} := 4;
+								2 * (0x030f00 * (${ncols}-min(${ncols},abs(mod( ${r}-1 ,${ncols}*3)-${ncols}))) + 0x00030f * (${ncols}-min(${ncols},abs((mod(${ncols}+ ${r}-1 ,${ncols}*3))-${ncols}))) + 0x0f0003 * (${ncols}-min(${ncols},abs((mod(${ncols}*2+ ${r}-1 ,${ncols}*3))-${ncols}))));
+								${RED}     :=  ${ncols}-min(${ncols},abs(mod(             ${r}-1, ${ncols}*6)-${ncols}));
+								${YELLOW}  :=  ${ncols}-min(${ncols},abs(mod(${ncols}   + ${r}-1, ${ncols}*6)-${ncols}));
+								${GREEN}   :=  ${ncols}-min(${ncols},abs(mod(${ncols}*2 + ${r}-1, ${ncols}*6)-${ncols}));
+								${CYAN}    :=  ${ncols}-min(${ncols},abs(mod(${ncols}*3 + ${r}-1, ${ncols}*6)-${ncols}));
+								${BLUE}    :=  ${ncols}-min(${ncols},abs(mod(${ncols}*4 + ${r}-1, ${ncols}*6)-${ncols}));
+								${MAGENTA} :=  ${ncols}-min(${ncols},abs(mod(${ncols}*5 + ${r}-1, ${ncols}*6)-${ncols}));
+								4 * (${RED} * 0x0f0000 + ${YELLOW} * 0x0f0f00 + ${GREEN} * 0x000f00 + ${CYAN} * 0x000f0f + ${BLUE} * 0x00000f + ${MAGENTA} * 0x0f000f);								
+								
+							   	${ncols} := 8;
+								${YELLOW}  :=  ${ncols}-min(${ncols},abs(mod(${ncols}*0 + ${r}-1, ${ncols}*3)-${ncols}));
+								${CYAN}    :=  ${ncols}-min(${ncols},abs(mod(${ncols}*1 + ${r}-1, ${ncols}*3)-${ncols}));
+								${MAGENTA} :=  ${ncols}-min(${ncols},abs(mod(${ncols}*2 + ${r}-1, ${ncols}*3)-${ncols}));
+								${color} := (${YELLOW} * 0x010100 + ${CYAN} * 0x000101 + ${MAGENTA} * 0x010001);								
+								${complement} := 0x010101 * ${ncols} - ${color};
+								${tmp} := stack_top(${started_indices});
+								(31-10*${tmp.syzygy}) * ${color};
+								"
+							</property>
+							<property key="failed">
+								"0xff0000"
+							</property>
+						</properties>
+						<property key="tooltip">
+						   "${tooltip.r} := ${r}; 
+							${tooltip.batch_size} := int(stack_size(${started_indices})); 
+							${tooltip.indices} := ${started_indices}; 
+							${tooltip};"
+						</property>
+					</properties>
+				</properties>
 				<in name="base_filename" type="string"/>
 				<in name="blacklist" type="set"/>
 				<in name="r" type="int"/>
@@ -485,7 +533,7 @@
 							  require_function_unloads_without_rest="false"
 							  function="function_NF_of_spoly(runtime, base_filename, r, syz_comp, red_syz, target_time, started_indices, started_indices_out, NF, NF_runtime, blacklist, M)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
 					<cinclude href="chrono"/>
@@ -495,6 +543,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
+						if (started_indices.size()==0) std::cout << "WARNING: NF_of_spoly called with empty started_indices" << std::endl;
 						//std::cout << "ENTERING NF_of_spoly" << std::endl;
 						std::string singular_function_name = "NF_of_spoly";
 						double runtime_start = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -502,10 +551,10 @@
 						int NF_size=0;
 						for (GpiList::const_iterator sit=started_indices.begin(); sit!=started_indices.end(); ++sit)
 						{
-							int started_indices_i     = boost::get<int>(*peek("i"    ,*sit));
-							int started_indices_j     = boost::get<int>(*peek("j"    ,*sit));
-							int started_indices_old_r = boost::get<int>(*peek("old_r",*sit));
-							bool started_indices_PC   = boost::get<bool>(*peek("PC"  ,*sit));
+							int started_indices_i      = boost::get<int>(peek("i"     ,*sit)->get());
+							int started_indices_j      = boost::get<int>(peek("j"     ,*sit)->get());
+							int started_indices_old_r  = boost::get<int>(peek("old_r" ,*sit)->get());
+							int started_indices_syzygy = boost::get<int>(peek("syzygy",*sit)->get());
 
 
 							bool i_cancelled  = (blacklist.find(started_indices_i)                             !=blacklist.end());
@@ -529,13 +578,13 @@
 							double read_poly_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 							runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1.0, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 
-							RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, started_indices_i, started_indices_j, started_indices_old_r, started_indices_PC, M, syz_comp, red_syz, &runtime, &NF); //## handle runtime better (maybe pass a temp. variable and then add to runtime?)
+							RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, started_indices_i, started_indices_j, started_indices_old_r, started_indices_syzygy, M, syz_comp, red_syz, &runtime, &NF); //## handle runtime better (maybe pass a temp. variable and then add to runtime?)
 
 							#ifdef DEBUG_BBA
 							if(NF.size()>NF_size)
 							{
 								NF_size = NF.size();
-								std::cout << runtime_start << ": NF_of_spoly: adding ("<<boost::get<int>(*peek("i",NF.back()))<<","<<boost::get<int>(*peek("j",NF.back()))<<") to NF (old_r="<<started_indices_old_r<<", r="<<r<<")" << std::endl;
+								std::cout << runtime_start << ": NF_of_spoly: adding ("<<boost::get<int>(peek("i",NF.back())->get())<<","<<boost::get<int>(peek("j",NF.back())->get())<<") to NF (old_r="<<started_indices_old_r<<", r="<<r<<")" << std::endl;
 							}
 							#endif
 
@@ -550,7 +599,8 @@
 								for (++sit; sit!=started_indices.end(); ++sit) {
 									remaining.push_back(*sit);
 								}
-								started_indices_out.push_back(remaining);
+								if (remaining.size()>0)								
+									started_indices_out.push_back(remaining);
 								break;
 							}
 						}
@@ -578,6 +628,26 @@
 
 		<transition name="update_Q" priority="2">
 			<defun>
+				<properties name="gspc">
+					<properties name="monitor">
+						<properties name="color">
+							<property key="started">
+								"0x0000ff"
+							</property>
+							<property key="finished">
+								"0x0000ff"
+							</property>
+							<property key="failed">
+								"0xff0000"
+							</property>
+						</properties>
+						<property key="tooltip">
+						   "${tooltip.batch_size} := int(stack_size(${NF_list_input})); 
+							${tooltip.nT_started_indices} := int(${nT_started_indices});
+							${tooltip};"
+						</property>
+					</properties>
+				</properties>
 				<require key="update_Q" mandatory="true"/>
 				<in name="nT_started_indices" type="unsigned long"/>
 				<in name="nworkers" type="unsigned long"/>
@@ -611,7 +681,7 @@
 							  require_function_unloads_without_rest="false"
 							  function="function_update_Q(paused_indices, NF_list_input, enable_get_NF_list, installdir, degBounds, runtime, base_filename, Qback, r_in, n_syzygies, syzygy_indices, update_Qback_r, M, BB_finished, blacklist, nT_started_indices, nrunning, nworkers, update_job_queue, target_time, current_time, max_batch_size, head_size_factor, singular_options, syz_comp, red_syz, rank)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
 					<cinclude href="fstream"/>
@@ -629,12 +699,20 @@
 					int r = r_in;
 					GpiSet add_to_blacklist = {};
 
-					//static GpiList Q = Q_in; //!!
+					//static GpiList Q = Q_in; 
 					//static std::pair<sPairQueue,sPairQueue_by_indices> Q_Qind = deserialize_queue(base_filename+"queue/Q");
 					static sPairQueue Q = deserialize_queue(base_filename+"queue/Q");
 					static int lead_deg = -1;
 					//static std::set<int> syzygy_indices = {}; // only needed if red_syz is set
 					//static sPairQueue_by_indices  Qind = Q_Qind.second;
+
+					// add generators to a static variable, so each element will be read in only once per worker
+					static std::list<poly> generators;
+					//static_assert(sizeof(poly)==sizeof(void*));
+					for (int k=generators.size()+1; k<=r; k++)
+					{
+						generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, k));
+					}
 
 					//fix_Q(Q,Qind,&nrunning);
 
@@ -654,9 +732,9 @@
 					std::map<std::pair<int,int>,GpiVariant> NF_map = {};
 					for(GpiList::const_iterator NF = NF_list_input.begin(); NF!=NF_list_input.end(); ++NF)
 					{
-						int i = boost::get<int>(*peek("i",*NF));
-						int j = boost::get<int>(*peek("j",*NF));
-						if (get_list(*peek("lead_data",*NF)).size()==0) // 0-reduction
+						int i = boost::get<int>(peek("i",*NF)->get());
+						int j = boost::get<int>(peek("j",*NF)->get());
+						if (get_list(peek("lead_data",*NF)->get()).size()==0) // 0-reduction
 						{
 							zero_reductions.insert(std::make_pair(i,j));
 						}
@@ -723,8 +801,8 @@
 						else
 				  // CASE 4: (i,j) reduced to non-0
 						{
-							new_lead = get_list(*peek("lead_data",itNF->second));
-							old_r = boost::get<int>(*peek("old_r",itNF->second));
+							new_lead = get_list(peek("lead_data",itNF->second)->get());
+							old_r = boost::get<int>(peek("old_r",itNF->second)->get());
 						}
 
 				  // CASE 2 and 4: add new GB element (and remove (i,j) from Q)
@@ -785,23 +863,45 @@
 							print_variant(new_lead);
 							#endif
 
-
+							
 							// (3) save file containing the new GB element
 							std::string save_filename = base_filename+"temporary_files/intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
-							std::rename(save_filename.c_str(), (base_filename + "intermediate_files/f"+std::to_string(r)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator
-
+							
+							if (singular_options.is_element(REDTAIL))
+								RESOLVE_INTERFACE_FUNCTION(tail_reduce) (&generators, save_filename, base_filename + "intermediate_files/f"+std::to_string(r)); // NF_spoly can't be reduced further, so just rename its file to the new generator
+							else 
+								std::rename(save_filename.c_str(), (base_filename + "intermediate_files/f"+std::to_string(r)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator
+							
 							if (red_syz>0 && syz_comp>0 && Mvec_new[0].back()>syz_comp) {
 								syzygy_indices.insert(r); //mark indices that refer to syzygies
 							}
+							
+							
+							// (4) add to Q or exclude (PC/CC) new s-pairs involving the new element
 							bool skip_syzygy_spairs = red_syz==1 && syz_comp>0;
-							if (!(skip_syzygy_spairs && syzygy_indices.find(r)!=syzygy_indices.end()))
+							std::vector<std::vector<int>> Mr = Mvec.back();
+							int i=1;
+							if (skip_syzygy_spairs && syzygy_indices.find(r)!=syzygy_indices.end())
 							{
-								// (4) add to Q or exclude (PC/CC) new s-pairs involving the new element
-								std::vector<std::vector<int>> Mr = Mvec.back();
-								int i=1;
 								for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
 								{
-									if (skip_syzygy_spairs && syzygy_indices.find(i)!=syzygy_indices.end()) continue;
+									if (syzygy_indices.find(i)!=syzygy_indices.end() && divides_monom(Mr[0],(*Mi)[0])) 
+									{
+										// new lead (a syzygy) divides i-th lead (also a syzygy) ==> reduce i-th element further 
+										std::cout << "found syzygy with dividing lead ("<<r<<" divides "<<i<<")" << std::endl;
+										std::vector<int> lcm_i_r = lcm((*Mi)[0], Mr[0]);
+										queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, base_filename, false);
+									}
+								}
+							}
+							else
+							{
+								for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
+								{
+									if (skip_syzygy_spairs && syzygy_indices.find(i)!=syzygy_indices.end()) 
+									{
+										continue;
+									}
 
 									bool add_to_Q = true;
 									bool PC = false;
@@ -970,7 +1070,7 @@
 								debugfile << "pausing s-pairs: ";
 								first = false;
 							}
-							debugfile <<"("<<index_i<<","<<index_j<<","<<boost::get<int>(*peek("old_r",itNF->second))<<") ";
+							debugfile <<"("<<index_i<<","<<index_j<<","<<boost::get<int>(peek("old_r",itNF->second)->get())<<") ";
 							#endif
 
 							remove_from_running.insert(ij_list);
@@ -1092,6 +1192,7 @@
 					batch_size = std::min(batch_size, max_batch_size);
 					batch_size = std::max(batch_size, 1L);
 					long head_size = batch_size * nworkers * head_size_factor;
+					//std::cout << "\nBUILDING JOB QUEUE" << std::endl;
 					for(sPairQueue::iterator entry=Q.begin(); insert_counter<head_size &&  entry!=Q.end(); ++entry)
 					{
 						#ifdef DEBUG_BBA
@@ -1106,12 +1207,12 @@
 						if (old_r>=r) {continue;} // withhold s-pair from the job-queue until r has increased!
 
 						#ifdef DEBUG_BBA
-						std::cout << "adding " << indices.first << "," << indices.second << " (old_r="<<old_r<<") to update_job_queue" << std::endl;
+						std::cout << "adding " << indices.first << "," << indices.second << " (old_r="<<old_r<<") to update_job_queue, syzygy=(" << (syzygy_indices.find(indices.first)!=syzygy_indices.end() ? 1 : 0) << "," << (syzygy_indices.find(indices.second)!=syzygy_indices.end() ? 1 : 0) << "), PC: " << (PC ? 1 : 0) << std::endl;
 						debugfile <<"("<<indices.first<<","<<indices.second<<","<<old_r<<") ";
 						#endif
 
 
-						update_job_queue.emplace_back(GpiList({indices.first, indices.second, old_r, (bool) PC}));
+						update_job_queue.emplace_back(GpiList({indices.first, indices.second, old_r, (int) (PC ? 2 : (syzygy_indices.find(indices.first)!=syzygy_indices.end() ? 1 : 0))}));
 						insert_counter++;
 					}
 					#ifdef DEBUG_BBA
@@ -1184,7 +1285,7 @@
 								require_function_unloads_without_rest="false"
 								function="update_job_queue(enable_update_Q, job_queue_running, update_job_queue, job_queue, nT_started_indices, nT_paused_indices)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
@@ -1258,7 +1359,7 @@
 								require_function_unloads_without_rest="false"
 								function="start_jobs(job_queue_running, job_queue, started_indices, nT_started_indices, nworkers, r, max_batch_size, target_time, current_time)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
@@ -1284,20 +1385,20 @@
 							for(int ind=0; ind<batch_size && job_queue.size()>0; ind++) {
 								GpiList job = get_list(job_queue.front());
 								GpiList::const_iterator it = job.begin();
-								int i	 		= boost::get<int>(*it); ++it;
-								int j    	= boost::get<int>(*it); ++it;
-								int old_r = boost::get<int>(*it); ++it;
-								bool PC   = boost::get<bool>(*it);
+								int i	   = boost::get<int>(*it); ++it;
+								int j      = boost::get<int>(*it); ++it;
+								int old_r  = boost::get<int>(*it); ++it;
+								int syzygy = boost::get<int>(*it);
 
 								GpiVariant si;
-								poke("i"    , si, i);
-								poke("j"    , si, j);
-								poke("old_r", si, old_r);
-								poke("PC"   , si, PC);
+								poke("i"     , si, i);
+								poke("j"     , si, j);
+								poke("old_r" , si, old_r);
+								poke("syzygy", si, syzygy);
 								batch.push_back(si);
 
 								#ifdef DEBUG_BBA
-								std::cout << " start_jobs: adding ("<<i<<","<<j<<","<<old_r<<","<<PC<<") to started_indices" << std::endl;
+								std::cout << " start_jobs: adding ("<<i<<","<<j<<","<<old_r<<","<<syzygy<<") to started_indices" << std::endl;
 								#endif
 								// add (i,j) to started indices:
 								job_queue_running.insert(GpiList({i,j}));
@@ -1346,7 +1447,7 @@
 								require_function_unloads_without_rest="false"
 								function="update_Qback_and_r(update_Qback_r, Qback, r, blacklist)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
@@ -1394,7 +1495,7 @@
 								require_function_unloads_without_rest="false"
 								function="get_NF_list(NF_list, NF_list_input)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
@@ -1463,7 +1564,7 @@
 							  require_function_unloads_without_rest="false"
 							  function="function_minimize_GB(runtime, base_filename, installdir, singular_options, M, n_syzygies, generator_indices, needed_indices, output, syzygy_indices, syz_comp, red_syz)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
 					<cinclude href="chrono"/>
@@ -1499,6 +1600,7 @@
 						int si2=1;
 						for(int i=0; i<r; i++)
 						{
+							/*
 							if(red_syz==1 && syz_comp>0 && syzygy_indices.find(i+1)!=syzygy_indices.end()) {
 								std::string syz_filename = base_filename + "intermediate_files/f"+std::to_string(i+1);
 								std::filesystem::copy_file(
@@ -1510,6 +1612,7 @@
 								n_syzygies++;
 								continue;
 							}
+							*/
 							needed = true;
 							for(int j=0; j<r; j++) {
 								if(j!=i) {
@@ -1525,15 +1628,15 @@
 								GpiVariant needed_index;
 								poke("generator", needed_index, i+1);  // name of generator file to read from (f1,f2,...)
 								poke("generator_index", needed_index, si1+si2-2); // index of that generator in the list of needed reducers
-								if(red_syz==2 && syz_comp>0 && syzygy_indices.find(i+1)!=syzygy_indices.end()) {
+								if((red_syz==1 || red_syz==2) && syz_comp>0 && syzygy_indices.find(i+1)!=syzygy_indices.end()) {
 									n_syzygies++;
 									poke("save_index"     , needed_index, si1); // name the result will be saved as (s1,s2,...)
-									poke("is_syzygy"      , needed_index, true);
+									poke("is_syzygy"      , needed_index, 1);
 									si1++;
 								}
 								else {
 									poke("save_index"     , needed_index, si2); // name the result will be saved as (g1,g2,...)
-									poke("is_syzygy"      , needed_index, false);
+									poke("is_syzygy"      , needed_index, 0);
 									si2++;
 								}
 								needed_indices.emplace_back(needed_index);
@@ -1546,8 +1649,6 @@
 							prot_file << "\n(S:" << final_r << ")";
 							prot_file.close();
 						}
-
-						std::cout << "minimized Gröbner basis has " << final_r << " elements (of which: "<<n_syzygies<<" syzygies)" << std::endl;
 
 						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
@@ -1562,7 +1663,6 @@
 						bool silent = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename+"intermediate_files/", args_read, args_in, args_inout, out, out_many, delete_files, silent);
 
-						std::cout<<"----- reduce_GB (outer) -----> 1 <-----"<<std::endl;  
 						
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": " << needed_indices.size() << " elements left" << std::endl;
@@ -1570,7 +1670,6 @@
 						
 						double runtime_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
-						std::cout<<"----- reduce_GB (outer) -----> 2 <-----"<<std::endl;  
 
 						//std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
@@ -1597,6 +1696,24 @@
 
 		<transition name="reduce_GB">
 			<defun>
+				<properties name="gspc">
+					<properties name="monitor">
+						<properties name="color">
+							<property key="started">
+								"0x800080 * ${needed_indices.is_syzygy} + 0xff00ff * (1-${needed_indices.is_syzygy})"
+							</property>
+							<property key="finished">
+								"0x800080 * ${needed_indices.is_syzygy} + 0xff00ff * (1-${needed_indices.is_syzygy})"
+							</property>
+							<property key="failed">
+								"0xff0000"
+							</property>
+						</properties>
+						<property key="tooltip">
+						   "${needed_indices};"
+						</property>
+					</properties>
+				</properties>
 				<require key="worker" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="singular_options" type="bitset"/>
@@ -1609,7 +1726,7 @@
 								require_function_unloads_without_rest="false"
 								function="function_reduce_GB(runtime, base_filename, singular_options, syz_comp, red_syz, generator_indices, needed_indices)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
-					<cinclude href="util-generic/dynamic_linking.hpp"/>
+					<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="iostream"/>
 					<cinclude href="chrono"/>
