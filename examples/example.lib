@@ -665,6 +665,7 @@ module m=m1+m2;
 
 module m_unit       = module(transpose(concat(transpose(matrix(m)),unitmat(size(m)))));
 module m_small_unit = m1 + module(transpose(concat(transpose(matrix(m2)),unitmat(size(m2)))));
+module m_intersect  = m1 + module(transpose(concat(matrix(m2),matrix(m2))));
 
 module m_sorted = module(m[intvec(18,19,17..7,1,6,5,2,4,3)]);
 
@@ -836,7 +837,7 @@ option(redSB); option(redTail); option(prot);
 //degBound=0; printf("%n 4 CORE M, 125:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 125); // last 3 arguments: target_time, max_batch_size, head_size_factor
 
 //degBound=0; int tTt=rtimer; def S = syz(m); print(rtimer-tTt);
-degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_small_unit, 48, 48, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_intersect, 45, 45, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
 
 //degBound=0; printf("%n 4 CORE M, 175:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 175); // last 3 arguments: target_time, max_batch_size, head_size_factor
 //degBound=0; printf("%n 4 CORE M, 200:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 200); // last 3 arguments: target_time, max_batch_size, head_size_factor

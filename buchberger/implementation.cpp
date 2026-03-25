@@ -1178,11 +1178,13 @@ void tail_reduce(std::list<poly>  * generators,
                  std::string const& to_filename)
 {
   init_singular (config::singularLibrary().string());
-
+  
   // read from file (and delete file)
-  poly f = readPolySSI(from_filename, true);
-
+  //std::cout << "---- 1 ----" << std::endl;
+  poly f_read = readPolySSI(from_filename, true);
+  
   // build reducer ideal
+  //std::cout << "---- 2 ----" << std::endl;
   int ngens = generators->size();
   ideal F = idInit(ngens,1);
   std::list<poly>::const_iterator gen = generators->begin();
@@ -1193,11 +1195,18 @@ void tail_reduce(std::list<poly>  * generators,
   }
   F->rank = id_RankFreeModule(F, currRing, currRing);
   if (F->rank==0) F->rank=1;
-
+  
   // (tail-)reduce
-  f = kNF(F, currRing->qideal, f, 0, 4*TEST_OPT_INTSTRATEGY);
-
+  //std::cout << "---- 3 ----" << std::endl;
+  poly f = kNF(F, currRing->qideal, f_read, 0, 4*TEST_OPT_INTSTRATEGY);
+  if(f_read!=f) p_Delete(&f_read, currRing);
+  if (f == NULL)
+  {
+    throw std::runtime_error("tail_reduce: kNF returned null polynomial in tail reduction");
+  }
+  
   // normalize
+  //std::cout << "---- 4 ----" << std::endl;
   if (TEST_OPT_INTSTRATEGY)
   {
     number c;
@@ -1210,6 +1219,7 @@ void tail_reduce(std::list<poly>  * generators,
   }
   
   // write to file and add to update_Q's generator list
+  //std::cout << "---- 5 ----" << std::endl;
   writePolySSI(f, to_filename);
   generators->push_back(f);
 }

@@ -318,8 +318,42 @@ public:
       return entries.size();
     }
 
+    // for debugging:
+    std::size_t entries_size() {
+      return entries.size();
+    }
+    std::size_t references_size() {
+      return references.size();
+    }
+    SetType& get_entries() {
+      return entries;
+    }
+    MapType& get_references() {
+      return references;
+    }
+    int test_key(const K& key) {
+      typename MapType::iterator it = references.find(key);
+      if (it == references.end()) return -1;
+      return std::distance(entries.begin(), it->second);
+    }
+    int test_key_value(const std::pair<K,V>& key_value) {
+      typename SetType::iterator it = entries.find(key_value);
+      if (it == entries.end()) return -1;
+      return std::distance(entries.begin(), it);
+    }
+
 
     std::pair<iterator,bool> push(const std::pair<K,V>& key_value) {
+      // Keep a strict one-to-one mapping between a key and a queue entry.
+      // Without this guard, duplicate keys can accumulate in `entries` while
+      // `references` only tracks the last one, corrupting queue operations.
+      /*
+      typename MapType::iterator existing = references.find(key_value.first);
+      if (existing != references.end()) {
+        return std::make_pair(existing->second, false);
+      }
+      */
+
       std::pair<iterator,bool> res = entries.insert(key_value);
       if (res.second) {
         number_of_inserts++;
@@ -767,11 +801,12 @@ inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std
 
   //GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, tie_break, lcm};
   Qdata data = {i, j, old_r, deg_lcm, (int) 0, l_spoly, lcm, tie_break, GpiList({}), PC};
+  std::cout << "  queue_insert before: test_key=" << Q.test_key(std::make_pair(i,j)) << ", test_key_value=" << Q.test_key_value(std::make_pair(std::make_pair(i,j),data)) << std::endl;
   Q.push(std::make_pair(i,j),data);
-  //std::cout << " inserted! " << std::endl;
+  std::cout << "  queue_insert after:  test_key=" << Q.test_key(std::make_pair(i,j)) << ", test_key_value=" << Q.test_key_value(std::make_pair(std::make_pair(i,j),data)) << std::endl;
 }
 
-inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiVariant NF, std::string base_filename, int* nrunning) // remove index (i,j) from Q
+inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiVariant NF, [[maybe_unused]] std::string base_filename, int* nrunning) // remove index (i,j) from Q
 {
   GpiList new_lead = get_list(peek("lead_data",NF)->get());
 	int old_r = boost::get<int>(peek("old_r",NF)->get());
@@ -780,16 +815,18 @@ inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, G
   std::cout << "queue_mark_paused_i_j (" << i << "," << j << "), size="<<Qs<<"\n";
   #endif
   std::pair<int,int> indices = std::make_pair(std::min(i,j),std::max(i,j));
-  std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
+  //FIX: std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(std::min(i,j))+"_"+std::to_string(std::max(i,j)));
   //FIX: ijFile << old_r;
   //FIX: ijFile.close();
 
+  std::cout << "  queue_mark_paused_i_j before: test_key=" << Q.test_key(indices) << std::endl;
   sPairQueue::iterator itQ = Q.find(indices);
   if (itQ!=Q.end()) {
     (*nrunning)--;
     (itQ->second).old_r = old_r;
     (itQ->second).new_lead = new_lead;
   }
+  std::cout << "  queue_mark_paused_i_j after:  test_key=" << Q.test_key(indices) << std::endl;
   #ifdef DEBUG_BBA
   std::cout << "queue size in queue_mark_paused_i_j: "<<Qs<<" ---> "<<Q.size()<<"\n";
   #endif
@@ -811,7 +848,9 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[mayb
   sPairQueue::iterator itQ = Q.end();
   if (Q.contains_key(indices)) {
     (*nrunning)--;
+    std::cout << "  queue_delete_i_j before: test_key=" << Q.test_key(indices) << std::endl;
     itQ = Q.erase(indices);
+    std::cout << "  queue_delete_i_j after:  test_key=" << Q.test_key(indices) << std::endl;
   }
   //Q.erase(Qind[indices]);
   //Qind.erase(indices);
@@ -838,7 +877,9 @@ inline void queue_delete_i(sPairQueue& Q, int i, int r, [[maybe_unused]] std::st
       //if (boost::get<int>(data.back())==1) {(*nrunning)--;}
       if (Q.contains_key(indices)) {
         (*nrunning)--;
+        std::cout << " queue_delete_i  before: test_key=" << Q.test_key(indices) << std::endl;
         Q.erase(indices);
+        std::cout << " queue_delete_i  after:  test_key=" << Q.test_key(indices) << std::endl; 
       }
       //FIX: std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))).c_str());
       //FIX: std::ofstream ijFile (base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))); ijFile.close();
