@@ -1,7 +1,7 @@
 #pragma once
 
 //#define DEBUG_BBA
-//#define OLD_REDTAIL
+#define OLD_REDTAIL
 
 #define HEAD_SIZE_FACTOR 1.0
 #define TIME_SCALE_FACTOR 2
@@ -319,6 +319,7 @@ public:
     }
 
     // for debugging:
+    /*
     std::size_t entries_size() {
       return entries.size();
     }
@@ -341,6 +342,7 @@ public:
       if (it == entries.end()) return -1;
       return std::distance(entries.begin(), it);
     }
+    */
 
 
     std::pair<iterator,bool> push(const std::pair<K,V>& key_value) {
@@ -801,9 +803,9 @@ inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std
 
   //GpiList data = {i, j, deg_lcm, (int) 0, l_spoly, tie_break, lcm};
   Qdata data = {i, j, old_r, deg_lcm, (int) 0, l_spoly, lcm, tie_break, GpiList({}), PC};
-  std::cout << "  queue_insert before: test_key=" << Q.test_key(std::make_pair(i,j)) << ", test_key_value=" << Q.test_key_value(std::make_pair(std::make_pair(i,j),data)) << std::endl;
+  //QUEUE std::cout << "  queue_insert before: test_key=" << Q.test_key(std::make_pair(i,j)) << ", test_key_value=" << Q.test_key_value(std::make_pair(std::make_pair(i,j),data)) << std::endl;
   Q.push(std::make_pair(i,j),data);
-  std::cout << "  queue_insert after:  test_key=" << Q.test_key(std::make_pair(i,j)) << ", test_key_value=" << Q.test_key_value(std::make_pair(std::make_pair(i,j),data)) << std::endl;
+  //QUEUE std::cout << "  queue_insert after:  test_key=" << Q.test_key(std::make_pair(i,j)) << ", test_key_value=" << Q.test_key_value(std::make_pair(std::make_pair(i,j),data)) << std::endl;
 }
 
 inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiVariant NF, [[maybe_unused]] std::string base_filename, int* nrunning) // remove index (i,j) from Q
@@ -819,14 +821,14 @@ inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, G
   //FIX: ijFile << old_r;
   //FIX: ijFile.close();
 
-  std::cout << "  queue_mark_paused_i_j before: test_key=" << Q.test_key(indices) << std::endl;
+  //QUEUE std::cout << "  queue_mark_paused_i_j before: test_key=" << Q.test_key(indices) << std::endl;
   sPairQueue::iterator itQ = Q.find(indices);
   if (itQ!=Q.end()) {
     (*nrunning)--;
     (itQ->second).old_r = old_r;
     (itQ->second).new_lead = new_lead;
   }
-  std::cout << "  queue_mark_paused_i_j after:  test_key=" << Q.test_key(indices) << std::endl;
+  //QUEUE std::cout << "  queue_mark_paused_i_j after:  test_key=" << Q.test_key(indices) << std::endl;
   #ifdef DEBUG_BBA
   std::cout << "queue size in queue_mark_paused_i_j: "<<Qs<<" ---> "<<Q.size()<<"\n";
   #endif
@@ -834,7 +836,7 @@ inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, G
   return itQ;
 }
 
-inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[maybe_unused]] std::string base_filename, [[maybe_unused]] std::string to_filename, int* nrunning) // remove index (i,j) from Q
+inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[maybe_unused]] std::string base_filename, [[maybe_unused]] std::string to_filename, int* nrunning, int* nsyzpairs, int i_is_syzygy) // remove index (i,j) from Q
 {
   #ifdef DEBUG_BBA
   size_t Qs = Q.size();
@@ -848,9 +850,10 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[mayb
   sPairQueue::iterator itQ = Q.end();
   if (Q.contains_key(indices)) {
     (*nrunning)--;
-    std::cout << "  queue_delete_i_j before: test_key=" << Q.test_key(indices) << std::endl;
+    (*nsyzpairs) -= i_is_syzygy; // if i is a syzygy, then all pairs (i,k) are syzygy pairs and we must decrease the counter
+    //QUEUE std::cout << "  queue_delete_i_j before: test_key=" << Q.test_key(indices) << std::endl;
     itQ = Q.erase(indices);
-    std::cout << "  queue_delete_i_j after:  test_key=" << Q.test_key(indices) << std::endl;
+    //QUEUE std::cout << "  queue_delete_i_j after:  test_key=" << Q.test_key(indices) << std::endl;
   }
   //Q.erase(Qind[indices]);
   //Qind.erase(indices);
@@ -861,7 +864,7 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[mayb
   return itQ;
 }
 
-inline void queue_delete_i(sPairQueue& Q, int i, int r, [[maybe_unused]] std::string base_filename, [[maybe_unused]] std::string to_filename, int* nrunning) // remove indices (i,j) and (j,i) from Q (for all j)
+inline void queue_delete_i(sPairQueue& Q, int i, int r, [[maybe_unused]] std::string base_filename, [[maybe_unused]] std::string to_filename, int* nrunning, int* nsyzpairs, int i_is_syzygy) // remove indices (i,j) and (j,i) from Q (for all j)
 {
   #ifdef DEBUG_BBA
   size_t Qs = Q.size();
@@ -877,9 +880,10 @@ inline void queue_delete_i(sPairQueue& Q, int i, int r, [[maybe_unused]] std::st
       //if (boost::get<int>(data.back())==1) {(*nrunning)--;}
       if (Q.contains_key(indices)) {
         (*nrunning)--;
-        std::cout << " queue_delete_i  before: test_key=" << Q.test_key(indices) << std::endl;
+        (*nsyzpairs) -= i_is_syzygy; // if i is a syzygy, then all pairs (i,k) are syzygy pairs and we must decrease the counter
+        //QUEUE std::cout << " queue_delete_i  before: test_key=" << Q.test_key(indices) << std::endl;
         Q.erase(indices);
-        std::cout << " queue_delete_i  after:  test_key=" << Q.test_key(indices) << std::endl; 
+        //QUEUE std::cout << " queue_delete_i  after:  test_key=" << Q.test_key(indices) << std::endl; 
       }
       //FIX: std::remove((base_filename+"queue/started/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))).c_str());
       //FIX: std::ofstream ijFile (base_filename+"queue/"+to_filename+"/"+std::to_string(std::min(i,k))+"_"+std::to_string(std::max(i,k))); ijFile.close();

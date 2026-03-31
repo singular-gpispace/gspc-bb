@@ -157,7 +157,7 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
     def I_in=I;
   }
   GB, L, S, r_all, indices, runtimes = gspc_buchberger_extraData(I_in, gc, nworkers, degBounds, force_continue, target_time, max_batch_size, head_size_factor, syz_comp, red_syz);
-  if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers.ssi",list(I, GB, r_all, indices, runtimes));}
+  if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers.ssi",list(I, GB, L, S, r_all, indices, runtimes));}
 
   if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
   else {printf("%nI (%s elements): ...",size(I));}
@@ -837,7 +837,7 @@ option(redSB); option(redTail); option(prot);
 //degBound=0; printf("%n 4 CORE M, 125:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 125); // last 3 arguments: target_time, max_batch_size, head_size_factor
 
 //degBound=0; int tTt=rtimer; def S = syz(m); print(rtimer-tTt);
-degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_intersect, 45, 45, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_intersect, 16, 16, 2, "M1M2BIG_DP_red_syz_1", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
 
 //degBound=0; printf("%n 4 CORE M, 175:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 175); // last 3 arguments: target_time, max_batch_size, head_size_factor
 //degBound=0; printf("%n 4 CORE M, 200:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 200); // last 3 arguments: target_time, max_batch_size, head_size_factor

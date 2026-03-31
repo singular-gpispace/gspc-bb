@@ -13,8 +13,10 @@ set (INSTALL_DO_NOT_BUNDLE ON CACHE BOOL "")
 find_package (GPISpace REQUIRED)
 
 #find_package (util-generic REQUIRED)
-find_package (util-cmake REQUIRED)
-include (util-cmake/add_macros)
+
+#find_package (util-cmake REQUIRED)
+#include (util-cmake/add_macros)
+
 #include (util-cmake/beautify_find_boost)
 #include (util-cmake/beautify_find_GPISpace)
 #find_boost (1.61 REQUIRED QUIET FROM_GPISPACE_INSTALLATION COMPONENTS 
@@ -34,6 +36,7 @@ find_package (Boost 1.61 REQUIRED QUIET COMPONENTS
 )
 
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+include (cmake/modules/extended_add_library_compat.cmake)
 find_package (Singular REQUIRED)
 
 #set (BUNDLE_ROOT "libexec/bundle")

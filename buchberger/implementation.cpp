@@ -565,7 +565,7 @@ void singular_init(std::string const& base_filename,
       #ifdef OLD_REDTAIL
       new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
       #else
-      new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+      new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+1);
       #endif
 
       //std::cout<<"-----> 3 <-----"<<std::endl;
@@ -782,7 +782,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       #ifdef OLD_REDTAIL
       NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
       #else
-      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+1);
       #endif
 
       //std::cout<<"----- NF_spoly -----> 7 <-----"<<std::endl;
@@ -819,7 +819,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       #ifdef OLD_REDTAIL
       NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
       #else
-      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+1);
       #endif
 
       /*
@@ -859,7 +859,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     #ifdef OLD_REDTAIL
     NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
     #else
-    NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+    NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+1);
     #endif
 
     //std::cout<<"----- re-reduction -----> 4 <-----"<<std::endl;
