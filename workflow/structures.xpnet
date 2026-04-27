@@ -38,10 +38,9 @@
     <field name="start" type="double"/>
   </struct>
 
-  <struct name="tuple__index_pair__int__set">
-    <field name="first"  type="index_pair"/>
-    <field name="second" type="int"/>
-    <field name="third"  type="set"/>
+  <struct name="pair__int__set">
+    <field name="first"  type="int"/>
+    <field name="second" type="set"/>
   </struct>
 
 </structs>

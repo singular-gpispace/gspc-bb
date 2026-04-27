@@ -21,10 +21,9 @@
 					<value>0</value>
 			</token>
 		</place>
-		<place name="place_update_Qback_r" type="tuple__index_pair__int__set"/>
+		<place name="place_update_r" type="pair__int__set"/>
 		<place name="place_M" type="list"/>
 		<place name="place_balNF" type="control"/>
-		<place name="place_Qback" type="index_pair"/>
 		<place name="place_job_queue" type="list"/>
 		<place name="place_update_job_queue" type="list"/>
 		<place name="place_job_queue_running" type="set"/>
@@ -36,7 +35,6 @@
 		<place name="place_generator_indices" type="list"/>
 		<place name="place_blacklist" type="set"/>
 		<place name="place_degBounds" type="list"/>
-		<place name="place_nrunning" type="int"/>
 		<place name="place_nworkers" type="unsigned long"/>
 		<place name="place_runtime" type="map"/>
 		<place name="place_NF_runtime" type="timing"/>
@@ -70,17 +68,15 @@
 
 		<transition name="init">
 			<defun>
-				<require key="NF_of_spoly_Qback" mandatory="true"/>
+				<require key="misc" mandatory="true"/>
        	<in name="base_filename" type="string"/>
 				<in name="input" type="string"/>
 				<in name="installdir" type="string"/>
 				<out name="nworkers" type="unsigned long"/>
-				<out name="nrunning" type="int"/>
 				<out name="degBounds" type="list"/>
 				<out name="started_indices" type="list"/>
 				<out name="job_queue" type="list"/>
 				<out name="job_queue_running" type="set"/>
-				<out name="Qback" type="index_pair"/>
 				<out name="blacklist" type="set"/>
 				<out name="r" type="int"/>
 				<out name="M" type="list"/>
@@ -100,7 +96,7 @@
 				<out name="syzygy_indices" type="set"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(NF_list, started_indices, installdir, degBounds, nworkers, nrunning, runtime, base_filename, input, Qback, r, M, singular_options, balNF, blacklist, BB_finished, syz_comp, red_syz, job_queue, job_queue_running, max_batch_size, head_size_factor, target_time, current_time, mv_avg_base, rank, syzygy_indices)">
+							  function="function_init(NF_list, started_indices, installdir, degBounds, nworkers, runtime, base_filename, input, r, M, singular_options, balNF, blacklist, BB_finished, syz_comp, red_syz, job_queue, job_queue_running, max_batch_size, head_size_factor, target_time, current_time, mv_avg_base, rank, syzygy_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -118,7 +114,6 @@
 						int nvars;
 
 						// static initializations
-						nrunning=0;
 						job_queue_running = GpiSet({});
 						NF_list = GpiList({});
 						blacklist = GpiSet({});
@@ -242,11 +237,10 @@
 
 												// add (i,j) to started indices:
 												started_indices.push_back(si);
-												nrunning++;
 											}
 
 											// add (i,j) and information about lcm(fi,fj) to the queue:
-											queue_insert(Q, i, j, old_r, *Mi, *Mj, lcm_i_j, base_filename);
+											queue_insert(Q, i, j, old_r, *Mi, *Mj, lcm_i_j);
 											nvars = lcm_i_j.size()-1;
 										}
 									}
@@ -337,7 +331,7 @@
 									if(add_to_Q)
 									{
 										// add (i,j) and information about lcm(fi,fj) to the queue:
-										queue_insert(Q, i, j, (int) 0, *Mi, *Mj, lcm_i_j, base_filename, PC);
+										queue_insert(Q, i, j, (int) 0, *Mi, *Mj, lcm_i_j, PC);
 										nvars = lcm_i_j.size()-1;
 									}
 								}
@@ -363,12 +357,7 @@
 						}
 
 
-						if(Q.size()>0)
-						{
-							Qback.i = Q.front_key().first;
-							Qback.j = Q.front_key().second;
-						}
-						else
+						if(Q.size()==0)
 						{
 							BB_finished.emplace_back(CONTROL_TOKEN);
 						}
@@ -445,9 +434,7 @@
 			<connect-read port="installdir" place="place_installdir"/>
 			<connect-in port="input" place="place_input"/>
 			<connect-out port="nworkers" place="place_nworkers"/>
-			<connect-out port="nrunning" place="place_nrunning"/>
 			<connect-out port="degBounds" place="place_degBounds"/>
-			<connect-out port="Qback" place="place_Qback"/>
 			<connect-out port="blacklist" place="place_blacklist"/>
 			<connect-out port="r" place="place_r"/>
 			<connect-out port="M" place="place_M"/>
@@ -471,9 +458,9 @@
 		</transition>
 
 
-		<transition name="NF_of_spoly">
+		<transition name="NF_of_spoly" priority="3">
 			<defun>
-				<require key="worker" mandatory="true"/>
+				<require key="compute" mandatory="true"/>
 				<properties name="gspc">
 					<properties name="monitor">
 						<properties name="color">
@@ -483,8 +470,7 @@
 								${YELLOW}  :=  ${ncols}-min(${ncols},abs(mod(${ncols}*0 + ${r}-1, ${ncols}*3)-${ncols}));
 								${CYAN}    :=  ${ncols}-min(${ncols},abs(mod(${ncols}*1 + ${r}-1, ${ncols}*3)-${ncols}));
 								${MAGENTA} :=  ${ncols}-min(${ncols},abs(mod(${ncols}*2 + ${r}-1, ${ncols}*3)-${ncols}));
-								${color} := (${YELLOW} * 0x010100 + ${CYAN} * 0x000101 + ${MAGENTA} * 0x010001);								
-								${complement} := 0x010101 * ${ncols} - ${color};
+								${color} := (${YELLOW} * 0x010100 + ${CYAN} * 0x000101 + ${MAGENTA} * 0x010001);
 								${tmp} := stack_top(${started_indices});
 								(31-10*${tmp.syzygy}) * ${color};
 								"
@@ -506,7 +492,6 @@
 								${CYAN}    :=  ${ncols}-min(${ncols},abs(mod(${ncols}*1 + ${r}-1, ${ncols}*3)-${ncols}));
 								${MAGENTA} :=  ${ncols}-min(${ncols},abs(mod(${ncols}*2 + ${r}-1, ${ncols}*3)-${ncols}));
 								${color} := (${YELLOW} * 0x010100 + ${CYAN} * 0x000101 + ${MAGENTA} * 0x010001);								
-								${complement} := 0x010101 * ${ncols} - ${color};
 								${tmp} := stack_top(${started_indices});
 								(31-10*${tmp.syzygy}) * ${color};
 								"
@@ -585,7 +570,7 @@
 							double read_poly_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 							runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1.0, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 
-							RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, started_indices_i, started_indices_j, started_indices_old_r, started_indices_syzygy, M, syz_comp, red_syz, &runtime, &NF); //## handle runtime better (maybe pass a temp. variable and then add to runtime?)
+							RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, started_indices_i, started_indices_j, started_indices_old_r, started_indices_syzygy, syz_comp, red_syz, &runtime, &NF); //## handle runtime better (maybe pass a temp. variable and then add to runtime?)
 
 							#ifdef DEBUG_BBA
 							if(NF.size()>NF_size)
@@ -663,7 +648,6 @@
 				<in name="degBounds" type="list"/>
 				<in name="NF_list_input" type="list"/>
 				<in name="r_in" type="int"/>
-				<in name="Qback" type="index_pair"/>
 				<in name="blacklist" type="set"/>
 				<in name="enable_update_Q_1" type="control"/>
 				<in name="enable_update_Q_2" type="control"/>
@@ -677,9 +661,8 @@
 				<in name="rank" type="int"/>
 				<inout name="syzygy_indices" type="set"/>
 				<inout name="n_syzygies" type="int"/>
-				<inout name="nrunning" type="int"/>
 				<inout name="M" type="list"/>
-				<out name="update_Qback_r" type="list"/>
+				<out name="update_r" type="list"/>
 				<out name="enable_update_Q_2_out" type="list"/>
 				<out name="update_job_queue" type="list"/>
 				<out name="paused_indices" type="list"/>
@@ -688,7 +671,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_update_Q(paused_indices, NF_list_input, enable_get_NF_list, installdir, degBounds, runtime, base_filename, Qback, r_in, n_syzygies, syzygy_indices, update_Qback_r, enable_update_Q_2_out, M, BB_finished, blacklist, nT_started_indices, nrunning, nworkers, update_job_queue, target_time, current_time, max_batch_size, head_size_factor, singular_options, syz_comp, red_syz, rank)">
+							  function="function_update_Q(paused_indices, NF_list_input, enable_get_NF_list, installdir, degBounds, runtime, base_filename, r_in, n_syzygies, syzygy_indices, update_r, enable_update_Q_2_out, M, BB_finished, blacklist, nT_started_indices, nworkers, update_job_queue, target_time, current_time, max_batch_size, head_size_factor, singular_options, syz_comp, red_syz, rank)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -707,8 +690,13 @@
 					std::string prot_str="";
 
 					int r = r_in;
-					GpiSet add_to_blacklist = {};
+					GpiSet new_blacklist(blacklist);
 
+					#ifdef DEBUG_BBA
+					static int transition_count = 0;
+					transition_count++;
+					#endif
+					
 					//static GpiList Q = Q_in; 
 					//static std::pair<sPairQueue,sPairQueue_by_indices> Q_Qind = deserialize_queue(base_filename+"queue/Q");
 					static sPairQueue Q = deserialize_queue(base_filename+"queue/Q");
@@ -726,10 +714,8 @@
 						generators.emplace_back(RESOLVE_INTERFACE_FUNCTION(read_generator) (base_filename, k));
 					}
 
-					//fix_Q(Q,Qind,&nrunning);
-
 					#ifdef DEBUG_BBA
-					std::cout << runtime_start << ": ENTERING UPDATE_Q:  Q.size()="<<Q.size()<<", nT_started_indices="<<nT_started_indices<<", nworkers="<<nworkers<<", nrunning="<<nrunning<< std::endl;
+					std::cout << runtime_start << ": ENTERING UPDATE_Q:  Q.size()="<<Q.size()<<", nT_started_indices="<<nT_started_indices<<", nworkers="<<nworkers<< std::endl;
 					#endif
 
 					// (A) initialize
@@ -878,7 +864,11 @@
 							Mvec.emplace_back(Mvec_new);
 							M.push_back(new_lead);
 							r++;
-							
+
+							#ifdef DEBUG_BBA
+							std::cout << transition_count << ": added new element due to s-pair ("<<index_i<<","<<index_j<<"), new r=" << r << std::endl;
+							#endif
+
 							/* QUEUE
 							auto Qentries = Q.get_entries();
 							int count1 = 0;
@@ -937,7 +927,7 @@
 										std::cout << "found syzygy with dividing lead ("<<r<<" divides "<<i<<")" << std::endl;
 										std::vector<int> lcm_i_r = lcm((*Mi)[0], Mr[0]);
 										//QUEUE std::cout << " (4) queue_insert (syz) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-										queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, base_filename, false);
+										queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, false);
 										nsyzpairs++;
 										//QUEUE std::cout << " (4) queue_insert (syz) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
 									}
@@ -1026,11 +1016,11 @@
 									{
 										// new found lead monomial divides i-th lead monomial ==> put i in blacklist
 										// (and Set(i,r) as the (i,r)-th spoly has to be reduced, it is not eliminated through CC!)
-										add_to_blacklist.emplace(i);
-										add_to_blacklist.emplace(GpiSet({i,r}));
+										new_blacklist.emplace(i);
+										new_blacklist.emplace(GpiSet({i,r}));
 										// remove (i,j) for all j from Q:
 										//QUEUE std::cout << " (4) queue_delete_i (cancelled_element) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-										queue_delete_i(Q, i, r, base_filename, "cancelled_element", &nrunning, &nsyzpairs, i_is_syzygy);
+										queue_delete_i(Q, i, r, "cancelled_element", &nsyzpairs, i_is_syzygy);
 										//QUEUE std::cout << " (4) queue_delete_i (cancelled_element) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
 										cancelled_element_counter++;
 									}
@@ -1038,7 +1028,9 @@
 									if(add_to_Q)
 									{
 										//QUEUE std::cout << " (4) queue_insert (end) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-										queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, base_filename, PC);
+										queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, PC);
+										if (i_is_syzygy)
+											nsyzpairs++;
 										//QUEUE std::cout << " (4) queue_insert (end) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
 									}
 								}
@@ -1067,7 +1059,7 @@
 												first = false;
 											}
 											#endif
-											add_to_blacklist.emplace(GpiList({ii,jj}));
+											new_blacklist.emplace(GpiList({ii,jj}));
 											Qk = Q.erase(Qk);
 											nsyzpairs -= (syzygy_indices.find(ii)!=syzygy_indices.end() ? 1 : 0);
 											//Qind.erase(std::make_pair(ii,jj));
@@ -1097,7 +1089,7 @@
 						remove_from_running.insert(GpiList({index_i,index_j}));
 						//QUEUE std::cout << " (6) 1" << std::endl;
 						//QUEUE std::cout << " (6) 2 queue_delete_i_j (new_element) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-						itQ = queue_delete_i_j(Q, index_i, index_j, base_filename, "new_element", &nrunning, &nsyzpairs, syzygy_indices.find(index_i)!=syzygy_indices.end() ? 1 : 0);
+						itQ = queue_delete_i_j(Q, index_i, index_j, "new_element", &nsyzpairs, syzygy_indices.find(index_i)!=syzygy_indices.end() ? 1 : 0);
 						//QUEUE std::cout << " (6) 2 queue_delete_i_j (new_element) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
 						//QUEUE std::cout << "     itQ==Q.end()" << (itQ==Q.end() ? "true" : "false") << std::endl;
 						//QUEUE std::cout << " (6) 3" << std::endl;
@@ -1151,7 +1143,7 @@
 
 							remove_from_running.insert(ij_list);
 							//QUEUE std::cout << " (D) queue_mark_paused_i_j before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-							queue_mark_paused_i_j(Q, index_i, index_j, itNF->second, base_filename, &nrunning);
+							queue_mark_paused_i_j(Q, index_i, index_j, itNF->second);
 							//QUEUE std::cout << " (D) queue_mark_paused_i_j after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
 
 						}
@@ -1175,9 +1167,9 @@
 						int index_i = itNF0->first;
 						int index_j = itNF0->second;
 						remove_from_running.insert(GpiList({index_i,index_j}));
-						int nrunning_old = nrunning;
 						//QUEUE std::cout << " (E) queue_delete_i_j (zero_reduction) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-						queue_delete_i_j(Q, index_i, index_j, base_filename, "zero_reduction", &nrunning, &nsyzpairs, syzygy_indices.find(index_i)!=syzygy_indices.end() ? 1 : 0);
+						bool deleted;
+						queue_delete_i_j(Q, index_i, index_j, "zero_reduction", &nsyzpairs, syzygy_indices.find(index_i)!=syzygy_indices.end() ? 1 : 0, &deleted);
 						//QUEUE std::cout << " (E) queue_delete_i_j (zero_reduction) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
 
 						if(syz_comp>0 && red_syz==0) {  // save file containing the new syzygy (if red_syz>0 this will be done later)
@@ -1189,7 +1181,7 @@
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": remove_from_Q: removed element (" << index_i << "," << index_j << ") from Q(ueue) as it reduced to 0, size of Q: " << Q.size() <<std::endl;
 						#endif
-						if (singular_options.is_element(PROT) && nrunning<nrunning_old) {
+						if (singular_options.is_element(PROT) && deleted) {
 							prot_str = prot_str + "-";
 							int Q_size = Q.size();
 							if (Q_size>0 && Q_size%100==0) // || (Q_size<100 && Q_size%10==0))
@@ -1201,11 +1193,6 @@
 								prot_str = prot_str + std::to_string(lead_deg);
 							}
 						}
-						#ifdef DEBUG_BBA
-						if (nrunning<nrunning_old) {
-							debugfile <<"("<<index_i<<","<<index_j<<") ";
-						}
-						#endif
 
 					}
 					#ifdef DEBUG_BBA
@@ -1229,36 +1216,26 @@
 					}
 
 
-					// (G) termination condition + update of the r, Qback and blacklist places
-					//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (G) termination condition + update of the r, Qback and blacklist places" << std::endl;
+					// (G) termination condition + update of the r and blacklist places
+					//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (G) termination condition + update of the r and blacklist places" << std::endl;
+					//if (new_blacklist.size()>blacklist.size()) std::cout << "blacklist size: " << blacklist.size() << ", new_blacklist size: " << new_blacklist.size() << std::endl;
 					if(Q.size()>0)
 					{
-						//Qback.i = boost::get<int>(           get_list(Q.back()).front() );
-						//Qback.j = boost::get<int>(*std::next(get_list(Q.back()).begin()));
-						int new_Qback_i = Q.front_key().first;
-						int new_Qback_j = Q.front_key().second;
-
-						if (new_Qback_i!=Qback.i || new_Qback_j!=Qback.j || r!=r_in || add_to_blacklist.size()>0)
+						if (r>r_in || new_blacklist.size()>0)
 						{
 							GpiVariant new_values;
-							poke("first.i", new_values, new_Qback_i);
-							poke("first.j", new_values, new_Qback_j);
-							poke("second" , new_values, r);
-							poke("third"  , new_values, add_to_blacklist);
-							update_Qback_r.push_back(new_values);
+							poke("first" , new_values, r);
+							poke("second", new_values, new_blacklist);
+							update_r.push_back(new_values);
 						}
 						else {
-							enable_update_Q_2_out.push_back(CONTROL_TOKEN);
+							enable_update_Q_2_out.push_back(CONTROL_TOKEN); // skip update_r transition and directly enable update_Q_2, as r has not increased and no new elements have been blacklisted
 						}
-
-						#ifdef DEBUG_BBA
-						std::cout << runtime_start << ": current Qback:  " << new_Qback_i << "," << new_Qback_j << std::endl;
-						#endif
 
 					}
 					else // queue empty ==> terminate Buchberger algorithm
 					{
-						std::cout << ": ########################################## Buchberger Algorithm finished ##########################################" << std::endl;
+						std::cout << "########################################## Buchberger Algorithm finished ##########################################" << std::endl;
 						BB_finished.emplace_back(CONTROL_TOKEN);
 					}
 
@@ -1337,7 +1314,6 @@
 			<connect-read port="installdir" place="place_installdir"/>
 			<connect-read port="degBounds" place="place_degBounds"/>
 			<connect-read port="r_in" place="place_r"/>
-			<connect-read port="Qback" place="place_Qback"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
 			<connect-read port="target_time" place="place_target_time"/>
 			<connect-read port="current_time" place="place_current_time"/>
@@ -1352,12 +1328,11 @@
 			<connect-in port="enable_update_Q_2" place="place_enable_update_Q_2"/>
 			<connect-inout port="n_syzygies" place="place_n_syzygies"/>
 			<connect-inout port="syzygy_indices" place="place_syzygy_indices"/>
-			<connect-inout port="nrunning" place="place_nrunning"/>
 			<connect-inout port="M" place="place_M"/>
 			<connect-out port="runtime" place="place_runtime"/>
 			<connect-out port="update_job_queue" place="place_update_job_queue"/>
 			<connect-out port="enable_get_NF_list" place="place_enable_get_NF_list"/>
-			<connect-out-many port="update_Qback_r" place="place_update_Qback_r"/>
+			<connect-out-many port="update_r" place="place_update_r"/>
 			<connect-out-many port="enable_update_Q_2_out" place="place_enable_update_Q_2"/>
 			<connect-out-many port="paused_indices" place="place_paused_indices"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
@@ -1529,35 +1504,36 @@
 
 
 
-		<transition name="update_Qback_and_r">
+		<transition name="update_r" priority="1">
 			<defun>
-				<require key="update_Qback_and_r" mandatory="true"/>
-				<in name="update_Qback_r" type="tuple__index_pair__int__set"/>
-				<inout name="Qback" type="index_pair"/>
+				<!--require key="misc" mandatory="true"/-->
+				<in name="update_r_bl" type="pair__int__set"/>
 				<inout name="r" type="int"/>
 				<inout name="blacklist" type="set"/>
 				<out name="enable_update_Q_2" type="control"/>
-				<module name="singular_buchberger"
+				<expression>
+					${r}         := ${update_r_bl.first};
+					${blacklist} := ${update_r_bl.second};
+					${enable_update_Q_2} := [];
+				</expression>
+				<!--module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
-								function="update_Qback_and_r(update_Qback_r, Qback, r, blacklist, enable_update_Q_2)">
+								function="update_r(update_r_bl, r, blacklist, enable_update_Q_2)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
 					<cinclude href="chrono"/>
 					<code><![CDATA[
-						//std::cout << "ENTERING update_Qback_and_r" << std::endl;
 
-						Qback = update_Qback_r.first;
-						r     = update_Qback_r.second;
-						blacklist.insert(update_Qback_r.third.begin(), update_Qback_r.third.end());
+						r     = update_r_bl.first;
+						blacklist = update_r_bl.second;
+						//blacklist.insert(update_r_bl.second.begin(), update_r_bl.second.end());
 						enable_update_Q_2 = CONTROL_TOKEN;
 
-						//std::cout << "EXITING update_Qback_and_r (r="<<r<<",Qback=("<<Qback.i<<","<<Qback.j<<"))" << std::endl;
 					]]></code>
-				</module>
+				</module-->
 			</defun>
-			<connect-in port="update_Qback_r" place="place_update_Qback_r"/>
-			<connect-inout port="Qback" place="place_Qback"/>
+			<connect-in port="update_r_bl" place="place_update_r"/>
 			<connect-inout port="r" place="place_r"/>
 			<connect-inout port="blacklist" place="place_blacklist"/>
 			<connect-out port="enable_update_Q_2" place="place_enable_update_Q_2"/>
@@ -1567,7 +1543,7 @@
 
 		<transition name="collect_NF"> <!-- temporary, will be replaced by an in-many connection -->
 			<defun>
-				<require key="collect_NF" mandatory="true"/>
+				<!--require key="collect_NF" mandatory="true"/-->
 				<in name="NF" type="reduction_result"/>
 				<inout name="NF_list" type="list"/>
 				<expression>
@@ -1582,12 +1558,16 @@
 
 		<transition name="get_NF_list"> <!-- temporary, will be replaced by an in-many connection -->
 			<defun>
-				<require key="get_NF_list" mandatory="true"/>
+				<!--require key="get_NF_list" mandatory="true"/-->
 				<in name="enable_get_NF_list" type="control"/>
 				<in name="nT_NF" type="unsigned long"/>
 				<inout name="NF_list" type="list"/>
 				<out name="NF_list_input" type="list"/>
-				<module name="singular_buchberger"
+				<expression>
+					${NF_list_input} := ${NF_list};
+					${NF_list} := List ();
+				</expression>
+				<!--module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
 								function="get_NF_list(NF_list, NF_list_input)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
@@ -1600,7 +1580,7 @@
 						NF_list = GpiList({});
 						//std::cout << "EXITING get_NF_list" << std::endl;
 					]]></code>
-				</module>
+				</module-->
 			</defun>
 			<condition>
 				(stack_size(${NF_list}) :gt: 0UL) :and: (${nT_NF} :eq: 0UL)
@@ -1640,7 +1620,7 @@
 
 		<transition name="minimize_GB" priority="1">
 			<defun>
-				<require key="NF_of_spoly_Qback" mandatory="true"/>
+				<require key="misc" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="installdir" type="string"/>
 				<in name="singular_options" type="bitset"/>
@@ -1668,7 +1648,7 @@
 					<cinclude href="boost/thread/thread.hpp"/>
 
 					<code><![CDATA[
-					//std::cout << "ENTERING minimize_GB" << std::endl;
+						//std::cout << "ENTERING minimize_GB" << std::endl;
 						double runtime_start = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						int r=M.size();
@@ -1690,6 +1670,7 @@
 							}
 							Mvec.emplace_back(Mveci);
 						}
+
 
 						bool needed;
 						int si1=1;
@@ -1745,21 +1726,25 @@
 							prot_file << "\n(S:" << final_r << ")";
 							prot_file.close();
 						}
+						
+						GpiBigint bigint_test=2;
+						bigint_test=pow(bigint_test,130);
+						//std::cout << "before: " << bigint_test << std::endl;
 
-						std::vector<boost::variant<long,std::string,GpiList>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*>>  args_inout, out;  std::vector<GpiList*>  out_many;
+						std::vector<boost::variant<long,std::string,GpiList,GpiBigint>>  args_read, args_in;  std::vector<boost::variant<long*,std::string*,GpiList*,GpiBigint*>>  args_inout, out;  std::vector<GpiList*>  out_many;
 						std::string singular_function_name = "minimize_GB";
 						//std::string library_name = base_filename.substr(0, base_filename.find_last_of('/', base_filename.size() - 2) + 1) + "buchbergergp.lib";
 						std::string library_name = installdir + "buchbergergp.lib";
 						args_read  = {base_filename};
 						args_in    = {(long) r, (long) final_r, (long) n_syzygies, generator_indices};
-						args_inout = {};
+						args_inout = {&bigint_test};
 						out        = {&output};
 						out_many   = {};
 						bool delete_files = true;
 						bool silent = true;
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute) (library_name, singular_function_name, base_filename+"intermediate_files/", args_read, args_in, args_inout, out, out_many, delete_files, silent);
+						//std::cout << "after:  " << bigint_test << std::endl;
 
-						
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": " << needed_indices.size() << " elements left" << std::endl;
 						#endif
@@ -1810,7 +1795,7 @@
 						</property>
 					</properties>
 				</properties>
-				<require key="worker" mandatory="true"/>
+				<require key="compute" mandatory="true"/>
 				<in name="base_filename" type="string"/>
 				<in name="singular_options" type="bitset"/>
 				<in name="syz_comp" type="long"/>

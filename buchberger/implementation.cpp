@@ -18,6 +18,7 @@
 //#include <boost/archive/binary_oarchive.hpp>
 
 std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file);
+std::pair<int,void*> make_singular_data(GpiBigint const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file);
 std::pair<int,void*> make_singular_data(std::string const& input, std::string const& ids, bool const& delete_file);
 std::pair<int,void*> make_singular_data(GpiVariant const& input, std::string const& ids, bool const& delete_file);
 
@@ -53,6 +54,10 @@ public:
   {
     return make_singular_data((long) data, this->ids, this->delete_file);
   }
+  std::pair<int,void*> operator() (const GpiBigint& data) const
+  {
+    return make_singular_data(data, this->ids, this->delete_file);
+  }
   std::pair<int,void*> operator() (const std::string& data) const
   {
     return make_singular_data(data, this->ids, this->delete_file);
@@ -66,7 +71,7 @@ public:
     for (GpiVariant const& elem : data) {
       content = make_singular_data(elem, this->ids, this->delete_file); // recursion! (elem will be of type GpiVariant)
       L->m[i].rtyp = content.first;
-     L->m[i].data = content.second;
+      L->m[i].data = content.second;
       i++;
     }
     return std::make_pair(LIST_CMD, L);
@@ -82,10 +87,17 @@ public:
 
 std::pair<int,void*> make_singular_data(long const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file)
 {
+  //std::cout<<"make_singular_data long"<<std::endl;
   return std::make_pair(INT_CMD, (void*) (char*) (input));
+}
+std::pair<int,void*> make_singular_data(GpiBigint const& input, [[maybe_unused]] std::string const& ids, [[maybe_unused]] bool const& delete_file)
+{
+  //std::cout<<"make_singular_data bigint"<<std::endl;
+  return std::make_pair(BIGINT_CMD, GpiBigint_to_singular_bigint(input)); //BIGINT
 }
 std::pair<int,void*> make_singular_data(std::string const& input, std::string const& ids, bool const& delete_file)
 {
+  //std::cout<<"make_singular_data string"<<std::endl;
   if(input.front()=='/' && input.back()!='/') // assume, that str_input = (path +) name of ssi-file storing the Singular object
     {return deserialize(input, ids, delete_file);}
   else                                        // pass the string directly to SINGULAR
@@ -97,6 +109,7 @@ std::pair<int,void*> make_singular_data(GpiVariant const& input, std::string con
 }
 std::pair<int,void*> make_singular_data(GpiList const& input, std::string const& ids, bool const& delete_file)
 {
+  //std::cout<<"make_singular_data list"<<std::endl;
   lists L=(lists)omAllocBin(slists_bin);
 	L->Init(input.size());
   std::pair<int,void*> content;
@@ -107,35 +120,48 @@ std::pair<int,void*> make_singular_data(GpiList const& input, std::string const&
   	L->m[i].data = content.second;
     i++;
   }
+  //std::cout<<"make_singular_data list DONE"<<std::endl;
   return std::make_pair(LIST_CMD, L);
 }
-std::pair<int,void*> make_singular_data(boost::variant<long, std::string, GpiList> const& input, std::string const& ids, bool const& delete_file)
+std::pair<int,void*> make_singular_data(boost::variant<long, std::string, GpiList, GpiBigint> const& input, std::string const& ids, bool const& delete_file)
 {
   switch(input.which()) {
     case 0: return make_singular_data( (boost::get<long>        (input)), ids, delete_file);
     case 1: return make_singular_data( (boost::get<std::string> (input)), ids, delete_file);
     case 2: return make_singular_data( (boost::get<GpiList>     (input)), ids, delete_file);
+    case 3: return make_singular_data( (boost::get<GpiBigint>   (input)), ids, delete_file);
   }
 	throw std::runtime_error ("Type not implemented!");
 }
-std::pair<int,void*> make_singular_data(boost::variant<long*, std::string*, GpiList*> const& input, std::string const& ids, bool const& delete_file)
+std::pair<int,void*> make_singular_data(boost::variant<long*, std::string*, GpiList*, GpiBigint*> const& input, std::string const& ids, bool const& delete_file)
 {
   switch(input.which()) {
     case 0: return make_singular_data( *(boost::get<long*>        (input)), ids, delete_file);
     case 1: return make_singular_data( *(boost::get<std::string*> (input)), ids, delete_file);
     case 2: return make_singular_data( *(boost::get<GpiList*>     (input)), ids, delete_file);
+    case 3: return make_singular_data( *(boost::get<GpiBigint*>   (input)), ids, delete_file);
   }
 	throw std::runtime_error ("Type not implemented!");
 }
 
 bool write_singular_output(std::pair<int, void*> const& res, long& out_var)
 {
+  //std::cout<<"write_singular_output long"<<std::endl;
 	if(res.first != INT_CMD) {return true;}
 	out_var = (long) res.second;
 	return false;
 }
+bool write_singular_output(std::pair<int, void*> const& res, GpiBigint& out_var) 
+{
+  //std::cout<<"write_singular_output bigint"<<std::endl;
+	if(res.first != BIGINT_CMD) {return true;}
+	//out_var = (GpiBigint) 404; //test
+	out_var = singular_bigint_to_GpiBigint((number) res.second); //BIGINT
+	return false;
+}
 bool write_singular_output(std::pair<int, void*> const& res, std::string& out_var, std::string const& base_filename, std::string const& singular_function_name)
 {
+  //std::cout<<"write_singular_output string"<<std::endl;
 	if(res.first == get_struct_cmd()) { // return a string that is the (path +) name of an ssi-file containing the Singular object
 		out_var = serialize((lists) res.second, base_filename, singular_function_name);
 		return false;
@@ -148,6 +174,7 @@ bool write_singular_output(std::pair<int, void*> const& res, std::string& out_va
 }
 bool write_singular_output(std::pair<int, void*> const& res, GpiList& out_var, std::string const& base_filename, std::string const& singular_function_name)
 {
+  //std::cout<<"write_singular_output list"<<std::endl;
   out_var = {};
 	if(res.first != LIST_CMD) {return true;}
 	bool err=false;
@@ -175,14 +202,16 @@ bool write_singular_output(std::pair<int, void*> const& res, GpiList& out_var, s
 			err = true;
 		}}}
 	}
+  //std::cout<<"write_singular_output list DONE"<<std::endl;
 	return err;
 }
-bool write_singular_output(std::pair<int, void*> const& res, boost::variant<long*,std::string*,GpiList*> out_ptr, std::string const& base_filename, std::string const& singular_function_name)
+bool write_singular_output(std::pair<int, void*> const& res, boost::variant<long*,std::string*,GpiList*,GpiBigint*> out_ptr, std::string const& base_filename, std::string const& singular_function_name)
 {
 	switch(out_ptr.which()) {
 		case 0: return write_singular_output(res, *boost::get<long*>        (out_ptr));
 		case 1: return write_singular_output(res, *boost::get<std::string*> (out_ptr), base_filename, singular_function_name);
 		case 2: return write_singular_output(res, *boost::get<GpiList*>     (out_ptr), base_filename, singular_function_name);
+		case 3: return write_singular_output(res, *boost::get<GpiBigint*>   (out_ptr));
 	}
 	return true;
 }
@@ -195,10 +224,10 @@ NO_NAME_MANGLING
 void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::string const& singular_function_name,
 															 	 std::string const& base_filename,
-																 std::vector<boost::variant<long,std::string,GpiList>> const& args_read,
-																 std::vector<boost::variant<long,std::string,GpiList>> const& args_in,
-																 std::vector<boost::variant<long*,std::string*,GpiList*>> &args_inout,
-																 std::vector<boost::variant<long*,std::string*,GpiList*>> &out,
+																 std::vector<boost::variant<long,std::string,GpiList,GpiBigint>> const& args_read,
+																 std::vector<boost::variant<long,std::string,GpiList,GpiBigint>> const& args_in,
+																 std::vector<boost::variant<long*,std::string*,GpiList*,GpiBigint*>> &args_inout,
+																 std::vector<boost::variant<long*,std::string*,GpiList*,GpiBigint*>> &out,
 																 std::vector<GpiList*> &out_many,
 															 	 bool delete_files,
                                  bool silent)
@@ -505,7 +534,7 @@ void singular_init(std::string const& base_filename,
     if (TEST_OPT_INTSTRATEGY) {
       for(int i=0; i<F->ncols; i++)
       {
-        //!!F->m[i] = p_Cleardenom(F->m[i], currRing);
+        //F->m[i] = p_Cleardenom(F->m[i], currRing);
         number c;
         p_Cleardenom_n(F->m[i], currRing, c);
         n_Delete(&c, currRing->cf);
@@ -572,7 +601,7 @@ void singular_init(std::string const& base_filename,
 
 
       if (TEST_OPT_INTSTRATEGY) {
-        //!!FF->m[i] = p_Cleardenom(FF->m[i], currRing);
+        //FF->m[i] = p_Cleardenom(FF->m[i], currRing);
         number c;
         p_Cleardenom_n(new_f, currRing, c);
         n_Delete(&c, currRing->cf);
@@ -592,7 +621,7 @@ void singular_init(std::string const& base_filename,
   if (TEST_OPT_INTSTRATEGY) {
     for(int i=0; i<FF->ncols; i++)
     {
-      //!!FF->m[i] = p_Cleardenom(FF->m[i], currRing);
+      //FF->m[i] = p_Cleardenom(FF->m[i], currRing);
       number c;
       p_Cleardenom_n(FF->m[i], currRing, c);
       n_Delete(&c, currRing->cf);
@@ -686,7 +715,6 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     int index_j,
                                     int old_r,
                                     int syzygy,
-                   [[maybe_unused]] GpiList const& M,
                                     long syz_comp,
                                     long red_syz,
                                     GpiMap* runtime,
@@ -825,7 +853,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       /*
       if (TEST_OPT_INTSTRATEGY)
       {
-        //!!f = p_Cleardenom(f, currRing);
+        //f = p_Cleardenom(f, currRing);
         number c;
         p_Cleardenom_n(NF_spoly, currRing, c);
         n_Delete(&c, currRing->cf);
@@ -880,7 +908,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
   {
     if (TEST_OPT_INTSTRATEGY)
     {
-      //!!f = p_Cleardenom(f, currRing);
+      //f = p_Cleardenom(f, currRing);
       number c;
       p_Cleardenom_n(NF_spoly, currRing, c);
       n_Delete(&c, currRing->cf);
@@ -1060,7 +1088,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
     {
       if(i==generator_index)
       {
-        //!!f = p_Copy(*gen, currRing, currRing);
+        //f = p_Copy(*gen, currRing, currRing);
         f = *gen;
       }
       else
@@ -1092,7 +1120,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   if (TEST_OPT_INTSTRATEGY)
   {
-    //!!f = p_Cleardenom(f, currRing);
+    //f = p_Cleardenom(f, currRing);
     number c;
     p_Cleardenom_n(f, currRing, c);
     n_Delete(&c, currRing->cf);

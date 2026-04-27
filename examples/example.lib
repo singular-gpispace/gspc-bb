@@ -615,11 +615,11 @@ number c4=prime(400)*t;
 
 // BIG physics Example
 
-//ring rM1M2BIG = (0, (c1, c2, c3, c4)), (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp;
-//ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4));
+//ring rM1M2BIG = (0, (c1, c2, c3, c4)), (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp; // rational
+//ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4)); // block ord
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
-ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), (dp);
+ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), (dp); // dp
 
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
@@ -837,7 +837,12 @@ option(redSB); option(redTail); option(prot);
 //degBound=0; printf("%n 4 CORE M, 125:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 125); // last 3 arguments: target_time, max_batch_size, head_size_factor
 
 //degBound=0; int tTt=rtimer; def S = syz(m); print(rtimer-tTt);
-degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_intersect, 16, 16, 2, "M1M2BIG_DP_red_syz_1", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 32 CORE M, 150:  %n",0); testParallelBB(m_intersect, 32, 32, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 16 CORE M, 150:  %n",0); testParallelBB(m_intersect, 16, 16, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 8 CORE M, 150:  %n",0); testParallelBB(m_intersect, 8, 8, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_intersect, 4, 4, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 2 CORE M, 150:  %n",0); testParallelBB(m_intersect, 2, 2, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 1 CORE M, 150:  %n",0); testParallelBB(m_intersect, 1, 1, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
 
 //degBound=0; printf("%n 4 CORE M, 175:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 175); // last 3 arguments: target_time, max_batch_size, head_size_factor
 //degBound=0; printf("%n 4 CORE M, 200:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 200); // last 3 arguments: target_time, max_batch_size, head_size_factor
@@ -887,7 +892,7 @@ for (i=1;i<=7;i++)
 
 
 
-/*
+
 
 
 // small test example
@@ -913,7 +918,23 @@ for(int ii=1; ii<=size(Im); ii++) {
 
 option(redSB); option(redTail); option(prot); option(noreturnSB);
 //testParallelBB(M, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, 1); // last 4 arguments: target_time, max_batch_size, head_size_factor, syz_comp //!!
-testBB(I, 48, 48, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 1); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+//testBB(I, 16, 16, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+
+
+setring(rM1M2); def I = M; degBound=0; option(redTail); option(redSB); option(intStrategy);
+
+//ring rKAT = 0,x(1..12),dp;
+//ideal I = katsura(11);
+
+list ncores = 32,16,8,4,2,1;
+printf("%n |||||||||-->  %s CORES  <--||||||||||%n",ncores[1],0);
+testBB(I, ncores[1], ncores[1], 2, "testideal_"+string(ncores[1])+"_CORES", list(list(degBound,nvars(basering))), 50, 1, 150, 0, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+for(int ind=2; ind<=size(ncores); ind++)
+{
+  printf("%n |||||||||-->  %s CORES  <--||||||||||%n",ncores[ind],0);
+  testParallelBB(I, ncores[ind], ncores[ind], 2, "testideal_"+string(ncores[ind])+"_CORES", list(list(degBound,nvars(basering))), 50, 1, 150, 0, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+}
+
 module SS;
 matrix LL;
 
@@ -924,4 +945,3 @@ matrix LL;
 
 
 
-*/

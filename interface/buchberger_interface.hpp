@@ -99,6 +99,10 @@
 
 #include <cassert>
 
+#include <gspc/rpc/function_description.hpp>
+
+#include <boost/multiprecision/cpp_int.hpp>
+
 #define CONTROL_TOKEN gspc::we::type::literal::control{}
 
 #define RESOLVE_INTERFACE_FUNCTION(function) \
@@ -118,9 +122,9 @@ typedef struct skStrategy * kStrategy;
 
 
 // types used by GPI-Space ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 using bitset     = gspc::pnet::type::bitsetofint::type;
 using bytearray  = gspc::we::type::bytearray;
+using GpiBigint  = boost::multiprecision::cpp_int;
 using GpiVariant = gspc::pnet::type::value::value_type; // recursive variant type used for all tokens
 using GpiStruct  = gspc::pnet::type::value::structured_type; // type used for structs
 using GpiList    = std::list<GpiVariant>;
@@ -266,6 +270,47 @@ inline bitset uint2bitset(unsigned int v1, unsigned int v2)
   return bs;
 }
 
+
+/*
+#include <gspc/util/scoped_boost_asio_io_service_with_threads.hpp>
+#include <gspc/rpc/remote_socket_endpoint.hpp>
+#include <gspc/rpc/service_dispatcher.hpp>
+#include <gspc/rpc/service_handler.hpp>
+#include <gspc/rpc/service_socket_provider.hpp>
+#include <cstdint>
+
+namespace bb
+{
+  namespace cache
+  {
+    constexpr static auto socket_address {"/tmp/BB.CACHE"};
+
+    namespace protocol
+    {
+      FHG_RPC_FUNCTION_DESCRIPTION
+        ( get_generator
+        , std::uintptr_t (std::string, int)
+        );
+    }
+
+    struct provider
+    {
+      private:
+      auto get_generator (std::string base, int num) -> std::uintptr_t
+      {
+        std::ignore = base;
+        std::ignore = num;
+        return reinterpret_cast<std::uintptr_t> (nullptr);
+      }
+      gspc::util::scoped_boost_asio_io_service_with_threads _io_service {1};
+      //gspc::rpc::remote_socket_endpoint _socket_endpoint {_io_service, "/tmp/BB.CACHE"};
+      gspc::rpc::service_dispatcher _service_dispatcher {};
+      gspc::rpc::service_handler<protocol::get_generator> _service_handler {_service_dispatcher, [this] (std::string base, int num) { return get_generator (base, num); }};
+      gspc::rpc::service_socket_provider _service_provider {_io_service, _service_dispatcher, socket_address};
+    };
+  }
+}
+*/
 
 // Priority queue for managing s-poly reductions /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -785,7 +830,7 @@ inline GpiList lead_of_spoly(std::vector<std::vector<int>> const&  Mi, std::vect
 
 // Queue operations //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, [[maybe_unused]] std::string base_filename, bool PC=false)
+inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, bool PC=false)
 {
   //FIX: std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
   //FIX: ijFile << (int) 0; // initialize old_r
@@ -808,7 +853,7 @@ inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std
   //QUEUE std::cout << "  queue_insert after:  test_key=" << Q.test_key(std::make_pair(i,j)) << ", test_key_value=" << Q.test_key_value(std::make_pair(std::make_pair(i,j),data)) << std::endl;
 }
 
-inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiVariant NF, [[maybe_unused]] std::string base_filename, int* nrunning) // remove index (i,j) from Q
+inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiVariant NF) // remove index (i,j) from Q
 {
   GpiList new_lead = get_list(peek("lead_data",NF)->get());
 	int old_r = boost::get<int>(peek("old_r",NF)->get());
@@ -824,7 +869,6 @@ inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, G
   //QUEUE std::cout << "  queue_mark_paused_i_j before: test_key=" << Q.test_key(indices) << std::endl;
   sPairQueue::iterator itQ = Q.find(indices);
   if (itQ!=Q.end()) {
-    (*nrunning)--;
     (itQ->second).old_r = old_r;
     (itQ->second).new_lead = new_lead;
   }
@@ -836,7 +880,7 @@ inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, G
   return itQ;
 }
 
-inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[maybe_unused]] std::string base_filename, [[maybe_unused]] std::string to_filename, int* nrunning, int* nsyzpairs, int i_is_syzygy) // remove index (i,j) from Q
+inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[maybe_unused]] std::string to_filename, int* nsyzpairs, int i_is_syzygy, bool* deleted=NULL) // remove index (i,j) from Q
 {
   #ifdef DEBUG_BBA
   size_t Qs = Q.size();
@@ -849,11 +893,14 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[mayb
 
   sPairQueue::iterator itQ = Q.end();
   if (Q.contains_key(indices)) {
-    (*nrunning)--;
+    if (deleted!=NULL) {*deleted=true;}
     (*nsyzpairs) -= i_is_syzygy; // if i is a syzygy, then all pairs (i,k) are syzygy pairs and we must decrease the counter
     //QUEUE std::cout << "  queue_delete_i_j before: test_key=" << Q.test_key(indices) << std::endl;
     itQ = Q.erase(indices);
     //QUEUE std::cout << "  queue_delete_i_j after:  test_key=" << Q.test_key(indices) << std::endl;
+  }
+  else {
+    if (deleted!=NULL) {*deleted=false;}
   }
   //Q.erase(Qind[indices]);
   //Qind.erase(indices);
@@ -864,7 +911,7 @@ inline sPairQueue::iterator queue_delete_i_j(sPairQueue& Q, int i, int j, [[mayb
   return itQ;
 }
 
-inline void queue_delete_i(sPairQueue& Q, int i, int r, [[maybe_unused]] std::string base_filename, [[maybe_unused]] std::string to_filename, int* nrunning, int* nsyzpairs, int i_is_syzygy) // remove indices (i,j) and (j,i) from Q (for all j)
+inline void queue_delete_i(sPairQueue& Q, int i, int r, [[maybe_unused]] std::string to_filename, int* nsyzpairs, int i_is_syzygy) // remove indices (i,j) and (j,i) from Q (for all j)
 {
   #ifdef DEBUG_BBA
   size_t Qs = Q.size();
@@ -877,9 +924,7 @@ inline void queue_delete_i(sPairQueue& Q, int i, int r, [[maybe_unused]] std::st
     {
       //std::cout << "\n("<<std::min(i,k)<<","<<std::max(i,k)<<")" << " == " << "("<< boost::get<int>((*Qind[indices]).front()) <<","<< boost::get<int>(*std::next((*Qind[indices]).begin())) <<")" << "\n";
       //GpiList data = Q.get_value(indices);// *(Qind[indices]);
-      //if (boost::get<int>(data.back())==1) {(*nrunning)--;}
       if (Q.contains_key(indices)) {
-        (*nrunning)--;
         (*nsyzpairs) -= i_is_syzygy; // if i is a syzygy, then all pairs (i,k) are syzygy pairs and we must decrease the counter
         //QUEUE std::cout << " queue_delete_i  before: test_key=" << Q.test_key(indices) << std::endl;
         Q.erase(indices);
@@ -1090,10 +1135,10 @@ NO_NAME_MANGLING
 void singular_buchberger_compute(std::string const& singular_library_name,
 																 std::string const& singular_function_name,
 															 	 std::string const& base_filename,
-																 std::vector<boost::variant<long,std::string,GpiList>> const& args_read,
-																 std::vector<boost::variant<long,std::string,GpiList>> const& args_in,
-																 std::vector<boost::variant<long*,std::string*,GpiList*>> &args_inout,
-																 std::vector<boost::variant<long*,std::string*,GpiList*>> &out,
+																 std::vector<boost::variant<long,std::string,GpiList,GpiBigint>> const& args_read,
+																 std::vector<boost::variant<long,std::string,GpiList,GpiBigint>> const& args_in,
+																 std::vector<boost::variant<long*,std::string*,GpiList*,GpiBigint*>> &args_inout,
+																 std::vector<boost::variant<long*,std::string*,GpiList*,GpiBigint*>> &out,
 																 std::vector<GpiList*> &out_many,
 															 	 bool delete_files,
                                  bool silent);
@@ -1123,7 +1168,6 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     int index_j,
                                     int old_r,
                                     int syzygy,
-                   [[maybe_unused]] GpiList const& M,
                                     long syz_comp,
                                     long red_syz,
                                     GpiMap* runtime,

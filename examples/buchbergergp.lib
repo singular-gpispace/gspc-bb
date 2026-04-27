@@ -28,7 +28,7 @@ proc mod_init()
 // for inputs:  read  - in  - inout
 // for outputs: inout - out - out_many
 
-proc minimize_GB(string DIR, int in_r, int final_r, int n_syzygies, list needed_indices)
+proc minimize_GB(string DIR, int in_r, int final_r, int n_syzygies, list needed_indices, bigint bigint_test)
 {
   token output;
   output.fieldnames[1] = "final_r";
@@ -46,7 +46,9 @@ proc minimize_GB(string DIR, int in_r, int final_r, int n_syzygies, list needed_
   output.data[5] = needed_indices;
   output.fieldnames[6] = "n_syzygies";
   output.data[6] = n_syzygies;
-  return(output);
+  
+  bigint_test = bigint_test + 1; // just for testing that bigints can be passed to the output token, will be overwritten by the actual value in the workflow
+  return(bigint_test,output);
 }
 
 proc serialize(list thing)

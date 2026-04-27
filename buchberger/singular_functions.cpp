@@ -16,6 +16,68 @@ const std::string STRUCT_DESC = "list fieldnames, list data";
 
 
 
+
+
+//convert between singular bigint and boost multiprecision GpiBigint
+
+
+number GpiBigint_to_singular_bigint(const GpiBigint& x)
+{
+  mpz_t z;
+  mpz_init(z);
+  
+  const bool neg = (x < 0);
+  GpiBigint ax = neg ? -x : x;
+
+  std::vector<unsigned long long> limbs;
+  export_bits(ax, std::back_inserter(limbs), 64, false); // little-endian words
+
+  if (!limbs.empty())
+    mpz_import(z, limbs.size(), -1, sizeof(unsigned long long), 0, 0, limbs.data());
+  else
+    mpz_set_ui(z, 0);
+
+  if (neg) mpz_neg(z, z);
+
+  number n = n_InitMPZ(z, coeffs_BIGINT); // Singular takes/copies value
+  mpz_clear(z);
+  return n; // caller owns and must n_Delete(&n, coeffs_BIGINT)
+}
+
+GpiBigint singular_bigint_to_GpiBigint(number n)
+{
+  mpz_t z;
+  mpz_init(z);
+  
+  number tmp = n;                 // n_MPZ takes number&
+  n_MPZ(z, tmp, coeffs_BIGINT);
+
+  const bool neg = (mpz_sgn(z) < 0);
+  
+  mpz_t az;
+  mpz_init(az);
+  mpz_abs(az, z);
+
+  size_t count = 0;
+  std::vector<unsigned long long> limbs(mpz_size(az));
+  if (!limbs.empty())
+    mpz_export(limbs.data(), &count, -1, sizeof(unsigned long long), 0, 0, az);
+
+  GpiBigint out = 0;
+  import_bits(out, limbs.begin(), limbs.begin() + count, 64, false);
+  if (neg) out = -out;
+
+  mpz_clear(az);
+  mpz_clear(z);
+  return out;
+}
+
+
+
+
+
+
+
 // subtract c from each component
 void p_SubtractComp(poly p, unsigned long c, ring r)
 {

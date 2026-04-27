@@ -15,6 +15,18 @@
 
 #define pSubtractComp(p,c) p_SubtractComp(p,c,currRing)
 
+
+
+//#include <libpolys/coeffs/si_gmp.h>
+//#include <libpolys/coeffs/coeffs.h>
+#include <Singular/ipid.h>   // coeffs_BIGINT
+#include <boost/multiprecision/cpp_int.hpp>
+using GpiBigint = boost::multiprecision::cpp_int;
+number GpiBigint_to_singular_bigint(const GpiBigint& x);
+GpiBigint singular_bigint_to_GpiBigint(number n);
+
+
+
 //ideal idrCopyR_NoSort(ideal id, ring src_r, ring dest_r);
 //poly  prMoveR_NoSort (poly  &p, ring src_r, ring dest_r);
 
