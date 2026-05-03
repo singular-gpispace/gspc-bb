@@ -25,7 +25,55 @@ proc getcores()
   return(gc.options.procspernode);
 }
 
-proc comp(def I, def J) // compare-function for indexed types
+
+proc test_opt(string opt) {
+  intvec state = option(get);
+  option(opt);
+  if(state==option(get)) {
+    return (1);
+  }
+  else {
+    option("no"+opt);
+    return (0);
+  }
+}
+
+proc normalize(def container) {
+  if (test_opt("intStrategy")) {
+    for(int i=1; i<=size(container); i++) {
+      container[i] = container[i] / content(container[i]);
+    }
+    return(container);
+  }
+  else {
+    for(int i=1; i<=size(container); i++) {
+      container[i] = container[i] / leadcoef(container[i]);
+    }
+    return(container);
+  }
+}
+
+
+proc leadmonoms(def I)
+{
+  if (typeof(I)=="ideal") {
+    ideal res;
+  }
+  else {if(typeof(I)=="module") {
+    module res;
+  }
+  else {
+    print("ERROR! Input must be ideal or module!");
+    return();
+  }}
+
+  for(int i=1; i<=size(I); i++) {
+    res[i] = leadmonom(I[i]);
+  }
+  return (res);
+}
+
+proc comp(def I, def J) // recursive compare-function for indexed types
 {
   string t = typeof(I);
   int i,n;
@@ -47,6 +95,7 @@ proc comp(def I, def J) // compare-function for indexed types
   }
   else {return (I==J);}
 }
+
 
 proc parallelStd(def I, list #) // test the parallel implementation of Buchberger's algorithm (gspc_buchberger)
 {
