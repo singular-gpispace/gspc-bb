@@ -1,31 +1,81 @@
 LIB "buchbergergspc.lib";
 LIB "random.lib";
+LIB "matrix.lib";
+
+
 
 option(redSB); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis
 
-configToken gc = configure_gspc();
+gspcConfigToken gc = configure_gspc();
 
-// directory used by GPI-Space to save temporary files
-gc.options.tmpdir = "tempdir";
+// directory used by GPI-Space to save temporary files (absolute path or else relative to the current directory)
+gc.tmpdir = "tempdir";
+gc.installdir = "";
 
-gc.options.nodefile = "nodefile"; // file containing names of the nodes used in the compputation
-gc.options.procspernode = 6;      // number of cores used per node
-gc.options.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
+gc.nodefile = "nodefile"; // file containing names of the nodes used in the compputation (absolute path or relative to install directory)
+gc.procspernode = 8;      // number of cores used per node
+gc.deleteoutputfiles = 1; // if true the final output file will also be deleted after reading the result into SINGULAR
 
 // call once if you use gspc-monitor:
 proc monitorON()
-
 {
-  gc.options.loghostfile = "loghostfile";
-  gc.options.logport = 3217;
-}
+  gc.loghostfile = "loghostfile"; // absolute path or relative to install directory
+  gc.logport = 3217;
+}// absolute path or relative to install directory
 
 proc getcores()
 {
-  return(gc.options.procspernode);
+  return(gc.procspernode);
 }
 
-proc comp(def I, def J) // compare-function for indexed types
+proc test_opt(string opt) {
+  intvec state = option(get);
+  option(opt);
+  if(state==option(get)) {
+    return (1);
+  }
+  else {
+    option("no"+opt);
+    return (0);
+  }
+}
+
+proc normalize(def container) {
+  if (test_opt("intStrategy")) {
+    for(int i=1; i<=size(container); i++) {
+      container[i] = container[i] / content(container[i]);
+    }
+    return(container);
+  }
+  else {
+    for(int i=1; i<=size(container); i++) {
+      container[i] = container[i] / leadcoef(container[i]);
+    }
+    return(container);
+  }
+}
+
+
+proc leadmonoms(def I)
+{
+  if (typeof(I)=="ideal") {
+    ideal res;
+  }
+  else {if(typeof(I)=="module") {
+    module res;
+  }
+  else {
+    print("ERROR! Input must be ideal or module!");
+    return();
+  }}
+
+  for(int i=1; i<=size(I); i++) {
+    res[i] = leadmonom(I[i]);
+  }
+  return (res);
+}
+
+proc comp(def I, def J) // recursive compare-function for indexed types
 {
   string t = typeof(I);
   int i,n;
@@ -50,36 +100,64 @@ proc comp(def I, def J) // compare-function for indexed types
 
 proc parallelStd(def I, list #) // test the parallel implementation of Buchberger's algorithm (gspc_buchberger)
 {
-  int ncores, nworkers;
+  int ncores, nworkers, force_continue;
   if(size(#)>=1) {ncores   = #[1];}
   else           {ncores = getcores();}
   if(size(#)>=2) {nworkers = #[2];}
   else           {nworkers = ncores-1;}
+  if(size(#)>=3) {force_continue = #[3];}
+  else           {force_continue = 0;}
 
-  gc.options.procspernode = ncores;
+  gc.procspernode = ncores;
   return(gspc_buchberger(I, gc, nworkers));
 }
 
 proc testSTD(def I, list #) // test Singular's implementation of Buchberger's algorithm (std)
 {
-  system("--ticks-per-sec", 1000); option(prot);
+  system("--ticks-per-sec", 1000);
   int time = rtimer;
   print("std:");
   def G = std(I);
   printf(" took %sms", rtimer-time);
-  option(noprot);
   return(G);
 }
 
-proc testParallelBB(def I, int ncores, int nworkers, list #) // test the parallel implementation of Buchberger's algorithm (gspc_buchberger) + display runtimes
+proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #) // test the parallel implementation of Buchberger's algorithm (gspc_buchberger) + display runtimes
 {
-  gc.options.procspernode = ncores;
+  int i,j;
+  gc.procspernode = ncores;
   def GB;
-  int r_all;
+  module L,S;
+  int r_all, target_time, max_batch_size, head_size_factor, syz_comp, red_syz;
   list indices;
   list runtimes;
-  GB, r_all, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers);
-  if (size(#)>0) {write("ssi:w BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers.ssi",list(I, GB, r_all, indices, runtimes));}
+  list degBounds;
+  if (size(#)>1) {degBounds = #[2];}
+  else           {degBounds = list(list(degBound,nvars(basering)));}
+  if (size(#)>2) {target_time = #[3];}
+  else           {target_time = 100;}
+  if (size(#)>3) {max_batch_size = #[4];}
+  else           {max_batch_size = 50;}
+  if (size(#)>4) {head_size_factor = #[5];}
+  else           {head_size_factor = 150;}
+  if (size(#)>5) {syz_comp = #[6];}
+  else           {syz_comp = 0;}
+  if (size(#)>6) {red_syz = #[7];}
+  else           {red_syz = 1;}
+  int auto_syz_comp = 0;
+  if(syz_comp==-1) {
+    auto_syz_comp = 1;
+    module I_in = module(I);
+    syz_comp = nrows(I_in);
+    for(i=1; i<=size(I_in); i++) {
+      I_in[i] = I_in[i] + gen(syz_comp+i);
+    }
+  }
+  else {
+    def I_in=I;
+  }
+  GB, L, S, r_all, indices, runtimes = gspc_buchberger_extraData(I_in, gc, nworkers, degBounds, force_continue, target_time, max_batch_size, head_size_factor, syz_comp, red_syz);
+  if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers.ssi",list(I, GB, L, S, r_all, indices, runtimes));}
 
   if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
   else {printf("%nI (%s elements): ...",size(I));}
@@ -87,7 +165,6 @@ proc testParallelBB(def I, int ncores, int nworkers, list #) // test the paralle
   else {printf("%nGB (%s elements): ...",size(GB));}
   printf("%nmax number of elements during the BB algorithm: %s%n",r_all,0);
 
-  int i,j;
   bigint irl_time = runtimes[2][1][2]-runtimes[2][1][1];
   print("TIMINGS (in ms):");
   //printf("starttime:                                  %s ms",  runtimes[2][1][1]);
@@ -104,32 +181,47 @@ proc testParallelBB(def I, int ncores, int nworkers, list #) // test the paralle
     s="";
     if (runtimes[2][i][3]<0 && runtimes[2][i][1]==-1) //count
       {
-        for(j=size(string(-1-runtimes[2][i][3])); j<=12; j++) {s = " "+s;}
-        printf(runtimes[1][i]+": %s"+s+" (max: %s)", runtimes[2][i][2], -1-runtimes[2][i][3]);
+        for(j=size(string(runtimes[2][i][2])); j<=8; j++) {s = " "+s;}
+        printf(runtimes[1][i]+": %s"+s+"     (max: %s)", runtimes[2][i][2], -1-runtimes[2][i][3]);
       }
     else // timing
       {
-      for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
-      printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);
+        for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
+        printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);
       }
   }
 
-  export(GB,indices,runtimes);
+  if(auto_syz_comp==1) {
+    if(size(module((matrix(I)*matrix(S))))==0)       {print("syzygy module CORRECT !!!");}
+    else                                             {print("syzygy module WRONG !!!");}
+    if(comp(module(GB),module(matrix(I)*matrix(L)))) {print("         lift CORRECT !!!");}
+    else                                             {print("         lift WRONG !!!");}
+  }
+
+  export(GB,L,S,indices,runtimes);
 }
 
-proc testBB(def I, int ncores, int nworkers, list #) // compare both implementation
+proc testBB(def I, int ncores, int nworkers, int force_continue, list #) // compare both implementations
 {
-  gc.options.procspernode = ncores;
+  gc.procspernode = ncores;
+
+  int syz_comp;
+  if (size(#)>5) {syz_comp = #[6];}
+  else           {syz_comp = 0;}
 
   print("parallelStd:");
-  testParallelBB(I, ncores, nworkers, #);
+  testParallelBB(I, ncores, nworkers, force_continue, #);
 
   def G = testSTD(I, #);
 
-  if(comp(G, GB)) {printf("%nEQUAL to std(I) !!!",0);}
-  else            {printf("%nNOT equal to std(I) !!!",0);}
+  int equ;
+  if(syz_comp==0)               {equ = comp(       G ,           GB );}
+  else { if(typeof(G)=="ideal") {equ = comp(module(G), normalize(GB));}
+  else                          {equ = comp(       G , normalize(GB));} }
+  if(equ) {printf("%nEQUAL to std(I) !!!",0);}
+  else    {printf("%nNOT equal to std(I) !!!",0);}
 
-  if (size(#)>0) {write("ssi:w BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers_SINGULAR_std.ssi",list(G, comp(G, GB)));}
+  if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers_SINGULAR_std.ssi",list(G, comp(G, GB)));}
 
   export(G);
 }
@@ -138,12 +230,10 @@ proc testBB(def I, int ncores, int nworkers, list #) // compare both implementat
 ////////////////////////////////////////////////////////////////////////////////
 
 // small example:
-/*
-system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
-monitorON();
-testBB(I, 6, 5, "RANDOMID_7_2_5");
-*/
 
+//system("--random", 42); ring r = 0,x(1..7),dp; ideal I = randomid(maxideal(2),5);
+//monitorON();
+//testBB(I, 6, 5, 2, "RANDOMID_7_2_5");
 
 // jacobi ideal
 /*
@@ -254,7 +344,123 @@ proc testHankelMinors(int ncores, int do_std, int range, list #)
   }
 }
 
+proc testHankelMinors9(int ncores, int do_std, int range, list #)
+{
+  ring H = 0,(x1,x2,x3,x4,x5,x6,x7,x8,x9),dp;
+  system("--random", 42); ideal V = randomid(maxideal(1),10,range);
+  list random_polys;
+  string filename = "minors_9_vars__coef_range_"+string(range)+"__degrees";
+  int n = size(#);
+  int ii;
+  for(int i=1; i<=n; i++)
+  {
+    filename = filename + "_" + string(#[i]);
+    for (ii=2; ii<=#[i]; ii++)
+    {
+      if (typeof(random_polys[ii])=="none")
+      {
+        system("--random", 42); random_polys[ii] = randomid(maxideal(ii),9,range);
+      }
+      V[9-n+i] = V[9-n+i] + random_polys[ii][9-n+i];
+    }
+  }
+  matrix M[2][8] = x1,x2,x3,x4,x5,x6,x7,x8, x2,x3,x4,x5,x6,x7,x8,x9;
+  matrix MM = substitute(M,maxideal(1),V);
+  ideal I = minor(MM,2);
 
+  print(filename);
+  print("  writing files");
+
+  short=0;
+  write(   ":w "+filename+".txt", I);
+  write("ssi:w "+filename+".ssi", I);
+  write(   ":w "+filename+".jl", "using Oscar");
+  write(   ":a "+filename+".jl", "R,(x1,x2,x3,x4,x5,x6,x7,x8,x9) = polynomial_ring(QQ, [:x1,:x2,:x3,:x4,:x5,:x6,:x7,:x8,:x9])");
+  write(   ":a "+filename+".jl", "L = []");
+  /*for (int k=1; k<=size(I); k++)
+  {
+    write(   ":a "+filename+".jl", "push!(L," + string(I[k]) + ");");
+  }*/
+  int kk;
+  for (int k=1; k<=7; k++)
+  {
+    for (kk=k+1; kk<=8; kk++)
+    {
+      write(   ":a "+filename+".jl", "push!(L,((" + string(MM[1,k]) + ")*(" + string(MM[2,kk]) + "))-((" + string(MM[1,kk]) + ")*(" + string(MM[2,k]) + ")));");
+    }
+  }
+  write(   ":a "+filename+".jl", "I = ideal(R, L);");
+  write(   ":a "+filename+".jl", "@time groebner_basis_f4(I);");
+
+  print("  applying algorithms");
+  if(do_std)
+  {
+    testBB(I, ncores, ncores-1, filename);
+  }
+  else
+  {
+    testParallelBB(I, ncores, ncores-1, filename);
+  }
+}
+
+proc testHankelMinors8(int ncores, int do_std, int range, list #)
+{
+  ring H = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
+  system("--random", 42); ideal V = randomid(maxideal(1),10,range);
+  list random_polys;
+  string filename = "minors_8_vars__coef_range_"+string(range)+"__degrees";
+  int n = size(#);
+  int ii;
+  for(int i=1; i<=n; i++)
+  {
+    filename = filename + "_" + string(#[i]);
+    for (ii=2; ii<=#[i]; ii++)
+    {
+      if (typeof(random_polys[ii])=="none")
+      {
+        system("--random", 42); random_polys[ii] = randomid(maxideal(ii),8,range);
+      }
+      V[8-n+i] = V[8-n+i] + random_polys[ii][8-n+i];
+    }
+  }
+  matrix M[2][7] = x1,x2,x3,x4,x5,x6,x7, x2,x3,x4,x5,x6,x7,x8;
+  matrix MM = substitute(M,maxideal(1),V);
+  ideal I = minor(MM,2);
+
+  print(filename);
+  print("  writing files");
+
+  short=0;
+  write(   ":w "+filename+".txt", I);
+  write("ssi:w "+filename+".ssi", I);
+  write(   ":w "+filename+".jl", "using Oscar");
+  write(   ":a "+filename+".jl", "R,(x1,x2,x3,x4,x5,x6,x7,x8) = polynomial_ring(QQ, [:x1,:x2,:x3,:x4,:x5,:x6,:x7,:x8])");
+  write(   ":a "+filename+".jl", "L = []");
+  /*for (int k=1; k<=size(I); k++)
+  {
+    write(   ":a "+filename+".jl", "push!(L," + string(I[k]) + ");");
+  }*/
+  int kk;
+  for (int k=1; k<=6; k++)
+  {
+    for (kk=k+1; kk<=7; kk++)
+    {
+      write(   ":a "+filename+".jl", "push!(L,((" + string(MM[1,k]) + ")*(" + string(MM[2,kk]) + "))-((" + string(MM[1,kk]) + ")*(" + string(MM[2,k]) + ")));");
+    }
+  }
+  write(   ":a "+filename+".jl", "I = ideal(R, L);");
+  write(   ":a "+filename+".jl", "@time groebner_basis_f4(I);");
+
+  print("  applying algorithms");
+  if(do_std)
+  {
+    testBB(I, ncores, ncores-1, filename);
+  }
+  else
+  {
+    testParallelBB(I, ncores, ncores-1, filename);
+  }
+}
 
 
 //int max_coef = 16001;
@@ -290,7 +496,6 @@ proc timestd(def I, list #)
   int tps=1;
   if(size(#)>0) {tps=#[1];}
   system("--ticks-per-sec",tps);
-  option(prot);
   int t=rtimer;
   def G = std(I);
   printf("time: %s (%s ticks per second)",rtimer-t,tps);
@@ -302,8 +507,12 @@ proc timestd(def I, list #)
 
 // M1+M2 example
 
-ring R = 0,(z(1..15),s,t),(dp(15),dp(2)); // block ordering
-ring r = (0,s,t),z(1..15),dp;             // rational function field
+//ring R = 0,(z(1..15),s,t),(dp(15),dp(2)); // block ordering
+
+//int p = prime(100000);
+//ring rM1M2simple = p,z(1..15),dp; number s=prime(10000); number t = prime(15000);
+
+ring rM1M2 = (0,s,t),z(1..15),dp;             // rational function field
 
 matrix M1_mat_T[18][15] = (-z(1) + z(2), -z(1) + z(2), -z(1) + z(2) - z(8) + z(11), -z(1) + z(2) - z(6) + z(14), 0, 0, 0, 0, 0, 0, 0, -s - z(1) + z(2), -t - z(1) + z(2), 0, 0), (0, 0, z(1) - z(2) + z(8) - z(11), 0, -z(6) + z(8) - z(11) + z(14), 0, 0, z(8) - z(11), s + z(8) - z(11), s + t + z(8) - z(11), z(8) - z(11), 0, 0, 0, 0), (0, 0, 0, z(1) - z(2) + z(6) - z(14), z(6) - z(8) + z(11) - z(14), z(6) - z(14), s + t + z(6) - z(14), 0, 0, 0, 0, 0, 0, z(6) - z(14), -s + z(6) - z(14)), (z(1) - z(12), s + z(1) - z(12), s + z(1) + z(8) - z(9) - z(12), z(1) - z(6) - z(12) + z(15), 0, 0, 0, 0, 0, 0, 0, z(1) - z(12), s + t + z(1) - z(12), 0, 0), (0, 0, -s - z(1) - z(8) + z(9) + z(12), 0, -s - z(6) - z(8) + z(9) + z(15), 0, 0, -z(8) + z(9), -z(8) + z(9), -s - t - z(8) + z(9), -s - z(8) + z(9), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(6) + z(12) - z(15), s + z(6) + z(8) - z(9) - z(15), z(6) - z(15), -t + z(6) - z(15), 0, 0, 0, 0, 0, 0, -s + z(6) - z(15), z(6) - z(15)), (z(1) - z(13), t + z(1) - z(13), -s + z(1) + z(9) - z(10) - z(13), z(1) + 3*z(6) - z(7) - z(13) - z(14) - z(15), 0, 0, 0, 0, 0, 0, 0, s + t + z(1) - z(13), z(1) - z(13), 0, 0), (0, 0, s - z(1) - z(9) + z(10) + z(13), 0, s + 3*z(6) - z(7) - z(9) + z(10) - z(14) - z(15), 0, 0, s + t - z(9) + z(10), -z(9) + z(10), -z(9) + z(10), s - z(9) + z(10), 0, 0, 0, 0), (0, 0, 0, -z(1) - 3*z(6) + z(7) + z(13) + z(14) + z(15), -s - 3*z(6) + z(7) + z(9) - z(10) + z(14) + z(15), -3*z(6) + z(7) + z(14) + z(15), -s - 3*z(6) + z(7) + z(14) + z(15), 0, 0, 0, 0, 0, 0, -t - 3*z(6) + z(7) + z(14) + z(15), s + t - 3*z(6) + z(7) + z(14) + z(15)), (2*z(1), z(1) + z(2), z(1) + z(3) - z(11), z(1) + z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) + z(12), z(1) + z(13), 0, 0), (0, 0, -z(1) - z(3) + z(11), 0, -z(3) + z(4) - z(6) + z(11), 0, 0, z(2) - z(3) + z(11), z(1) + z(2) - z(3) + z(11) - z(12), 2*z(1) + z(2) - z(3) + z(11) - z(12) - z(13), z(1) - z(3) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) - z(4) + z(6), z(3) - z(4) + z(6) - z(11), z(1) - z(4) + z(6), 2*z(1) + z(2) - z(4) + z(6) - z(12) - z(13), 0, 0, 0, 0, 0, 0, 2*z(1) - z(2) - z(4) + z(6), -z(4) + z(6) + z(12)), (z(1) - z(3) + z(11), z(1) - z(3) + z(8), z(1) - z(3) - z(11), z(1) - z(3) + z(5) - z(6), 0, 0, 0, 0, 0, 0, 0, s + z(1) - z(3) + z(8) - z(9) + z(11), -s + z(1) - z(3) + z(9) - z(10) + z(11), 0, 0), (0, 0, -z(1) + z(3) + z(11), 0, z(5) - z(6) + z(11), 0, 0, z(8) + z(11), -s + z(9) + z(11), z(10) + z(11), 2*z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(3) - z(5) + z(6), -z(5) + z(6) - z(11), -z(5) + z(6) + z(11), -z(5) + z(6) + z(10), 0, 0, 0, 0, 0, 0, -z(5) + z(6) - z(8) + 2*z(11), s - z(5) + z(6) + z(8) - z(9) + z(11)), (z(1) - z(4) + z(6), z(1) - z(4) + 2*z(6) - z(14), z(1) - z(4) + z(5) - z(11), z(1) - z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) - z(4) + z(15), z(1) - z(4) + 4*z(6) - z(7) - z(14) - z(15), 0, 0), (0, 0, -z(1) + z(4) - z(5) + z(11), 0, -z(5) - z(6) + z(11), 0, 0, -z(5) + 2*z(6) + z(11) - z(14), -z(5) + 3*z(6) + z(11) - z(14) - z(15), -z(5) + z(7) + z(11), -z(5) + z(6) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(4) + z(6), z(5) + z(6) - z(11), 2*z(6), z(6) + z(7), 0, 0, 0, 0, 0, 0, z(6) + z(14), z(6) + z(15));
 matrix M2_mat_T[15][15] = (z(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, z(2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, z(3), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, z(4), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, z(5), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, z(6), 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, z(7), 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, z(8), 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, z(9), 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, z(10), 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
@@ -324,10 +533,415 @@ matrix S[48][33] = M_mat,unit_mat;
 module M1 = module(M1_mat);
 module M2 = module(M2_mat);
 module M = M1+M2;
+;
+monitorON();
+//degBound=0; testParallelBB(M,4,4,2,"TEST_M1M2",list(list(degBound,15)));
 
+
+
+
+proc maxdeg(def L)
+{
+  if (typeof(L)=="matrix") {
+    int md=-1;
+    int i,j;
+    for(i=1; i<=nrows(L); i++) {
+      for(j=1; j<=ncols(L); j++) {
+        md = max(md, deg(L[i,j]));
+      }
+    }
+    return(md);
+  }
+
+  if (typeof(L)=="module" || typeof(L)=="ideal") { return(maxdeg(matrix(L))); }
+
+  int md=-1;
+  for(int i=1; i<=size(L); i++) {
+    md = max(md, deg(L[i]));
+  }
+  return(md);
+}
+
+proc MInew(module M, int r) // M: first module with arbitrary elements, r: number, the second module is assumed to be:  var(1)*gen(1), ... , var(r)*gen(r), gen(r+1), ... ,gen(nvars(basering))
+{
+  system("--ticks-per-sec", 1000);
+
+  matrix M1_mat = matrix(M);
+  matrix M1red_mat[r][ncols(M1_mat)];
+  matrix M2red_mat[r][r];
+  module M1red,M2red,Mred;
+  int i,j;
+  for (i=1; i<=r; i++) {
+    M2red_mat[i,i] = var(i);
+    for(j=1; j<=ncols(M1_mat); j++) {
+      //M1red_mat[i,j] = subst(M1_mat[i,j], var(i), 0);
+      M1red_mat[i,j] = M1_mat[i,j];
+    }
+  }
+
+  matrix Mred_mat = concat(M1red_mat,M2red_mat);
+
+  module Mred  = module(Mred_mat);
+  module M1red = module(M1red_mat);
+  module M2red = module(M2red_mat);
+  return(Mred);
+/*
+  int ttt=rtimer;
+  print("S:");
+  matrix S = matrix(syz(Mred));
+  printf("deg=%s, size=%s, time=%s ms", maxdeg(S), ncols(S), rtimer-ttt);
+  print("C:");
+  matrix C = submat(S, 1..ncols(M1red), 1..ncols(S));
+  printf("deg=%s, size=%s", maxdeg(C), ncols(C));
+
+
+  return(module(M1_mat*C));
+*/
+}
+
+
+/*
+ring R = 0, (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp;
+number t=prime(50);
+number c1=prime(100)*t;
+number c2=prime(200)*t;
+number c3=prime(300)*t;
+number c4=prime(400)*t;
+*/
+
+
+
+
+
+// BIG physics Example
+
+//ring rM1M2BIG = (0, (c1, c2, c3, c4)), (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp; // rational
+//ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4)); // block ord
+//ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
+
+ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), (dp); // dp
+
+//ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
+
+/*ring rM1M2BIG = prime(2^29), (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp;
+number c1 = prime(10000);
+number c2 = prime(100000);
+number c3 = prime(1000000);
+number c4 = prime(10000000);
+*/
+/*
+ring rM1M2BIG = prime(128), (z8, z9, z1, z2, z3, z4, z5, z6, z7), dp;
+number c1 = prime(60);
+number c2 = prime(80);
+number c3 = prime(100);
+number c4 = prime(120);
+*/
+
+module m1_original = (-z1 + z4)*gen(1) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (-z1 + z4)*gen(4) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (c2 - c3 - z1 + z4)*gen(8), (3*c1 + c4 + 2*z2 - z6 - z9)*gen(2) + (3*c1 + c4 - z1 + 2*z2 + z4 - z6 - z9)*gen(3) + (4*c1 - z1 + 2*z2 + z4 - z6 - z9)*gen(5) + (4*c1 + 2*z2 - z6 - z9)*gen(6) + (3*c1 - c2 + c3 + c4 + 2*z2 - z6 - z9)*gen(7) + (2*c1 + 2*c4 + 2*z2 - z6 - z9)*gen(9), (-3*c1 - c3 - z1 - z2 - z3 + z5 + z8 + z9)*gen(1) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z8 + z9)*gen(4) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (-4*c1 - z1 - z2 - z3 + z5 + z8 + z9)*gen(8), (c2 - c4 + z6 - z7)*gen(2) + (-3*c1 + c2 - c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(3) + (-2*c1 + c2 - 2*c3 - c4 - z1 - z2 - z3 + z5 + z6 - z7 + z8 + z9)*gen(5) + (z6 - z7)*gen(6) + (z6 - z7)*gen(7) + (-c1 + c2 + c3 - c4 + z6 - z7)*gen(9), (-c1 - c3 - 2*z1 + z4 + z8)*gen(1) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (-c1 + c2 - 2*c3 - 2*z1 + z4 + z8)*gen(4) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (-c1 + c2 - 2*z1 + z4 + z8)*gen(8), (c1 + c2 + z2 - z7)*gen(2) + (c2 - c3 - 2*z1 + z2 + z4 - z7 + z8)*gen(3) + (c2 - 2*c3 - c4 - 2*z1 + z2 + z4 - z7 + z8)*gen(5) + (c1 - c4 + z2 - z7)*gen(6) + (c1 - c2 + z2 - z7)*gen(7) + (c1 + c2 + c3 + c4 + z2 - z7)*gen(9), 2*(c1 + z1)*gen(1) + (z1 - z2 + z3)*gen(3) + (2*c1 + z1 + z4)*gen(4) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (c1 - c3 + z1 + z8)*gen(8), (-2*c1 - z1 - z2 + z3)*gen(2) + (z1 - z2 + z3)*gen(3) + (-2*c1 + z1 - 2*z2 + z5 + z9)*gen(5) + (-4*c1 - 2*z2 - z4 + z5 + z9)*gen(6) + (-c1 + c3 + z1 - z2 + z3 - z4 - z8)*gen(7) + (-z1 + 2*z3 - z5 - z9)*gen(9), (-2*c1 - z1 - z2 + z3)*gen(1) + (-z1 + z2 + z3)*gen(3) + (c1 + c4 - z1 + z2 + z3 - z6 - z9)*gen(4) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (-4*c1 + c2 - c4 - z1 - 2*z2 + z3 + z6 - z7 + z9)*gen(8), 2*(c1 + z2)*gen(2) + (-z1 + z2 + z3)*gen(3) + (2*c1 - z1 + 2*z2 + z3 - z9)*gen(5) + (c1 - c4 + z2 + z6)*gen(6) + (c1 - c2 + z2 + z7)*gen(7) + (z2 + z9)*gen(9);
+
+module m2 = z1*gen(1), z2*gen(2), z3*gen(3), z4*gen(4), z5*gen(5), z6*gen(6), z7*gen(7), gen(8), gen(9);
+
+module m1 = module(m1_original[intvec(1,3,5,7,9)]) + module(m1_original[intvec(2,4,6,8,10)]);
+
+matrix m1_mat = matrix(m1);
+matrix m1block_mat =                                             submat(m1_mat,1,1..10);
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,4,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,8,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,2,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,6,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,7,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,9,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,3,1..10))));
+m1block_mat = transpose(concat(transpose(m1block_mat), transpose(submat(m1_mat,5,1..10))));
+module m1block = module(m1block_mat);
+module m2block = z1*gen(1), z4*gen(2), gen(3), z2*gen(4), z6*gen(5), z7*gen(6), gen(7), z3*gen(8), z5*gen(9);
+module mblock = m1block + m2block;
+
+module m1d = m1;
+m1d[1] = m1d[1] + z8^10*gen(10);
+
+
+module m=m1+m2;
+
+module m_unit       = module(transpose(concat(transpose(matrix(m)),unitmat(size(m)))));
+module m_small_unit = m1 + module(transpose(concat(transpose(matrix(m2)),unitmat(size(m2)))));
+module m_intersect  = m1 + module(transpose(concat(matrix(m2),matrix(m2))));
+
+module m_sorted = module(m[intvec(18,19,17..7,1,6,5,2,4,3)]);
 
 monitorON();
-option(prot); option(redTail); //option(redSB); option(intStrategy); 
-option();
-testBB(M, 48, 47, "M1M2_RAT_GB");
-;
+//degBound=2; testBB(m,1,0,2,"TEST1",list(list(degBound,13)));
+option(redTail);
+//degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,1,1,2,"TEST2_first",list(list(degBound,13)));
+//degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,6,5,2,"TEST2_first",list(list(degBound,13)));
+//degBound=2; print("   DEGBOUND 2   "); testBB(m_sorted,6,5,2,"TEST2",list(list(degBound,13)));
+//def I = katsura(5);
+//degBound=0; print("   DEGBOUND 0, KAT   ");  testBB(I,6,5,2,"KAT");
+
+//degBound=3; print("   DEGBOUND 3   "); testBB(m_sorted,6,5,2,"TEST3",list(list(degBound,13)));
+//degBound=4; print("   DEGBOUND 4   "); testBB(m_sorted,6,5,2,"TEST4",list(list(degBound,13)));
+//degBound=5; print("   DEGBOUND 5   "); testBB(m_sorted,6,5,2,"TEST5",list(list(degBound,13)));
+
+
+//ring R = 0,x(1..10),dp;
+//ideal I = katsura(9);
+//degBound=0; print("   4 quadrics   "); testBB(I,1,1,2,"TEST_Q4",list(list(degBound,6)));
+
+//!!int nq = 6; system("--random", 42); ring r = 0,x(1..(nq+2)),dp; ideal I = randomid(maxideal(2),nq);
+
+//degBound=0; print("   "+string(nq)+" quadrics   "); testBB(I,4,4,2,"TEST_"+string(nq)+"Q",list(list(degBound,nq+2)));
+
+
+proc poly_info(poly p, int mode) {
+  if (mode==0) {
+    if (p==0)
+      {return("-");}
+    else
+      {return("1");}
+  }
+  else {
+    if(mode==1) {
+      if (p==0)
+        {return("-");}
+      else
+        {return(string(deg(p)));}
+    }
+    else {
+    if (p==0)
+      {return(" -");}
+    else
+      {return(string(leadmonom(p)));}
+    }
+  }
+}
+
+proc print_info(module N, int mode) {
+  string s;
+  int i,j;
+  matrix N_mat = matrix(N);
+  for(i=1; i<=nrows(N_mat); i++) {
+    s="";
+    for(j=1; j<=ncols(N_mat); j++) {
+      s=s+poly_info(N_mat[i,j], mode)+" ";
+    }
+    print(s);
+  }
+}
+
+//matrix M1_mat = matrix(m1);
+matrix M1_mat_ = matrix(m1); matrix M1_mat = submat(M1_mat_, 1..7, 1..ncols(M1_mat_));
+//matrix M2_mat = matrix(m2);
+matrix M2_mat_ = matrix(m2); matrix M2_mat = submat(M2_mat_, 1..7, 1..7);
+
+matrix M_mat = concat(M1_mat,M2_mat);
+
+matrix M_2rows = M_mat;
+matrix M_8rows = M_mat;
+int i,j;
+for(i=1; i<=nrows(M_mat); i++) {
+  if(i==3 || i==5) {
+    for(j=1; j<=ncols(M_mat); j++) {
+      M_8rows[i,j] = 0;
+    }
+  }
+  else {
+    for(j=1; j<=ncols(M1_mat); j++) {
+      M_2rows[i,j] = 0;
+    }
+  }
+}
+degBound=0;
+
+//pre computing the "easy parts":
+option(prot);
+option(noredSB);
+option(noredTail);
+int tttt;
+printf("%n S2: ",0);
+module S2_ = matrix(syz(module(M_2rows)));
+printf("deg=%s, size=%s", maxdeg(S2_), ncols(S2_));
+printf("%n S8_1: ",0);
+module S8_1_ = matrix(syz(module(concat(submat(M_8rows,1..7,1..5),submat(M_8rows,1..7,11..ncols(M_mat))))));
+printf("deg=%s, size=%s", maxdeg(S8_1_), ncols(S8_1_));
+printf("%n S8_2: ",0);
+module S8_2_ = matrix(syz(module(submat(M_8rows,1..7,6..ncols(M_mat)))));
+printf("deg=%s, size=%s", maxdeg(S8_2_), ncols(S8_2_));
+/*
+printf("%n Ssep_1: ",0);
+tttt = rtimer;
+module Ssep_1_ = matrix(syz(module(concat(submat(M_mat,1..7,1..5),submat(M_mat,1..7,11..ncols(M_mat))))));
+printf("deg=%s, size=%s, time=%sms", maxdeg(Ssep_1_), ncols(Ssep_1_), rtimer-tttt);
+printf("%n Ssep_2: ",0);
+tttt = rtimer;
+module Ssep_2_ = matrix(syz(module(submat(M_mat,1..7,6..ncols(M_mat)))));
+printf("deg=%s, size=%s, time=%sms", maxdeg(Ssep_2_), ncols(Ssep_2_), rtimer-tttt);
+*/
+
+printf("%n Mred: ",0);
+matrix S2   = submat(S2_  ,1..10,1..ncols(S2_));
+matrix S8_1 = submat(S8_1_,1..5, 1..ncols(S8_1_));
+matrix S8_2 = submat(S8_2_,1..5, 1..ncols(S8_2_));
+matrix Z8_1[5][ncols(S8_1)];
+matrix Z8_2[5][ncols(S8_2)];
+/*
+matrix Ssep_1 = submat(Ssep_1_,1..5, 1..ncols(Ssep_1_));
+matrix Ssep_2 = submat(Ssep_2_,1..5, 1..ncols(Ssep_2_));
+matrix Zsep_1[5][ncols(Ssep_1)];
+matrix Zsep_2[5][ncols(Ssep_2)];
+*/
+matrix S8 = concat(transpose(concat(transpose(S8_1),transpose(Z8_1))),transpose(concat(transpose(Z8_2),transpose(S8_2))));
+//matrix Ssep = concat(transpose(concat(transpose(Ssep_1),transpose(Zsep_1))),transpose(concat(transpose(Zsep_2),transpose(Ssep_2))));
+
+matrix MI2 = M1_mat*S2;
+matrix MI8 = M1_mat*S8;
+//matrix MIsep = M1_mat*Ssep; // this is the part (a submodule) of the intersection that separates into the odd and even number generators
+
+// VERY OLD
+//module Mred = module(concat(matrix(sort(module(MI8))[1]), M2_mat));
+// OLD
+/*
+module Mred = sort(module(MI8))[1];
+Mred[size(Mred)+1] = z3*gen(3);
+Mred[size(Mred)+1] = z5*gen(5);
+*/
+module Mred = sort(module(submat(MI8, intvec(3,5), 1..ncols(MI8))))[1];
+Mred[size(Mred)+1] = z3*gen(1);
+Mred[size(Mred)+1] = z5*gen(2);
+
+/*
+def Mred1 = subst(Mred ,c1,prime(10000));
+def Mred2 = subst(Mred1,c2,prime(100000));
+def Mred3 = subst(Mred2,c3,prime(1000000));
+def Mred4 = subst(Mred3,c4,prime(10000000));
+
+def m_1 = subst(m  ,c1,prime(10000));
+def m_2 = subst(m_1,c2,prime(100000));
+def m_3 = subst(m_2,c3,prime(1000000));
+def m_4 = subst(m_3,c4,prime(10000000));
+*/
+
+printf("deg=%s, size=%s", maxdeg(Mred), size(Mred));
+/* BAD IDEA:
+  Mstep = std(Mstep);
+}
+*/
+/*
+print("Sred:");
+module Sred = syz(Mred);
+printf("deg=%s, size=%s", maxdeg(Mred), size(Mred));
+*/
+//setring(rM1M2BIG);
+monitorON();
+option(redSB); option(redTail); option(prot);
+//degBound=0; printf("%n 4 CORE M, 100:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 100); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M, 125:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 125); // last 3 arguments: target_time, max_batch_size, head_size_factor
+
+//degBound=0; int tTt=rtimer; def S = syz(m); print(rtimer-tTt);
+//degBound=0; printf("%n 32 CORE M, 150:  %n",0); testParallelBB(m_intersect, 32, 32, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 16 CORE M, 150:  %n",0); testParallelBB(m_intersect, 16, 16, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 8 CORE M, 150:  %n",0); testParallelBB(m_intersect, 8, 8, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 4 CORE M, 150:  %n",0); testParallelBB(m_intersect, 4, 4, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 2 CORE M, 150:  %n",0); testParallelBB(m_intersect, 2, 2, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+//degBound=0; printf("%n 1 CORE M, 150:  %n",0); testParallelBB(m_intersect, 1, 1, 2, "M1M2BIG_DP_red_syz_0_block_ord", list(list(degBound,13)), 50, 20, 150, nrows(m1), 0); // last 3 arguments: target_time, max_batch_size, head_size_factor //!!
+
+//degBound=0; printf("%n 4 CORE M, 175:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 175); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M, 200:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 200); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M, 225:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 225); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M, 250:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_DP", list(list(degBound,13)), 50, 20, 250); // last 3 arguments: target_time, max_batch_size, head_size_factor
+//degBound=0; printf("%n 4 CORE M:  %n",0); testBB(m, 4, 4, 2, "M1M2BIG_RAT", list(list(degBound,13-4)));
+
+
+//def Mred = MInew(module(M1_ordered),2);
+//printf("%n 4 CORES M:  %n",0); testParallelBB(M, 4, 4, 2, "M1M2BIG_RATIONAL", list(list(degBound,15))); def GBo = GB;
+
+// this with z8,z9 treated as variables (NOT parameters!) takes ~10 min per NF_of_spoly transition but that runtime does NOT seem to increase over time. Might be interesting (if important: I also didn't remove the last 2 rows and appended the full M2 instead of just z3*gen(3) and z5*gen(5))
+//printf("%n 4 CORES Mred:  %n",0); testBB(Mred, 4, 4, 2, "M1M2BIG_RATIONAL_RED", list(list(degBound,9))); def GB1 = GB;
+
+//printf("%n 2 CORES: %n",0); testParallelBB(M, 2, 2, 2, "M1M2_RATIONAL", list(list(degBound,15))); def GB2 = GB;
+//printf("%n 4 CORES: %n",0); testParallelBB(M, 4, 4, 2, "M1M2_RATIONAL", list(list(degBound,15))); def GB3 = GB;
+//printf("%n 8 CORES: %n",0); testParallelBB(M, 8, 8, 2, "M1M2_RATIONAL", list(list(degBound,15))); def GB4 = GB;
+
+
+
+/*
+int i,j;
+module S;
+ideal T;
+module mm = m1;
+ideal V = z1,z2,z3,z4,z5,z6,z7;
+option(prot);
+for (i=1;i<=7;i++)
+{
+  T=ideal();
+  for (j=1; j<=size(mm); j++)
+    {T[j] = subst(mm[j][i], V[i], 0);}
+  printf("%nComputing %s-th syzygy...",i);
+  S = syz(T);
+  printf("DONE!   (S has size %s and degree %s)",size(S), deg(S));
+  mm = matrix(mm)*matrix(S);
+  printf("New module has size %s and degree %s",size(mm), deg(mm));
+}
+*/
+
+//testParallelBB(m, 48, 47, "BIG_M1_PLUS_M2", list(list(4,9),list(4,4)));
+
+
+
+
+
+
+
+
+
+
+
+// small test example
+int N=8;
+ring testring = 0, x(1..N), dp;
+
+system("--random",42);
+
+ideal I = randomid(maxideal(2), N-2);
+
+//ideal I = randomid(maxideal(2),N-2,2^30);
+//for(int ii=1; ii<=size(I); ii++) {
+//  I[ii] = I[ii] * (bigint(2)^prime(100*ii)-1) + var(ii)^2;
+//}
+
+module Im = module(I);
+module M;
+for(int ii=1; ii<=size(Im); ii++) {
+  M[ii] = Im[ii] + gen(ii+1);
+}
+
+
+
+option(redSB); option(redTail); option(prot); option(noreturnSB);
+//testParallelBB(M, 4, 4, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, 1); // last 4 arguments: target_time, max_batch_size, head_size_factor, syz_comp //!!
+//testBB(I, 16, 16, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+
+
+setring(rM1M2); def I = M; degBound=0; option(redTail); option(redSB); option(intStrategy);
+
+//ring rKAT = 0,x(1..12),dp;
+//ideal I = katsura(11);
+
+list ncores = 32,16,8,4,2,1;
+printf("%n |||||||||-->  %s CORES  <--||||||||||%n",ncores[1],0);
+testBB(I, ncores[1], ncores[1], 2, "testideal_"+string(ncores[1])+"_CORES", list(list(degBound,nvars(basering))), 50, 1, 150, 0, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+for(int ind=2; ind<=size(ncores); ind++)
+{
+  printf("%n |||||||||-->  %s CORES  <--||||||||||%n",ncores[ind],0);
+  testParallelBB(I, ncores[ind], ncores[ind], 2, "testideal_"+string(ncores[ind])+"_CORES", list(list(degBound,nvars(basering))), 50, 1, 150, 0, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+}
+
+module SS;
+matrix LL;
+
+//int ti = rtimer; def GG = liftstd(I,LL,SS); ti=rtimer-ti; printf("liftstd: %sms",ti);
+//int ti2 = rtimer; def SGB = std(S); ti2=rtimer-ti2;       printf("std(S):  %sms",ti2);
+//int ti3 = rtimer; def Lred = NF(L,SGB); ti3=rtimer-ti3;   printf("NF(L,S): %sms",ti3);
+//printf("liftstd 'without' std(S) and NF(L,S): %sms",ti-ti2-ti3);
+
+
+

@@ -22,12 +22,12 @@ namespace buchberger_module
     void  process (WorkflowResult const& result, Parameters const& parameters, leftv res) const;
 
   private:
-    int _N;
+    //int _N;
     std::string _input;
     std::string _basefilename;
-    std::string _libraryname;
-    long _nworkers;
-    long _redSB;
-    long _degBound;
+    std::string _installdir;
+    //long _nworkers;
+    //long _redSB;
+    //long _degBound;
   };
 }

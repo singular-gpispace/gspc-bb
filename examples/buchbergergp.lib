@@ -28,7 +28,7 @@ proc mod_init()
 // for inputs:  read  - in  - inout
 // for outputs: inout - out - out_many
 
-proc minimize_GB(string DIR, int in_r, int final_r, list needed_indices)
+proc minimize_GB(string DIR, int in_r, int final_r, int n_syzygies, list needed_indices, bigint bigint_test)
 {
   token output;
   output.fieldnames[1] = "final_r";
@@ -36,7 +36,7 @@ proc minimize_GB(string DIR, int in_r, int final_r, list needed_indices)
 
   // This output is just for debugging and analysing the algorithm:
   output.fieldnames[2] = "transition_names";
-  output.data[2] = list("total_start_stop", "total_time",     "TRANSITION init TOTAL", "TRANSITION NF_of_spoly TOTAL", "TRANSITION NF_of_spoly_Qback TOTAL", "TRANSITION increment TOTAL", "TRANSITION remove_from_Q TOTAL", "TRANSITION minimize_GB TOTAL", "TRANSITION reduce_GB TOTAL", "reading input ideal in init", "saving initial ideal elements in init", "reading generators in NF_of_spoly (static)", "reading generators in NF_of_spoly", "applying NF in NF_of_spoly", "saving partially reduced poly in NF_of_spoly", "reading partially reduced poly in NF_of_spoly", "min serial runtime", "reading generators in reduce_GB (static)", "applying NF in reduce_GB", "clearing denominators in reduce_GB", "saving GB in files in reduce_GB", "memory used in NF_of_spoly", "PRODUCT CRITERION", "CHAIN CRITERION", "CANCELLED S-PAIRS", "CANCELLED ELEMENTS");
+  output.data[2] = list("total_start_stop", "total_time",     "TRANSITION init TOTAL", "TRANSITION NF_of_spoly TOTAL", "TRANSITION NF_of_spoly_Qback TOTAL", "TRANSITION increment TOTAL", "TRANSITION remove_from_Q TOTAL", "TRANSITION update_Q TOTAL", "TRANSITION start_s_pairs TOTAL", "TRANSITION minimize_GB TOTAL", "TRANSITION reduce_GB TOTAL", "reading input ideal in init", "saving initial ideal elements in init", "reading generators in NF_of_spoly (static)", "reading generators in NF_of_spoly", "applying NF in NF_of_spoly", "saving partially reduced poly in NF_of_spoly", "reading partially reduced poly in NF_of_spoly", "deserialize in update_Q", "min serial runtime", "reading generators in reduce_GB (static)", "applying NF in reduce_GB", "clearing denominators in reduce_GB", "saving GB in files in reduce_GB", "memory used in NF_of_spoly", "PRODUCT CRITERION", "DIFFERENT COMPONENT", "CHAIN CRITERION", "CANCELLED S-PAIRS", "CANCELLED ELEMENTS", "DEGREE BOUND");
   output.fieldnames[3] = "runtimes_per_transition";
   output.data[3] = list(list(0,-2^31));
   for(int k=2; k<=size(output.data[2]); k++) {output.data[3][k]=list(0,0,0);}
@@ -44,6 +44,24 @@ proc minimize_GB(string DIR, int in_r, int final_r, list needed_indices)
   output.data[4] = in_r;
   output.fieldnames[5] = "needed_indices";
   output.data[5] = needed_indices;
+  output.fieldnames[6] = "n_syzygies";
+  output.data[6] = n_syzygies;
+  
+  bigint_test = bigint_test + 1; // just for testing that bigints can be passed to the output token, will be overwritten by the actual value in the workflow
+  return(bigint_test,output);
+}
+
+proc serialize(list thing)
+{
+  token t;
+  t.fieldnames[1] = "thing";
+  t.data[1] = thing;
+  return(t);
+}
+
+proc deserialize(token t)
+{
+  list output = t.data[1];
   return(output);
 }
 
