@@ -1,6 +1,6 @@
 #pragma once
 
-//#define DEBUG_BBA
+#define DEBUG_BBA
 #define OLD_REDTAIL
 
 #define HEAD_SIZE_FACTOR 1.0
