@@ -378,5 +378,5 @@ module M = M1+M2;
 monitorON();
 option(prot); option(redTail); //option(redSB); option(intStrategy); 
 option();
-testBB(M, 48, 47, "M1M2_RAT_GB");
+testParallelBB(M, 16, 15, "M1M2_RAT_GB");
 ;
