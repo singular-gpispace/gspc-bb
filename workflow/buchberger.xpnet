@@ -61,6 +61,7 @@
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
 						std::string singular_function_name = "init";
+						queue_debug_reset();
 
 						#ifdef DEBUG_BBA
 						std::cout << "start time (time since epoch in ms): " << runtime_start << std::endl;
@@ -168,6 +169,22 @@
 						logFile << 0;
 						logFile.close();
 
+						std::ofstream debugfile(base_filename+"debug.txt");
+						debugfile << "initial lead monomials:\n";
+						for(std::vector<int> const& leadmon : Mvec)
+						{
+							debugfile << "( ";
+							for (int x : leadmon)
+							{
+								debugfile << x << " ";
+							}
+							debugfile << ")\n";
+						}
+						debugfile << "\n";
+						displayQ(Q, debugfile);
+						debugfile << "\n\n";
+						debugfile.close();
+
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
 						#endif
@@ -269,6 +286,7 @@
 							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", r}));
 
 							started_indices_out.push_back(si);
+							queue_debug_set_old_r(boost::get<int>(si_out.front()), boost::get<int>(si_out.back()), r);
 
 							#ifdef DEBUG_BBA
 							std::cout << runtime_start << ": 1 NF_of_spoly: adding ("<<boost::get<int>(si_out.front())<<","<<boost::get<int>(si_out.back())<<") to started_indices (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
@@ -387,6 +405,7 @@
 							si.emplace_back(std::pair<std::string,GpiVariant>({"old_r", r}));
 
 							started_indices_out.push_back(si);
+							queue_debug_set_old_r(boost::get<int>(si_out.front()), boost::get<int>(si_out.back()), r);
 
 							#ifdef DEBUG_BBA
 							std::cout << runtime_start << ": 1 NF_of_spoly_Qback: adding ("<<boost::get<int>(si_out.front())<<","<<boost::get<int>(si_out.back())<<") to started_indices (old_r="<<started_indices.old_r<<", r="<<r<<")" << std::endl;
@@ -460,16 +479,19 @@
 					<code><![CDATA[
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::string singular_function_name = "increment";
+						std::ofstream debugfile(base_filename+"debug.txt", std::ios::app);
 
 						GpiList::const_iterator it = NF.begin();
 						int index_i = boost::get<int>(*it); ++it;
 					  int index_j = boost::get<int>(*it); ++it;
 						GpiVariant m = *it;
+						int index_old_r = queue_debug_get_old_r(index_i, index_j);
 
 						long prodcrit_counter  = 0L;
 						long chaincrit_counter = 0L;
 						long cancelled_element_counter = 0L;
 						long cancelled_s_pair_counter  = 0L;
+						bool cc_logged = false;
 
 
 						bool i_in_bl  = (blacklist.find((GpiVariant) index_i)     !=blacklist.end());
@@ -494,6 +516,13 @@
 
 
 							std::vector<int> Mr = Mvec.back();
+							debugfile << "r:" << r-1 << "->" << r << ": adding new element due to s-pair (" << index_i << "," << index_j << "), old_r=" << index_old_r << " with new lead ";
+							debugfile << "( ";
+							for (int x : Mr)
+							{
+								debugfile << x << " ";
+							}
+							debugfile << ")\n";
 							int i=1;
 							for (std::vector<std::vector<int>>::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
 							{
@@ -535,6 +564,20 @@
 
 								if (divides_monom(Mr,*Mi) &&  (blacklist.find((GpiVariant) i)==blacklist.end()))
 								{
+									for (GpiList::const_iterator Qentry=Q.begin(); Qentry!=Q.end(); ++Qentry)
+									{
+										int ii = boost::get<int>(get_list(*Qentry).front());
+										int jj = boost::get<int>(*std::next(get_list(*Qentry).begin()));
+										if(ii==i || jj==i)
+										{
+											if (!cc_logged)
+											{
+												debugfile << "CC: removing indices ";
+												cc_logged = true;
+											}
+											debugfile << "(" << ii << "," << jj << "," << queue_debug_get_old_r(ii, jj) << ") ";
+										}
+									}
 									// new found lead monomial divides i-th lead monomial ==> put i in blacklist
 									// (and Set(i,r) as the (i,r)-th spoly has to be reduced, it is not eliminated through CC!)
 									blacklist.emplace(i);
@@ -573,6 +616,13 @@
 									if(!equal(lcm_i_r,lcm_i_j) && !equal(lcm_j_r,lcm_i_j))
 									{
 										blacklist.emplace(GpiList({ii,jj}));
+										if (!cc_logged)
+										{
+											debugfile << "CC: removing indices ";
+											cc_logged = true;
+										}
+										debugfile << "(" << ii << "," << jj << "," << queue_debug_get_old_r(ii, jj) << ") ";
+										queue_debug_erase(ii, jj);
 										Qk = Q.erase(Qk);
 										chaincrit_counter++;
 										cancelled_s_pair_counter++;
@@ -581,6 +631,11 @@
 								}
 								else {++Qk;}
 							}
+						}
+
+						if (cc_logged)
+						{
+							debugfile << "\n";
 						}
 
 						queue_delete_i_j(Q, index_i, index_j);
@@ -596,6 +651,11 @@
 						logFile << r << '\n';
 						logFile << (Q.size());
 						logFile.close();
+
+						debugfile << "\n";
+						displayQ(Q, debugfile);
+						debugfile << "\n\n";
+						debugfile.close();
 
 
 						if(Q.size()>0)
@@ -661,6 +721,8 @@
 					<code><![CDATA[
 						long runtime_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						std::string singular_function_name = "remove_from_Q";
+						std::ofstream debugfile(base_filename+"debug.txt", std::ios::app);
+						debugfile << "reduced to 0: (" << finished_indices.i << "," << finished_indices.j << "," << queue_debug_get_old_r(finished_indices.i, finished_indices.j) << ") \n";
 
 						queue_delete_i_j(Q, finished_indices.i, finished_indices.j);
 
@@ -684,6 +746,11 @@
 						logFile << oldLine1 << '\n';
 						logFile << (Q.size());
 						logFile.close();
+
+						debugfile << "\n";
+						displayQ(Q, debugfile);
+						debugfile << "\n\n";
+						debugfile.close();
 
 						if(Q.size()>0)
 						{

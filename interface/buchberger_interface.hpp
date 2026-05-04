@@ -11,6 +11,7 @@
 #include <boost/variant.hpp>
 //#include <vector>
 
+#include <fstream>
 #include <iostream>
 
 #include <gspc/we/type/literal/control.hpp>
@@ -299,9 +300,53 @@ inline bool test_CC(std::vector<int> const& lcm_i_j, std::vector<int> const& Mi,
 
 // helper functions for the queue
 
-inline void queue_insert(GpiList& Q, int i, int j, int deg_lcm, GpiList const& lcm)
+inline std::map<std::pair<int, int>, int>& queue_debug_old_r_store()
+{
+  static std::map<std::pair<int, int>, int> old_r_by_pair;
+  return old_r_by_pair;
+}
+
+inline void queue_debug_reset()
+{
+  queue_debug_old_r_store().clear();
+}
+
+inline void queue_debug_set_old_r(int i, int j, int old_r)
+{
+  queue_debug_old_r_store()[std::make_pair(i, j)] = old_r;
+}
+
+inline int queue_debug_get_old_r(int i, int j)
+{
+  std::map<std::pair<int, int>, int>& old_r_by_pair = queue_debug_old_r_store();
+  std::map<std::pair<int, int>, int>::const_iterator it = old_r_by_pair.find(std::make_pair(i, j));
+  return it == old_r_by_pair.end() ? 0 : it->second;
+}
+
+inline void queue_debug_erase(int i, int j)
+{
+  queue_debug_old_r_store().erase(std::make_pair(i, j));
+}
+
+inline void displayQ(GpiList const& Q, std::ofstream& debugfile)
+{
+  for (GpiList::const_iterator itQ = Q.begin(); itQ != Q.end(); ++itQ)
+  {
+    GpiList entry = get_list(*itQ);
+    int index_i = boost::get<int>(entry.front());
+    int index_j = boost::get<int>(*std::next(entry.begin()));
+    int old_r = queue_debug_get_old_r(index_i, index_j);
+    #ifdef DEBUG_BBA
+    std::cout << "    (" << index_i << "," << index_j << "," << old_r << ")" << std::endl;
+    #endif
+    debugfile << "(" << index_i << "," << index_j << "," << old_r << ") ";
+  }
+}
+
+inline void queue_insert(GpiList& Q, int i, int j, int deg_lcm, GpiList const& lcm, int old_r=0)
 {
   GpiList data = {i, j, deg_lcm, lcm};
+  queue_debug_set_old_r(i, j, old_r);
   if(Q.size()==0)
   {
     Q.push_back(data);
@@ -329,6 +374,7 @@ inline void queue_delete_i_j(GpiList& Q, int i, int j) // remove index (i,j) fro
     int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
     if(ii==i && jj==j)
     {
+      queue_debug_erase(ii, jj);
       Qk = Q.erase(Qk);
       break;
     }
@@ -347,6 +393,7 @@ inline void queue_delete_i(GpiList& Q, int i) // remove indices (i,j) and (j,i) 
     int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
     if(ii==i || jj==i)
     {
+      queue_debug_erase(ii, jj);
       Qk = Q.erase(Qk);
     }
     else
