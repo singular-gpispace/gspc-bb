@@ -380,7 +380,7 @@
 						logFile << 0        << " (syz)";   // queue size (syzygy)
 						logFile.close();
 
-						#ifdef DEBUG_BBA
+						#ifdef DEBUGFILE_BBA
 						std::ofstream debugfile(base_filename+"debug.txt");
 						debugfile << "initial lead monomials:\n";
 						for(std::vector<std::vector<int>> leadmon : Mvec)
@@ -745,7 +745,7 @@
 
 					GpiSet remove_from_running = {};
 
-					#ifdef DEBUG_BBA
+					#ifdef DEBUGFILE_BBA
 					std::ofstream debugfile(base_filename+"debug.txt", std::ios::app);
 					#endif
 
@@ -835,7 +835,7 @@
 							}
 							if (abort) {break;}
 
-							#ifdef DEBUG_BBA
+							#ifdef DEBUGFILE_BBA
 							debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<"), old_r="<<old_r<<" with new lead ";
 							//debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") (old_r="<<old_r<<") with new lead ";
 							//std::cout << " NEW ELEMENT DUE TO S-PAIR ("<<index_i<<","<<index_j<<") ---------------------------------------------------------------------------------------" << std::endl;
@@ -850,7 +850,7 @@
 								std::vector<int> new_entry = list2vec(*Mi);
 								Mvec_new.emplace_back(new_entry);
 
-								#ifdef DEBUG_BBA
+								#ifdef DEBUGFILE_BBA
 								if (_first)	{debugfile << "( ";
 								for (int x : new_entry) {
 									debugfile << x << " ";
@@ -917,6 +917,7 @@
 							bool skip_syzygy_spairs = red_syz==1 && syz_comp>0;
 							std::vector<std::vector<int>> Mr = Mvec.back();
 							int i=1;
+							bool first=true;
 							if (skip_syzygy_spairs && r_is_syzygy)
 							{
 								for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
@@ -1037,7 +1038,6 @@
 
 								// (5) remove old s-pairs due to chain condition
 								//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (5) remove old s-pairs due to chain condition" << std::endl;
-								bool first=true;
 								for (sPairQueue::iterator Qk=Q.begin(); Qk!=Q.end(); )
 								{
 									//int ii = boost::get<int>(get_list(*Qk).front());
@@ -1053,7 +1053,7 @@
 										std::vector<int> lcm_j_r = lcm(Mvec[jj-1][0], Mvec[r-1][0]);
 										if(!equal(lcm_i_r,lcm_i_j) && !equal(lcm_j_r,lcm_i_j))
 										{
-											#ifdef DEBUG_BBA
+											#ifdef DEBUGFILE_BBA
 											if (first)  {
 												debugfile << "CC: removing indices ";
 												first = false;
@@ -1067,7 +1067,7 @@
 											cancelled_s_pair_counter++;
 											//FIX: std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
 											//FIX: std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
-											#ifdef DEBUG_BBA
+											#ifdef DEBUGFILE_BBA
 											debugfile << "("<<ii<<","<<jj<<","<<(Qk->second).old_r<<") ";
 											#endif
 										}
@@ -1078,7 +1078,7 @@
 							}
 
 
-							#ifdef DEBUG_BBA
+							#ifdef DEBUGFILE_BBA
 							if (!first) debugfile << "\n";
 							#endif
 						}
@@ -1133,7 +1133,7 @@
 						GpiList ij_list = {index_i,index_j};
 						if(remove_from_running.find(ij_list)==remove_from_running.end()) // && (itNF->first).which()!=2)
 						{
-							#ifdef DEBUG_BBA
+							#ifdef DEBUGFILE_BBA
 							if (first) {
 								debugfile << "pausing s-pairs: ";
 								first = false;
@@ -1148,7 +1148,7 @@
 
 						}
 					}
-					#ifdef DEBUG_BBA
+					#ifdef DEBUGFILE_BBA
 					if (!first)	debugfile << "\n";
 					#endif
 
@@ -1158,7 +1158,7 @@
 					first=true;
 					for (std::set<std::pair<int,int> >::const_iterator itNF0=zero_reductions.begin(); itNF0!=zero_reductions.end(); ++itNF0)
 					{
-						#ifdef DEBUG_BBA
+						#ifdef DEBUGFILE_BBA
 						if (first) {
 							debugfile << "reduced to 0: ";
 							first = false;
@@ -1195,7 +1195,7 @@
 						}
 
 					}
-					#ifdef DEBUG_BBA
+					#ifdef DEBUGFILE_BBA
 					if (!first)	debugfile << "\n";
 					#endif
 
@@ -1243,7 +1243,7 @@
 					// (H) start jobs:
 					//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (H) start jobs" << std::endl;
 					update_job_queue = GpiList({remove_from_running});
-					#ifdef DEBUG_BBA
+					#ifdef DEBUGFILE_BBA
 					debugfile << "remove from running: ";
 					for(GpiSet::const_iterator it=remove_from_running.begin(); it!=remove_from_running.end(); ++it) {
 						debugfile <<"("<<boost::get<int>(get_list(*it).front())<<","<<boost::get<int>(get_list(*it).back())<<") ";
@@ -1261,7 +1261,7 @@
 					//std::cout << "\nBUILDING JOB QUEUE" << std::endl;
 					for(sPairQueue::iterator entry=Q.begin(); insert_counter<head_size &&  entry!=Q.end(); ++entry)
 					{
-						#ifdef DEBUG_BBA
+						#ifdef DEBUGFILE_BBA
 						if (first) {
 							debugfile << "starting jobs: ";
 							first = false;
@@ -1274,6 +1274,8 @@
 
 						#ifdef DEBUG_BBA
 						std::cout << "adding " << indices.first << "," << indices.second << " (old_r="<<old_r<<") to update_job_queue, syzygy=(" << (syzygy_indices.find(indices.first)!=syzygy_indices.end() ? 1 : 0) << "," << (syzygy_indices.find(indices.second)!=syzygy_indices.end() ? 1 : 0) << "), PC: " << (PC ? 1 : 0) << std::endl;
+						#endif
+						#ifdef DEBUGFILE_BBA
 						debugfile <<"("<<indices.first<<","<<indices.second<<","<<old_r<<") ";
 						#endif
 
@@ -1281,7 +1283,7 @@
 						update_job_queue.emplace_back(GpiList({indices.first, indices.second, old_r, (int) (PC ? 2 : (syzygy_indices.find(indices.first)!=syzygy_indices.end() ? 1 : 0))}));
 						insert_counter++;
 					}
-					#ifdef DEBUG_BBA
+					#ifdef DEBUGFILE_BBA
 					if (!first)	debugfile << "\n";
 
 					// current Queue:
