@@ -926,7 +926,8 @@ setring(rM1M2); def I = M; degBound=0; option(redTail); option(redSB); option(in
 //ring rKAT = 0,x(1..12),dp;
 //ideal I = katsura(11);
 
-list ncores = 32,16,8,4,2,1;
+//list ncores = 32,16,8,4,2,1;
+list ncores = 24;
 printf("%n |||||||||-->  %s CORES  <--||||||||||%n",ncores[1],0);
 testBB(I, ncores[1], ncores[1], 2, "testideal_"+string(ncores[1])+"_CORES", list(list(degBound,nvars(basering))), 50, 1, 150, 0, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 for(int ind=2; ind<=size(ncores); ind++)
