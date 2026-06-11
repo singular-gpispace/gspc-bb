@@ -1,6 +1,7 @@
 LIB "buchbergergspc.lib";
 LIB "random.lib";
 LIB "matrix.lib";
+LIB "modstd.lib";
 
 
 
@@ -19,13 +20,72 @@ gc.deleteoutputfiles = 1; // if true the final output file will also be deleted 
 // call once if you use gspc-monitor:
 proc monitorON()
 {
-  gc.loghostfile = "loghostfile"; // absolute path or relative to install directory
-  gc.logport = 3217;
+  //gc.loghostfile = "loghostfile"; // absolute path or relative to install directory
+  //gc.logport = 3217;
 }// absolute path or relative to install directory
 
 proc getcores()
 {
   return(gc.procspernode);
+}
+
+proc randomBigintNonnegative(bigint b)
+{
+  if (b < 0) { b = -b; }
+
+  bigint base = 1000000000;
+  bigint value = 0;
+  bigint scale = 1;
+  while (scale <= b) {
+    scale = scale*base;
+  }
+
+  bigint range = b + 1;
+  bigint limit = scale - (scale - (scale div range)*range);
+  value = limit;
+  while (value >= limit) {
+    value = 0;
+    bigint digit_scale = 1;
+    while (digit_scale < scale) {
+      value = value + bigint(random(0, 999999999))*digit_scale;
+      digit_scale = digit_scale*base;
+    }
+  }
+
+  return(value - (value div range)*range);
+}
+
+proc randomBigintSymmetric(bigint b)
+{
+  if (b < 0) { b = -b; }
+  return(randomBigintNonnegative(2*b) - b);
+}
+
+// 10000000000000000000000000000000000000000000000000000000000000
+proc randomidBigint(def id, list #)
+"USAGE:   randomidBigint(id[,k,b]);  id ideal/module, k integer, b bigint
+RETURN:  ideal/module having k generators which are random linear combinations
+         of generators of id with coefficients in the interval [-b,b]
+         (default: b=30000, k=size(id))
+"
+{
+  int k;
+  bigint b;
+  if (size(#) >= 2) { k = #[1]; b = #[2]; }
+  if (size(#) == 1) { k = #[1]; b = 30000; }
+  if (size(#) == 0) { k = size(id); b = 30000; }
+
+  int r = ncols(id);
+  matrix random_coefficients[r][k];
+  for (int i=1; i<=r; i++) {
+    for (int j=1; j<=k; j++) {
+      random_coefficients[i,j] = randomBigintSymmetric(b);
+    }
+  }
+
+  def i = id;
+  i = matrix(id)*random_coefficients;
+  return(i);
 }
 
 proc test_opt(string opt) {
@@ -156,7 +216,9 @@ proc testParallelBB(def I, int ncores, int nworkers, int force_continue, list #)
   else {
     def I_in=I;
   }
+  option();
   GB, L, S, r_all, indices, runtimes = gspc_buchberger_extraData(I_in, gc, nworkers, degBounds, force_continue, target_time, max_batch_size, head_size_factor, syz_comp, red_syz);
+  option();
   if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(ncores)+"_cores_"+string(nworkers)+"_NFworkers.ssi",list(I, GB, L, S, r_all, indices, runtimes));}
 
   if(size(string(I))<2000) {printf("%nI (%s elements): %n%p",size(I),I);}
@@ -507,12 +569,13 @@ proc timestd(def I, list #)
 
 // M1+M2 example
 
-//ring R = 0,(z(1..15),s,t),(dp(15),dp(2)); // block ordering
+//ring rM1M2 = 0,(z(1..15),s,t),(dp(15),dp(2)); // block ordering
+ring rM1M2 = 0,(z(1..15),s,t,e(1..15)),dp; // flat dp
 
 //int p = prime(100000);
 //ring rM1M2simple = p,z(1..15),dp; number s=prime(10000); number t = prime(15000);
 
-ring rM1M2 = (0,s,t),z(1..15),dp;             // rational function field
+//ring rM1M2 = (0,s,t),z(1..15),dp;             // rational function field
 
 matrix M1_mat_T[18][15] = (-z(1) + z(2), -z(1) + z(2), -z(1) + z(2) - z(8) + z(11), -z(1) + z(2) - z(6) + z(14), 0, 0, 0, 0, 0, 0, 0, -s - z(1) + z(2), -t - z(1) + z(2), 0, 0), (0, 0, z(1) - z(2) + z(8) - z(11), 0, -z(6) + z(8) - z(11) + z(14), 0, 0, z(8) - z(11), s + z(8) - z(11), s + t + z(8) - z(11), z(8) - z(11), 0, 0, 0, 0), (0, 0, 0, z(1) - z(2) + z(6) - z(14), z(6) - z(8) + z(11) - z(14), z(6) - z(14), s + t + z(6) - z(14), 0, 0, 0, 0, 0, 0, z(6) - z(14), -s + z(6) - z(14)), (z(1) - z(12), s + z(1) - z(12), s + z(1) + z(8) - z(9) - z(12), z(1) - z(6) - z(12) + z(15), 0, 0, 0, 0, 0, 0, 0, z(1) - z(12), s + t + z(1) - z(12), 0, 0), (0, 0, -s - z(1) - z(8) + z(9) + z(12), 0, -s - z(6) - z(8) + z(9) + z(15), 0, 0, -z(8) + z(9), -z(8) + z(9), -s - t - z(8) + z(9), -s - z(8) + z(9), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(6) + z(12) - z(15), s + z(6) + z(8) - z(9) - z(15), z(6) - z(15), -t + z(6) - z(15), 0, 0, 0, 0, 0, 0, -s + z(6) - z(15), z(6) - z(15)), (z(1) - z(13), t + z(1) - z(13), -s + z(1) + z(9) - z(10) - z(13), z(1) + 3*z(6) - z(7) - z(13) - z(14) - z(15), 0, 0, 0, 0, 0, 0, 0, s + t + z(1) - z(13), z(1) - z(13), 0, 0), (0, 0, s - z(1) - z(9) + z(10) + z(13), 0, s + 3*z(6) - z(7) - z(9) + z(10) - z(14) - z(15), 0, 0, s + t - z(9) + z(10), -z(9) + z(10), -z(9) + z(10), s - z(9) + z(10), 0, 0, 0, 0), (0, 0, 0, -z(1) - 3*z(6) + z(7) + z(13) + z(14) + z(15), -s - 3*z(6) + z(7) + z(9) - z(10) + z(14) + z(15), -3*z(6) + z(7) + z(14) + z(15), -s - 3*z(6) + z(7) + z(14) + z(15), 0, 0, 0, 0, 0, 0, -t - 3*z(6) + z(7) + z(14) + z(15), s + t - 3*z(6) + z(7) + z(14) + z(15)), (2*z(1), z(1) + z(2), z(1) + z(3) - z(11), z(1) + z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) + z(12), z(1) + z(13), 0, 0), (0, 0, -z(1) - z(3) + z(11), 0, -z(3) + z(4) - z(6) + z(11), 0, 0, z(2) - z(3) + z(11), z(1) + z(2) - z(3) + z(11) - z(12), 2*z(1) + z(2) - z(3) + z(11) - z(12) - z(13), z(1) - z(3) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) - z(4) + z(6), z(3) - z(4) + z(6) - z(11), z(1) - z(4) + z(6), 2*z(1) + z(2) - z(4) + z(6) - z(12) - z(13), 0, 0, 0, 0, 0, 0, 2*z(1) - z(2) - z(4) + z(6), -z(4) + z(6) + z(12)), (z(1) - z(3) + z(11), z(1) - z(3) + z(8), z(1) - z(3) - z(11), z(1) - z(3) + z(5) - z(6), 0, 0, 0, 0, 0, 0, 0, s + z(1) - z(3) + z(8) - z(9) + z(11), -s + z(1) - z(3) + z(9) - z(10) + z(11), 0, 0), (0, 0, -z(1) + z(3) + z(11), 0, z(5) - z(6) + z(11), 0, 0, z(8) + z(11), -s + z(9) + z(11), z(10) + z(11), 2*z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(3) - z(5) + z(6), -z(5) + z(6) - z(11), -z(5) + z(6) + z(11), -z(5) + z(6) + z(10), 0, 0, 0, 0, 0, 0, -z(5) + z(6) - z(8) + 2*z(11), s - z(5) + z(6) + z(8) - z(9) + z(11)), (z(1) - z(4) + z(6), z(1) - z(4) + 2*z(6) - z(14), z(1) - z(4) + z(5) - z(11), z(1) - z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) - z(4) + z(15), z(1) - z(4) + 4*z(6) - z(7) - z(14) - z(15), 0, 0), (0, 0, -z(1) + z(4) - z(5) + z(11), 0, -z(5) - z(6) + z(11), 0, 0, -z(5) + 2*z(6) + z(11) - z(14), -z(5) + 3*z(6) + z(11) - z(14) - z(15), -z(5) + z(7) + z(11), -z(5) + z(6) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(4) + z(6), z(5) + z(6) - z(11), 2*z(6), z(6) + z(7), 0, 0, 0, 0, 0, 0, z(6) + z(14), z(6) + z(15));
 matrix M2_mat_T[15][15] = (z(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, z(2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, z(3), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, z(4), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, z(5), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, z(6), 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, z(7), 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, z(8), 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, z(9), 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, z(10), 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
@@ -529,10 +592,13 @@ matrix M1_mat[15][18] = transpose(M1_mat_T);
 matrix M2_mat[15][15]  = transpose(M2_mat_T);
 matrix M_mat[15][33]  = transpose(M_mat_T);
 matrix S[48][33] = M_mat,unit_mat;
+matrix E[1][15] = e(1),e(2),e(1),e(2),e(1),e(2),e(1),e(2),e(1),e(2),e(1),e(2),e(1),e(2),e(1);
 
 module M1 = module(M1_mat);
 module M2 = module(M2_mat);
 module M = M1+M2;
+module M_intersect  = M1 + module(transpose(concat(matrix(M2),matrix(M2))));
+ideal Mid = ideal(E*M_mat) + ideal(e(1)^2,e(2)^2);//,e(3)^2,e(4)^2,e(5)^2,e(6)^2,e(7)^2,e(8)^2,e(9)^2,e(10)^2,e(11)^2,e(12)^2,e(13)^2,e(14)^2,e(15)^2);
 ;
 monitorON();
 //degBound=0; testParallelBB(M,4,4,2,"TEST_M1M2",list(list(degBound,15)));
@@ -619,7 +685,7 @@ number c4=prime(400)*t;
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4)); // block ord
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
-ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), (dp); // dp
+ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), (dp); // flat dp
 
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
@@ -921,23 +987,37 @@ option(redSB); option(redTail); option(prot); option(noreturnSB);
 //testBB(I, 16, 16, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 
 
-setring(rM1M2); def I = M; degBound=0; option(redTail); option(redSB); option(intStrategy);
+//setring(rM1M2BIG); def I = m; degBound=0; option(redTail); option(redSB); option(intStrategy);
+//option();
 
 //ring rKAT = 0,x(1..12),dp;
 //ideal I = katsura(11);
 
+/*
+ring rQUAD = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
+system("--random", 42);
+ideal I = randomid(maxideal(2),6);
+write("ssi:w QUAD_6_8.ssi",I);
+write(":w QUAD_6_8.txt",string(I));
+*/
+
+//string spinchainring = read(":r XXX_Input/ring_8.txt");
+//execute(spinchainring);
+ring r=prime(1000000000),(s0,s1,s2,s3,s4,s5,s6,s7,s8),dp;
+string spinchainideal = read(":r XXX_Input/ideal_16_8.txt");
+execute("ideal I = "+spinchainideal+";");
+
+
 //list ncores = 32,16,8,4,2,1;
-list ncores = 16;
+list ncores = 32;
 printf("%n |||||||||-->  %s CORES  <--||||||||||%n",ncores[1],0);
-testParallelBB(I, ncores[1], ncores[1], 2, "testideal_"+string(ncores[1])+"_CORES", list(list(degBound,nvars(basering))), 50, 1, 150, 0, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
+//testBB(I, ncores[1], ncores[1], 2, "testideal_"+string(ncores[1])+"_CORES", list(list(degBound,nvars(basering))), 50, 1, 150, 0, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 for(int ind=2; ind<=size(ncores); ind++)
 {
   printf("%n |||||||||-->  %s CORES  <--||||||||||%n",ncores[ind],0);
   testParallelBB(I, ncores[ind], ncores[ind], 2, "testideal_"+string(ncores[ind])+"_CORES", list(list(degBound,nvars(basering))), 50, 1, 150, 0, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 }
 
-module SS;
-matrix LL;
 
 //int ti = rtimer; def GG = liftstd(I,LL,SS); ti=rtimer-ti; printf("liftstd: %sms",ti);
 //int ti2 = rtimer; def SGB = std(S); ti2=rtimer-ti2;       printf("std(S):  %sms",ti2);
@@ -945,4 +1025,4 @@ matrix LL;
 //printf("liftstd 'without' std(S) and NF(L,S): %sms",ti-ti2-ti3);
 
 
-
+//option(prot); int T = rtimer; def INT = std(m); T=rtimer-T; printf("%s ms%n",T,0); write("ssi:w BIG_EXAMPLE_FlatDP_intersection_SINGULAR.ssi", list(INT,T));

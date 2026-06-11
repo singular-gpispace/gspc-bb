@@ -152,22 +152,22 @@
 
 						long nworkers_long=0; // max number of workers given to NF_of_spoly transition
 						int prev_r=0; // value of r from a previous computation that is being continued
-						std::pair<unsigned int,unsigned int> si_opt;
+						GpiList si_opt;
 						std::vector<std::vector<std::vector<int> > > Mvec; // lead monomials as a vector of exponent vectors (last entry = component)
 						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &nworkers_long, &degBounds, &target_time, &max_batch_size, &head_size_factor, &si_opt, &prev_r, &syz_comp, &red_syz, &rank, &runtime);
 						nworkers = (unsigned long) nworkers_long;
-						singular_options = uint2bitset(si_opt.first, si_opt.second);
+						singular_options = uint2bitset(boost::get<long>(si_opt.front()), boost::get<long>(si_opt.back()));
 						current_time.avg = static_cast<double>(target_time); // thus in the initial iteration(s) of NF_of_spoly the batch size will be 1
 						current_time.total = 0.0;
 						current_time.count = 0.0;
 						current_time.start = runtime_start;
 						mv_avg_base = 1.0+1.0/(static_cast<double>(target_time) * TIME_SCALE_FACTOR);
 
-						if (singular_options.is_element(PROT) && syz_comp>0) {
-							std::ofstream prot_file(base_filename+"prot.txt", std::ios::app);
-							prot_file << "{"<<syz_comp<<"}";
-							prot_file.close();
-						}
+						std::ofstream prot_file(base_filename+"prot.txt", std::ios::app);
+						if (singular_options.is_element(INTSTRATEGY)) { prot_file << "{intStrategy}"; }
+						if (singular_options.is_element(REDTAIL)) { prot_file << "{redTail}"; }
+						if (singular_options.is_element(PROT) && syz_comp>0) { prot_file << "{"<<syz_comp<<"}"; }
+						prot_file.close();
 
 						sPairQueue Q(syz_comp);
 
@@ -510,6 +510,7 @@
 				</properties>
 				<in name="base_filename" type="string"/>
 				<in name="blacklist" type="set"/>
+				<in name="singular_options" type="bitset"/>
 				<in name="r" type="int"/>
 				<in name="syz_comp" type="long"/>
 				<in name="red_syz" type="long"/>
@@ -523,7 +524,7 @@
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(runtime, base_filename, r, syz_comp, red_syz, target_time, started_indices, started_indices_out, NF, NF_runtime, blacklist, M)">
+							  function="function_NF_of_spoly(runtime, base_filename, singular_options, r, syz_comp, red_syz, target_time, started_indices, started_indices_out, NF, NF_runtime, blacklist, M)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -570,7 +571,7 @@
 							double read_poly_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 							runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1.0, read_poly_stop, read_poly_stop-read_poly_start, 1L});
 
-							RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, started_indices_i, started_indices_j, started_indices_old_r, started_indices_syzygy, syz_comp, red_syz, &runtime, &NF); //## handle runtime better (maybe pass a temp. variable and then add to runtime?)
+							RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, started_indices_i, started_indices_j, started_indices_old_r, started_indices_syzygy, syz_comp, red_syz, singular_options, &runtime, &NF); //## handle runtime better (maybe pass a temp. variable and then add to runtime?)
 
 							#ifdef DEBUG_BBA
 							if(NF.size()>NF_size)
@@ -603,6 +604,7 @@
 			</defun>
 			<connect-read port="base_filename" place="place_base_filename"/>
 			<connect-read port="blacklist" place="place_blacklist"/>
+			<connect-read port="singular_options" place="place_singular_options"/>
 			<connect-read port="r" place="place_r"/>
 			<connect-read port="syz_comp" place="place_syz_comp"/>
 			<connect-read port="red_syz" place="place_red_syz"/>
@@ -899,8 +901,8 @@
 							std::string save_filename = base_filename+"temporary_files/intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
 
 							//QUEUE std::cout << runtime_start << ": reading new generator from " << save_filename << ", red_tail=" << (singular_options.is_element(REDTAIL) ? "true" : "false") << std::endl;
-							if (singular_options.is_element(REDTAIL))
-								RESOLVE_INTERFACE_FUNCTION(tail_reduce) (&generators, save_filename, base_filename + "intermediate_files/f"+std::to_string(r)); // NF_spoly can't be reduced further, so just rename its file to the new generator
+							if (singular_options.is_element(REDTAIL) && false)
+								RESOLVE_INTERFACE_FUNCTION(tail_reduce) (&generators, singular_options, save_filename, base_filename + "intermediate_files/f"+std::to_string(r)); // NF_spoly can't be reduced further, so just rename its file to the new generator
 							else 
 								std::rename(save_filename.c_str(), (base_filename + "intermediate_files/f"+std::to_string(r)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator
 							//QUEUE std::cout << runtime_start << ": done! " << std::endl;
@@ -1840,7 +1842,7 @@
 						std::cout << runtime_start << ": reduce_GB: processing " << current_index+1 << "-th element of the Gröbner basis" << std::endl;
 						#endif
 						std::string singular_function_name = "reduce_GB";
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_reduce_GB) (base_filename, generators, needed_indices.generator, needed_indices.generator_index, needed_indices.save_index, needed_indices.is_syzygy, ngens, syz_comp, red_syz, &runtime);
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_reduce_GB) (base_filename, generators, needed_indices.generator, needed_indices.generator_index, needed_indices.save_index, needed_indices.is_syzygy, ngens, syz_comp, red_syz, singular_options, &runtime);
 
 						if (singular_options.is_element(PROT) && singular_options.is_element(REDSB)) {
 							std::ofstream prot_file(base_filename + "prot.txt", std::ios::app | std::ios::binary);

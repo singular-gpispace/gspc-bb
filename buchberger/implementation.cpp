@@ -299,7 +299,7 @@ void singular_init(std::string const& base_filename,
                    long* target_time,
                    long* max_batch_size,
                    double* head_size_factor,
-                   std::pair<unsigned int,unsigned int>* si_opt,
+                   GpiList* si_opt,
                    int* prev_r,
                    long* syz_comp,
                    long* red_syz,
@@ -341,6 +341,10 @@ void singular_init(std::string const& base_filename,
     { throw std::runtime_error (ids + ": error reading syz_comp in init!"); }
   if( write_singular_output(std::make_pair((inputList->m[8]).Typ(), static_cast<void*> ((inputList->m[8]).Data())), red_syz, base_filename, "init") )
     { throw std::runtime_error (ids + ": error reading red_syz in init!"); }
+  if( write_singular_output(std::make_pair((inputList->m[9]).Typ(), static_cast<void*> ((inputList->m[9]).Data())), si_opt, base_filename, "init") )
+    { throw std::runtime_error (ids + ": error reading singular options in init!"); }
+
+  bitset singular_options = uint2bitset(boost::get<long>(si_opt->front()), boost::get<long>(si_opt->back()));
 
 
   if(*red_syz<0)
@@ -371,7 +375,7 @@ void singular_init(std::string const& base_filename,
       rDelete(orig_ring);
     }
 /*
-    if (TEST_OPT_RETURN_SB || *red_syz) {
+    if (singular_options.is_element(RETURN_SB) || *red_syz) {
       *syz_comp *= -1;
       // Deactivate syzComp so the computation will be done in the changed ring,
       // but syzygies will be treated like normal GB elements. Thus these syzygy
@@ -389,8 +393,8 @@ void singular_init(std::string const& base_filename,
 
 
   // SINGULAR options (result of 'option(get);')
-  si_opt->first  = si_opt_1;
-  si_opt->second = si_opt_2;
+  //si_opt->first  = si_opt_1;
+  //si_opt->second = si_opt_2;
 
   // check if a previous computation with the same inout used the same directory and, if so, continue from there, else abort.
   // see if there is a checksum file, if so compare to input:
@@ -531,7 +535,7 @@ void singular_init(std::string const& base_filename,
 
   if (!prev_queue_had_started || (*prev_r)==0)
   {
-    if (TEST_OPT_INTSTRATEGY) {
+    if (singular_options.is_element(INTSTRATEGY)) {
       for(int i=0; i<F->ncols; i++)
       {
         //F->m[i] = p_Cleardenom(F->m[i], currRing);
@@ -591,16 +595,14 @@ void singular_init(std::string const& base_filename,
       //std::cout<<"-----> 1 <-----"<<std::endl;
       //std::cout<<"-----> 2 <-----"<<std::endl;
 
-      #ifdef OLD_REDTAIL
-      new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
-      #else
-      new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+1);
-      #endif
+      //new_f = kNF(FF, currRing->qideal, new_f, 0, 4); //WHY JUST WHY ???
+      //std::cout << "intstrat + redtail: " << (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1) << ", red_syz: " << *red_syz << ", syz_comp: " << *syz_comp << std::endl;
+      new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1));
 
       //std::cout<<"-----> 3 <-----"<<std::endl;
 
 
-      if (TEST_OPT_INTSTRATEGY) {
+      if (singular_options.is_element(INTSTRATEGY)) {
         //FF->m[i] = p_Cleardenom(FF->m[i], currRing);
         number c;
         p_Cleardenom_n(new_f, currRing, c);
@@ -613,12 +615,13 @@ void singular_init(std::string const& base_filename,
 
       writePolySSI(new_f, base_filename+"intermediate_files/f"+std::to_string(i+1));
       idInsertPolyOnPos(FF,new_f,i);
-    }
+    }  
+    
   }
 
 
 /*
-  if (TEST_OPT_INTSTRATEGY) {
+  if (singular_options.is_element(INTSTRATEGY)) {
     for(int i=0; i<FF->ncols; i++)
     {
       //FF->m[i] = p_Cleardenom(FF->m[i], currRing);
@@ -717,6 +720,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     int syzygy,
                                     long syz_comp,
                                     long red_syz,
+                                    bitset const& singular_options,
                                     GpiMap* runtime,
                                     GpiList* NF)
 {
@@ -803,14 +807,16 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       //std::cout << p_String(Pair.p, currRing, currRing) << std::endl;
       std::cout << p_String(spoly, currRing, currRing) << std::endl;
       #endif
-      //if (TEST_OPT_INTSTRATEGY) {NF_spoly = kNF(F,currRing->qideal,Pair.p,syz_comp,4);}
+      //if (singular_options.is_element(INTSTRATEGY)) {NF_spoly = kNF(F,currRing->qideal,Pair.p,syz_comp,4);}
       //else                      {NF_spoly = kNF(F,currRing->qideal,Pair.p,syz_comp);}
       //std::cout<<"----- NF_spoly -----> 6 <-----"<<std::endl;
 
       #ifdef OLD_REDTAIL
-      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+      //NF_spoly = kNF(F, currRing->qideal, spoly, 0, 4); //WHY JUST WHY ???
+      //std::cout << "intstrat + redtail: " << (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1) << ", red_syz: " << red_syz << ", syz_comp: " << syz_comp << std::endl;
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1));
       #else
-      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+1);
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+1);
       #endif
 
       //std::cout<<"----- NF_spoly -----> 7 <-----"<<std::endl;
@@ -845,13 +851,15 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       spoly = p_Sub( p_Mult_q(p1_poly, p2_lift, currRing), p_Mult_q(p2_poly, p1_lift, currRing), currRing);
 
       #ifdef OLD_REDTAIL
-      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+      //NF_spoly = kNF(F, currRing->qideal, spoly, 0, 4); //WHY JUST WHY ???
+      //std::cout << "intstrat + redtail: " << (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1) << ", red_syz: " << red_syz << ", syz_comp: " << syz_comp << std::endl;
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1));
       #else
-      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+1);
+      NF_spoly = kNF(F, currRing->qideal, spoly, red_syz==0 ? syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+1);
       #endif
 
       /*
-      if (TEST_OPT_INTSTRATEGY)
+      if (singular_options.is_element(INTSTRATEGY))
       {
         //f = p_Cleardenom(f, currRing);
         number c;
@@ -885,9 +893,11 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     //std::cout<<"----- re-reduction -----> 3 <-----"<<std::endl;
     
     #ifdef OLD_REDTAIL
-    NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+(1-TEST_OPT_REDTAIL));
+    //NF_spoly = kNF(F, currRing->qideal, prev_result, 0, 4); //WHY JUST WHY ???
+    //std::cout << "intstrat + redtail: " << (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1) << ", red_syz: " << red_syz << ", syz_comp: " << syz_comp << std::endl;
+    NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1));
     #else
-    NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY+1);
+    NF_spoly = kNF(F, currRing->qideal, prev_result, red_syz==0 ? syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+1);
     #endif
 
     //std::cout<<"----- re-reduction -----> 4 <-----"<<std::endl;
@@ -906,7 +916,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
   // normalizing to lead coeff 1 or content 1 depending on option(intStrategy)
   if (NF_spoly!=NULL)
   {
-    if (TEST_OPT_INTSTRATEGY)
+    if (singular_options.is_element(INTSTRATEGY))
     {
       //f = p_Cleardenom(f, currRing);
       number c;
@@ -958,7 +968,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
 
     //change back to prevent error
     if(syz_ring!=orig_ring) {
-      //if (TEST_OPT_REDSB)
+      //if (singular_options.is_element(REDSB))
       p_Delete(&syzygy, currRing);
       rChangeCurrRing(syz_ring);
       rDelete(orig_ring);
@@ -1071,6 +1081,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
                                     int ngens,
                                     long syz_comp,
                                     long red_syz,
+                                    bitset const& singular_options,
                                     GpiMap* runtime)
 {
   init_singular (config::singularLibrary().string());
@@ -1079,7 +1090,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
 
   double start_time,stop_time;
 
-  if (TEST_OPT_REDSB)
+  if (singular_options.is_element(REDSB))
   {
     ideal F = idInit(ngens-1,1);
     std::list<poly>::const_iterator gen = generators.begin();
@@ -1103,7 +1114,8 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
 
     // start reduction
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    f = kNF(F, currRing->qideal, f, red_syz==0 ? syz_comp : 0, 4*TEST_OPT_INTSTRATEGY);
+    std::cout << "intstrat: " << (singular_options.is_element(INTSTRATEGY) ? 4 : 0) << ", red_syz: " << red_syz << ", syz_comp: " << syz_comp << std::endl;
+    f = kNF(F, currRing->qideal, f, red_syz==0 ? syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0));
 
     //id_Delete(&F, currRing);
     long elems = (long) F->nrows * (long) F->ncols;
@@ -1118,7 +1130,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
     f = readPolySSI(base_filename+"intermediate_files/f"+std::to_string(generator_name),false);
   }
   start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  if (TEST_OPT_INTSTRATEGY)
+  if (singular_options.is_element(INTSTRATEGY))
   {
     //f = p_Cleardenom(f, currRing);
     number c;
@@ -1175,7 +1187,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
     
     //change back to prevent error
     if(syz_ring!=orig_ring) {
-      //if (TEST_OPT_REDSB)
+      //if (singular_options.is_element(REDSB))
       if(!is_syzygy) {
         p_Delete(&f_orig     , currRing);
       }
@@ -1192,7 +1204,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
   else {
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     writePolySSI(f, base_filename + "result/g" + std::to_string(save_index));
-    //if (TEST_OPT_REDSB)
+    //if (singular_options.is_element(REDSB))
     p_Delete(&f, currRing);
   }
   
@@ -1202,6 +1214,7 @@ void singular_buchberger_reduce_GB (std::string const& base_filename,
 }
 
 void tail_reduce(std::list<poly>  * generators,
+                 bitset const& singular_options,
                  std::string const& from_filename,
                  std::string const& to_filename)
 {
@@ -1226,7 +1239,8 @@ void tail_reduce(std::list<poly>  * generators,
   
   // (tail-)reduce
   //std::cout << "---- 3 ----" << std::endl;
-  poly f = kNF(F, currRing->qideal, f_read, 0, 4*TEST_OPT_INTSTRATEGY);
+  std::cout << "intstrat: " << (singular_options.is_element(INTSTRATEGY) ? 4 : 0) << std::endl;
+  poly f = kNF(F, currRing->qideal, f_read, 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0));
   if(f_read!=f) p_Delete(&f_read, currRing);
   if (f == NULL)
   {
@@ -1235,7 +1249,7 @@ void tail_reduce(std::list<poly>  * generators,
   
   // normalize
   //std::cout << "---- 4 ----" << std::endl;
-  if (TEST_OPT_INTSTRATEGY)
+  if (singular_options.is_element(INTSTRATEGY))
   {
     number c;
     p_Cleardenom_n(f, currRing, c);

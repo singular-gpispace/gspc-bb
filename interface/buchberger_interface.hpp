@@ -249,7 +249,7 @@ public:
 
 inline void print_variant(GpiVariant const& v, int depth=0) {boost::apply_visitor(print_variant_visitor(depth), v);}
 
-inline bitset uint2bitset(unsigned int v1, unsigned int v2)
+inline bitset uint2bitset(long v1, long v2)
 {
   bitset bs;
   unsigned long bit = 0;
@@ -1154,7 +1154,7 @@ void singular_init(std::string const& base_filename,
                    long* target_time,
                    long* max_batch_size,
                    double* head_size_factor,
-                   std::pair<unsigned int,unsigned int>* si_opt,
+                   GpiList* si_opt,
                    int* prev_r,
                    long* syz_comp,
                    long* red_syz,
@@ -1171,6 +1171,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     int syzygy,
                                     long syz_comp,
                                     long red_syz,
+                                    bitset const& singular_options,
                                     GpiMap* runtime,
                                     GpiList* NF);
 
@@ -1188,9 +1189,11 @@ void singular_buchberger_reduce_GB(std::string const& base_filename,
                                    int ngens,
                                    long syz_comp,
                                    long red_syz,
+                                   bitset const& singular_options,
                                    GpiMap* runtime);
 
 NO_NAME_MANGLING
 void tail_reduce(std::list<poly>  * generators,
+                 bitset const& singular_options,
                  std::string const& from_filename,
                  std::string const& to_filename);

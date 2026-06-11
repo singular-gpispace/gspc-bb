@@ -223,6 +223,9 @@ proc gspc_buchberger_extraData(def I, gspcConfigToken gc, list #)
     t.fieldnames[9] = "red_syz";
     t.data[9] = #[8];
 
+    t.fieldnames[10] = "singular_options";
+    t.data[10] = list(option(get)[1],option(get)[2]);
+
     int syz_comp=#[7];
 
 
