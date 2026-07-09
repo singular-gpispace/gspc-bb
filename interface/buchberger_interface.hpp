@@ -1,7 +1,7 @@
 #pragma once
 
 //#define DEBUG_BBA
-#define DEBUGFILE_BBA
+//#define DEBUGFILE_BBA
 #define OLD_REDTAIL
 
 #define HEAD_SIZE_FACTOR 1.0
@@ -523,7 +523,7 @@ struct Qdata {
   mutable bool PC;
 };
 
-inline bool dp_larger_equal(std::pair<std::pair<int,int>,Qdata> const& Qentry1, std::pair<std::pair<int,int>,Qdata> const& Qentry2, long syz_comp)
+inline bool dp_larger_equal(std::pair<std::pair<int,int>,Qdata> const& Qentry1, std::pair<std::pair<int,int>,Qdata> const& Qentry2, [[maybe_unused]] long syz_comp)
 {
   GpiList T1 = Qentry1.second.lcm;
   GpiList T2 = Qentry2.second.lcm;
@@ -538,11 +538,18 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,Qdata> const& Qentry1, 
   int T1_comp = boost::get<int>(*it1); ++it1;
   int T2_comp = boost::get<int>(*it2); ++it2;
 
+  /*
   if(syz_comp>0) {
     if(T2_comp>syz_comp && syz_comp>=T1_comp) {return true;}
     if(T1_comp>syz_comp && syz_comp>=T2_comp) {return false;}
-  }
-
+    }
+    
+    if(syz_comp>0) {
+      if(T2_comp>syz_comp && syz_comp>=T1_comp) {return false;}
+      if(T1_comp>syz_comp && syz_comp>=T2_comp) {return true;}
+    }
+  */
+    
   if(T1.size()!=T2.size()) {throw std::runtime_error ("exponent vectors have different lengths ("+std::to_string(T1.size())+" and "+std::to_string(T2.size())+") in dp_larger_equal");}
   if(d1>d2) {return true;}
   if(d1<d2) {return false;}
@@ -1158,6 +1165,7 @@ void singular_init(std::string const& base_filename,
                    int* prev_r,
                    long* syz_comp,
                    long* red_syz,
+                   long* measure_timings,
                    int* rank,
                    GpiMap* runtime);
 
@@ -1172,6 +1180,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
                                     long syz_comp,
                                     long red_syz,
                                     bitset const& singular_options,
+                                    long measure_timings,
                                     GpiMap* runtime,
                                     GpiList* NF);
 
@@ -1190,6 +1199,7 @@ void singular_buchberger_reduce_GB(std::string const& base_filename,
                                    long syz_comp,
                                    long red_syz,
                                    bitset const& singular_options,
+                                   long measure_timings,
                                    GpiMap* runtime);
 
 NO_NAME_MANGLING

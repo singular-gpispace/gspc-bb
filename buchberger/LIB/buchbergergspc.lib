@@ -9,15 +9,13 @@ This library contains SINGULAR procedures for starting up a
 Singular/GPI-Space implementation of Buchbergers algorithm.
 
 TYPES:
-configToken            general configuration token type
 gspcConfigToken        configuration token for GPI-Space
-buchbergerConfigToken  configuration token for the transition procedure
+buchbergerConfigToken  configuration token for the buchberger algorithm
 
 PROCEDURES:
-configure_gspc()                                         generates standard config token for GPI-Space
-generateIOTokenTypes(configToken)                        register the user-defined types for input and output
-gspc_buchberger(list,configToken,configToken)            interface of the buchberger framework in Singular
-gspc_buchberger_extraData(list,configToken,configToken)  interface of the buchberger framework in Singular
+configure_gspc()                                                          generates standard GPI-Space config token
+configure_buchberger()                                                    generates standard buchberger config token
+gspc_buchberger(list,gspcConfigToken,buchbergerConfigToken)               start GPI-Space implementation of Buchbergers allgorithm
 ";
 
 proc mod_init()
@@ -27,42 +25,121 @@ proc mod_init()
     LIB "polylib.lib";
     LIB "teachstd.lib"; // for spoly
     LIB "buchbergergp.lib";
-    //newstruct("configToken", "string tokentype, def options");
     newstruct("gspcConfigToken", "string tmpdir, string installdir, string nodefile, int procspernode, string rifstrategy, string rifstrategyparameters, string loghost, int logport, string loghostfile, int deleteoutputfiles");
-    //newstruct("buchbergerConfigToken", " string functionName, int nworkers, int redSB, int degreeBound");
+    newstruct("buchbergerConfigToken", "int nworkers, list degBounds, int targetTime, int maxBatchSize, int syzComp, int redSyz, int measureTimings, int readResult");
     newstruct("token", "list fieldnames, list data");
 }
 
 proc configure_gspc()
 "USAGE: configure_gspc()
-RETURN: a gspcConfigToken containing a gspcConfigToken with the standard configuration for GPI-Space
+RETURN: a gspcConfigToken with the standard configuration for GPI-Space
 "
 {
     gspcConfigToken gc;
     gc.rifstrategy = "ssh";
-    //configToken ct;
-    //ct.tokentype = "gspcConfigToken";
-    //ct = gc;
+    gc.deleteoutputfiles = 1;
     return(gc);
 }
 
-/*
+
 proc configure_buchberger()
 "USAGE: configure_buchberger()
-RETURN: a configToken containing a buchbergerConfigToken with the standard
-           configuration for the buchberger pattern.
+RETURN: a buchbergerConfigToken with the standard configuration for the buchberger algorithm.
 "
 {
-    buchbergerConfigToken tc;
-    configToken ct;
-    ct.tokentype = "buchbergerConfigToken";
-    ct = tc;
-    return(ct);
+    buchbergerConfigToken t;
+    t.nworkers=8; 
+    t.degBounds=list(); // by default: apply the degree bound given by degBound to ALL ring variables
+    t.targetTime=100;   // by default: target_time = 100ms
+    t.maxBatchSize=20;  // by default: max_batch_size = 20
+    t.syzComp=0;        // by default: syz_comp = 0 (i.e. no syzygy/lift computation)
+    t.redSyz=1;         // by default: red_syz = 1 (i.e. syzygies are used in reductions, but not for building s-polys)
+    t.measureTimings=0; // by default: no time measurement
+    t.readResult=1;     // by default: read result from files (if set to 0, the result is not read from files, but only the number of generators is returned)
+    return(t);
 }
-*/
 
-static proc gspc_buchberger_static(token t, gspcConfigToken gc)
+static proc gspc_buchberger_static(def I_in, gspcConfigToken gc, buchbergerConfigToken bc)
+"USAGE: gspc_buchberger_static(I_in,gc,bc)
+RETURN: internal token output of the GPI-Space Buchberger workflow
+"
 {
+    print(gc);
+    option();
+    print(bc);
+
+    // if syzComp<0: automatically add the unit matrix to compute the syzygy module and the lift of the input ideal/module
+    if(bc.syzComp<=-1) {
+        module I = I_in;
+        bc.syzComp = nrows(I);
+        for(i=1; i<=size(I); i++) {
+            I[i] = I[i] + gen(bc.syzComp+i);
+        }
+    }
+    else {
+        def I = I_in;
+    }
+
+
+
+    // (1) Build input token ////////////////////////////////////////////////////////
+
+    // fixed for now:
+    int forceContinue = 2;
+    int headSizeFactor = 150; // (in percent, so it will be a factor of 1.50)
+
+    list degree_bounds;
+    if (size(bc.degBounds)==0) {
+        degree_bounds = list(list(degBound,nvars(basering)));
+    }
+    else {
+        degree_bounds = bc.degBounds
+    }
+    int i;
+    int n_vars = 0;
+    for(i=1; i<=size(degree_bounds); i++)
+    {
+      n_vars = n_vars + degree_bounds[i][2];
+    }
+    if (n_vars!=nvars(basering)) {printf("ERROR: wrong total number of variables given in degree bounds list! (expected %s, got %s)", nvars(basering), n_vars); return();}
+
+    token t;
+    t.fieldnames[1] = "ideal_generators";
+    t.data[1] = I;
+
+    t.fieldnames[2] = "nworkers";
+    t.data[2] = bc.nworkers;
+
+    t.fieldnames[3] = "degree_bounds";
+    t.data[3] = degree_bounds;
+
+    t.fieldnames[4] = "force_continue";
+    t.data[4] = forceContinue;
+
+    t.fieldnames[5] = "target_time";
+    t.data[5] = bc.targetTime;
+
+    t.fieldnames[6] = "max_batch_size";
+    t.data[6] = bc.maxBatchSize;
+
+    t.fieldnames[7] = "head_size_factor";
+    t.data[7] = headSizeFactor;
+
+    t.fieldnames[8] = "syz_comp";
+    t.data[8] = bc.syzComp;
+
+    t.fieldnames[9] = "red_syz";
+    t.data[9] = bc.redSyz;
+
+    t.fieldnames[10] = "singular_options";
+    t.data[10] = list(option(get)[1],option(get)[2]);
+
+    t.fieldnames[11] = "singular_options";
+    t.data[11] = bc.measureTimings;
+
+
+    // (2) Parse arguments for GPI-Space ////////////////////////////////////////////////////////
+
     //Starting to parse workflow options
     string workflow_opts;
 
@@ -170,170 +247,456 @@ static proc gspc_buchberger_static(token t, gspcConfigToken gc)
     }
 
     string all_opts = driver_opts + " " + workflow_opts;
+
+
+
+    // (3) Startup GPI-Space ////////////////////////////////////////////////////////
+
     def sm_result = sggspc_buchberger(all_opts);
-    return(sm_result);
+
+
+    // (4) Print Timings ////////////////////////////////////////////////////////////
+    if(bc.measureTimings!=0) {
+        int j;
+        list runtimes =  list(sm_result[1].data[2],sm_result[1].data[3]);
+        bigint irl_time = runtimes[2][1][2]-runtimes[2][1][1];
+        print("TIMINGS (in ms):");
+        //printf("starttime:                                  %s ms",  runtimes[2][1][1]);
+        //printf("stoptime:                                   %s ms",  runtimes[2][1][2]);
+        printf("runtime (stoptime - starttime):             %s ms",  irl_time);       bigint runtimes_times_100 = runtimes[2][2][1]*100;
+        printf("cputime (added up over parallel processes): %s ms (%s%)", runtimes[2][2][1], runtimes_times_100 div irl_time);
+        printf("total number of transitions:                %s %n",       runtimes[2][2][2],0);
+        printf("max time of a single transition:            %s ms%n",     runtimes[2][2][3],0);
+        int j_max=0;
+        for(i=3; i<=size(runtimes[1]); i++) {j_max = max(j_max,size(runtimes[1][i]));}
+        string s;
+        for(i=3; i<=size(runtimes[1]); i++) {
+        for(j=size(runtimes[1][i]); j<=j_max; j++) {runtimes[1][i] = " "+runtimes[1][i];}
+        s="";
+        if (runtimes[2][i][3]<0 && runtimes[2][i][1]==-1) // --> count
+            {
+            for(j=size(string(runtimes[2][i][2])); j<=8; j++) {s = " "+s;}
+            printf(runtimes[1][i]+": %s"+s+"     (max: %s)", runtimes[2][i][2], -1-runtimes[2][i][3]);
+            }
+        else // --> timing
+            {
+            for(j=size(string(runtimes[2][i][1])); j<=8; j++) {s = " "+s;}
+            printf(runtimes[1][i]+": %s"+s+" ms  (number: %s, max time: %s ms)", runtimes[2][i][1], runtimes[2][i][2], runtimes[2][i][3]);
+            }
+        }
+    }
+    return(sm_result[1]);
 }
 
-proc gspc_buchberger_extraData(def I, gspcConfigToken gc, list #)
+proc gspc_buchberger_debug(def I, gspcConfigToken gc, buchbergerConfigToken bc)
+"USAGE: gspc_buchberger_debug(I,gc,bc)
+RETURN: detailed result (GB/lift/syzygies, stats and runtime data) for debugging
+"
+{   
+    token output = gspc_buchberger_static(I, gc, bc);
+
+
+    int r = output.data[1];
+    int r_all = output.data[4];
+    list indices = output.data[5];
+
+    if(bc.readResult==0) {
+        if(bc.syzComp!=0) {
+            int nsyzygies = output.data[6];
+            return(r, nsyzygies, r_all, indices, list(output.data[2],output.data[3]));
+        }
+        else {
+            return(r, r_all, indices, list(output.data[2],output.data[3]));
+        }
+    }
+    else {
+        string DIR = gc.tmpdir + "/";
+
+        system("--ticks-per-sec",1000); int T = rtimer;
+        def g1 = read("ssi:r "+DIR+"result/g1");
+
+        if(typeof(g1)=="poly") {ideal  GB,F;}
+        else                   {module GB,F;}
+        GB[1] = g1;
+        for(i=2; i<=r; i++) {
+        GB[i] = read("ssi:r "+DIR+"result/g"+string(i));
+        }
+
+        module L,S;
+        if(bc.syzComp!=0) {
+        int nsyzygies = output.data[6];
+        for(i=1;i<=r; i++) {
+            L[i] = read("ssi:r "+DIR+"result/l"+string(i));
+        }
+        for(i=1;i<=nsyzygies; i++) {
+            S[i] = read("ssi:r "+DIR+"result/s"+string(i));
+        }
+        }
+        printf("reading results from files: %s ms",rtimer-T);
+
+        int TTT = rtimer;
+        list sorted = sort(GB);
+        GB = sorted[1];
+        L = sort(L,sorted[2])[1];
+        printf("sorting GB by user specified monomial ordering: %s ms",rtimer-TTT);
+
+        return(GB, L, S, r_all, indices, list(output.data[2],output.data[3]));
+    }
+}
+
+
+proc gspc_buchberger(def I, gspcConfigToken gc, buchbergerConfigToken bc)
+"USAGE: gspc_buchberger(I,gc,bc)
+RETURN: Buchberger result (GB, and optionally lift/syzygies depending on config)
+"
+{   
+    token output = gspc_buchberger_static(I, gc, bc);
+
+
+    int r = output.data[1];
+    int r_all = output.data[4];
+    list indices = output.data[5];
+
+    if(bc.readResult==0) {
+        if(bc.syzComp!=0) {
+            int nsyzygies = output.data[6];
+            return(r,nsyzygies);
+        }
+        else {
+            return(r);
+        }
+    }
+    else{
+        string DIR = gc.tmpdir + "/";
+
+        system("--ticks-per-sec",1000); int T = rtimer;
+        def g1 = read("ssi:r "+DIR+"result/g1");
+
+        if(typeof(g1)=="poly") {ideal  GB,F;}
+        else                   {module GB,F;}
+        GB[1] = g1;
+        for(i=2; i<=r; i++) {
+        GB[i] = read("ssi:r "+DIR+"result/g"+string(i));
+        }
+
+        module L,S;
+        if(bc.syzComp>0) {
+        int nsyzygies = output.data[6];
+        for(i=1;i<=r; i++) {
+            L[i] = read("ssi:r "+DIR+"result/l"+string(i));
+        }
+        for(i=1;i<=nsyzygies; i++) {
+            S[i] = read("ssi:r "+DIR+"result/s"+string(i));
+        }
+        }
+        printf("reading results from files: %s ms",rtimer-T);
+
+        int TTT = rtimer;
+        list sorted = sort(GB);
+        GB = sorted[1];
+        if(bc.syzComp>0) {
+            L = sort(L,sorted[2])[1];
+        }
+        printf("sorting GB by user specified monomial ordering: %s ms",rtimer-TTT);
+
+        if(bc.syzComp>0) {
+            return(GB, L, S);
+        }
+        else {
+            return(GB);
+        }
+    }
+}
+
+
+
+// util (maybe move to different file)
+
+proc randomBigintNonnegative(bigint b)
+"USAGE: randomBigintNonnegative(b)
+RETURN: random bigint uniformly sampled from {0,...,|b|}
+"
 {
-    //configToken ct = configure_buchberger();
-    if(size(#)==0) {#[1] = gc.procspernode - 1;}                  // by default: use all but 1 worker for the NF(spoly)-transition
-    if(size(#)<=1) {#[2] = list(list(degBound,nvars(basering)));} // by default: apply the degree bound to ALL ring variables
-    if(size(#)<=2) {#[3] = 0;}                                    // by default: do not continue if directory contains files from a computation with DIFFERENT input
-    if(size(#)<=3) {#[4] = 100;}                                  // by default: target_time = 100ms
-    if(size(#)<=4) {#[5] = 50;}                                   // by default: max_batch_size = 50
-    if(size(#)<=5) {#[6] = 150;}                                  // by default: head_size_factor = 150 (in percent, so it will be a factor of 1.50)
-    if(size(#)<=6) {#[7] = 0;}                                    // by default: syz_comp = 0 (i.e. no syzygy/lift computation)
-    if(size(#)<=7) {#[8] = 1;}                                    // by default: red_syz = 1 (i.e. syzygies are used in reductions)
-    int i;
-    int n_vars = 0;
-    for(i=1; i<=size(#[2]); i++)
-    {
-      n_vars = n_vars + #[2][i][2];
+  if (b < 0) { b = -b; }
+
+  bigint base = 1000000000;
+  bigint value = 0;
+  bigint scale = 1;
+  while (scale <= b) {
+    scale = scale*base;
+  }
+
+  bigint range = b + 1;
+  bigint limit = scale - (scale - (scale div range)*range);
+  value = limit;
+  while (value >= limit) {
+    value = 0;
+    bigint digit_scale = 1;
+    while (digit_scale < scale) {
+      value = value + bigint(random(0, 999999999))*digit_scale;
+      digit_scale = digit_scale*base;
     }
-    if (n_vars!=nvars(basering)) {printf("ERROR: wrong total number of variables given in degree bounds list! (expected %s, got %s)", nvars(basering), n_vars); return();}
-    //ct.nworkers = #[1];
-    //ct.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
-    //ct.degreeBound = degBound;
-    token t;
-    t.fieldnames[1] = "ideal_generators";
-    t.data[1] = I;
+  }
 
-    t.fieldnames[2] = "nworkers";
-    t.data[2] = #[1];
+  return(value - (value div range)*range);
+}
 
-    t.fieldnames[3] = "degree_bounds";
-    t.data[3] = #[2];
+proc randomBigintSymmetric(bigint b)
+"USAGE: randomBigintSymmetric(b)
+RETURN: random bigint uniformly sampled from {-|b|,...,|b|}
+"
+{
+  if (b < 0) { b = -b; }
+  return(randomBigintNonnegative(2*b) - b);
+}
 
-    t.fieldnames[4] = "force_continue";
-    t.data[4] = #[3];
+proc randomidBigint(def id, list #)
+"USAGE:   randomidBigint(id[,k,b]);  id ideal/module, k integer, b bigint
+RETURN:  ideal/module having k generators which are random linear combinations
+         of generators of id with coefficients in the interval [-b,b]
+         (default: b=30000, k=size(id))
+"
+{
+  int k;
+  bigint b;
+  if (size(#) >= 2) { k = #[1]; b = #[2]; }
+  if (size(#) == 1) { k = #[1]; b = 30000; }
+  if (size(#) == 0) { k = size(id); b = 30000; }
 
-    t.fieldnames[5] = "target_time";
-    t.data[5] = #[4];
-
-    t.fieldnames[6] = "max_batch_size";
-    t.data[6] = #[5];
-
-    t.fieldnames[7] = "head_size_factor";
-    t.data[7] = #[6];
-
-    t.fieldnames[8] = "syz_comp";
-    t.data[8] = #[7];
-
-    t.fieldnames[9] = "red_syz";
-    t.data[9] = #[8];
-
-    t.fieldnames[10] = "singular_options";
-    t.data[10] = list(option(get)[1],option(get)[2]);
-
-    int syz_comp=#[7];
-
-
-
-    def output = gspc_buchberger_static(t, gc);
-
-
-
-    int r = output[1].data[1];
-    int r_all = output[1].data[4];
-    list indices = output[1].data[5];
-    printf("r: %s, r_all: %s",r,r_all);
-
-    string DIR = gc.tmpdir + "/";
-
-    system("--ticks-per-sec",1000); int T = rtimer;
-    def g1 = read("ssi:r "+DIR+"result/g1");
-
-    if(typeof(g1)=="poly") {ideal  GB,F;}
-    else                   {module GB,F;}
-    GB[1] = g1;
-    for(i=2; i<=r; i++) {
-      GB[i] = read("ssi:r "+DIR+"result/g"+string(i));
+  int r = ncols(id);
+  matrix random_coefficients[r][k];
+  for (int i=1; i<=r; i++) {
+    for (int j=1; j<=k; j++) {
+      random_coefficients[i,j] = randomBigintSymmetric(b);
     }
+  }
 
-    module L,S;
-    if(syz_comp>0) {
-      int nsyzygies = output[1].data[6];
-      for(i=1;i<=r; i++) {
-        L[i] = read("ssi:r "+DIR+"result/l"+string(i));
+  def i = id;
+  i = matrix(id)*random_coefficients;
+  return(i);
+}
+
+proc test_opt(string opt)
+"USAGE: test_opt(opt)
+RETURN: 1 if option opt is set, 0 otherwise
+"
+{
+  intvec state = option(get);
+  option(opt);
+  if(state==option(get)) {
+    return (1);
+  }
+  else {
+    option("no"+opt);
+    return (0);
+  }
+}
+
+proc normalize(def container)
+"USAGE: normalize(container)
+RETURN: container with each entry normalized according to current coefficient strategy
+"
+{
+  if (test_opt("intStrategy")) {
+    for(int i=1; i<=size(container); i++) {
+      container[i] = container[i] / content(container[i]);
+    }
+    return(container);
+  }
+  else {
+    for(int i=1; i<=size(container); i++) {
+      container[i] = container[i] / leadcoef(container[i]);
+    }
+    return(container);
+  }
+}
+
+proc leadmonoms(def I)
+"USAGE: leadmonoms(I)
+RETURN: ideal/module of leading monomials of I
+"
+{
+  if (typeof(I)=="ideal") {
+    ideal res;
+  }
+  else {if(typeof(I)=="module") {
+    module res;
+  }
+  else {
+    print("ERROR! Input must be ideal or module!");
+    return();
+  }}
+
+  for(int i=1; i<=size(I); i++) {
+    res[i] = leadmonom(I[i]);
+  }
+  return (res);
+}
+
+proc comp(def I, def J) // recursive compare-function for indexed types
+"USAGE: comp(I,J)
+RETURN: 1 iff I and J are equal up to sign for ideal/module entries, else 0
+"
+{
+  string t = typeof(I);
+  int i,n;
+  if(t!=typeof(J)) {return(0);}
+  if(t=="ideal" || t=="list" || t=="intvec" || t=="module")
+  {
+    n = size(I);
+    if(n != size(J)) {return(0);}
+    else {
+      for(i=1; i<=n; i++)
+      {
+        if(t=="ideal" || t=="module") {
+          if(!comp(I[i],J[i]) && !comp(I[i],-J[i])) {return(0);}
+        }
+        else {if(!comp(I[i],J[i])) {return(0);}}
       }
-      for(i=1;i<=nsyzygies; i++) {
-        S[i] = read("ssi:r "+DIR+"result/s"+string(i));
+      return(1);
+    }
+  }
+  else {return (I==J);}
+}
+
+proc maxdeg(def L)
+"USAGE: maxdeg(L)
+RETURN: maximum total degree among entries of L (matrix/ideal/module/list)
+"
+{
+  if (typeof(L)=="matrix") {
+    int md=-1;
+    int i,j;
+    for(i=1; i<=nrows(L); i++) {
+      for(j=1; j<=ncols(L); j++) {
+        md = max(md, deg(L[i,j]));
       }
     }
-    printf("reading GB elements from files: %s ms",rtimer-T);
+    return(md);
+  }
 
-    /*
-    system("--ticks-per-sec",1000); int TT = rtimer;
-    for(i=1; i<=r_all; i++)
-    {
-      F[i] = read("ssi:r "+DIR+"intermediate_files/f"+string(i));
-    }
-    printf("reading all intermediate elements from files: %s ms",rtimer-TT);
-    */
+  if (typeof(L)=="module" || typeof(L)=="ideal") { return(maxdeg(matrix(L))); }
 
-    system("--ticks-per-sec",1000); int TTT = rtimer;
-    list sorted = sort(GB);
-    GB = sorted[1];
-    L = sort(L,sorted[2])[1];
-    printf("sorting GB by user specified monomial ordering: %s ms",rtimer-TTT);
-
-    return(GB, L, S, r_all, indices, list(output[1].data[2],output[1].data[3]));
+  int md=-1;
+  for(int i=1; i<=size(L); i++) {
+    md = max(md, deg(L[i]));
+  }
+  return(md);
 }
 
-proc gspc_buchberger(def I, gspcConfigToken gc, list #)
+proc poly_info(poly p, int mode)
+"USAGE: poly_info(p,mode)
+RETURN: formatted info string for p (presence, degree or lead monomial by mode)
+"
 {
-  def GB, L, S, r_all, indices, runtimes = gspc_buchberger_extraData(I, gc, nworkers, degBounds);
-  return(GB);
+  if (mode==0) {
+    if (p==0)
+      {return("-");}
+    else
+      {return("1");}
+  }
+  else {
+    if(mode==1) {
+      if (p==0)
+        {return("-");}
+      else
+        {return(string(deg(p)));}
+    }
+    else {
+    if (p==0)
+      {return(" -");}
+    else
+      {return(string(leadmonom(p)));}
+    }
+  }
 }
-/*
+
+proc print_info(module N, int mode)
+"USAGE: print_info(N,mode)
+RETURN: prints formatted entry-wise info for module N
+"
 {
-    configToken ct = configure_buchberger();
-    if(size(#)==0) {#[1] = gc.procspernode - 1;}          // by default: use all but 1 worker for the NF(spoly)-transition
-    if(size(#)<=1) {#[2] = list(list(degBound,nvars(basering)));} // by default: apply the degree bound to ALL ring variables
-    int i;
-    int n_vars = 0;
-    for(i=1; i<=size(#[2]); i++)
-    {
-      n_vars = n_vars + #[2][i][2];
+  string s;
+  int i,j;
+  matrix N_mat = matrix(N);
+  for(i=1; i<=nrows(N_mat); i++) {
+    s="";
+    for(j=1; j<=ncols(N_mat); j++) {
+      s=s+poly_info(N_mat[i,j], mode)+" ";
     }
-    if (n_vars!=nvars(basering)) {printf("ERROR: wrong number of total variables given in degree bounds list! (expected %s, got %s)", nvars(basering), n_vars); return();}
-    ct.nworkers = #[1];
-    ct.redSB = ((option(get)[1]%4) >= 2); // true iff option(redSB) is set
-    ct.degreeBound = degBound;
-    token t;
-    t.fieldnames[1] = "ideal_generators";
-    t.data[1] = I;
-    t.fieldnames[2] = "degree_bounds";
-    t.data[2] = #[2];
-    list inputlists;
-    inputlists[1] = t;
-
-
-    def output = gspc_buchberger_static(inputlists, gc, ct);
-
-
-    int r = output[1].data[1];
-    list indices = output[1].data[5];
-
-    string DIR = gc.tmpdir + "/";
-
-    system("--ticks-per-sec",1000); int T = rtimer;
-    def g1 = read("ssi:r "+DIR+"result/g1");
-
-    if(typeof(g1)=="poly") {ideal  GB,F;}
-    else                   {module GB,F;}
-    GB[1] = g1;
-    for(int i=2; i<=r; i++)
-    {
-      GB[i] = read("ssi:r "+DIR+"result/g"+string(i));
-    }
-    printf("reading GB elements from files: %s ms",rtimer-T);
-
-    system("--ticks-per-sec",1000); int TT = rtimer;
-    GB = sort(GB)[1];
-    printf("sorting GB by user specified monomial ordering: %s ms",rtimer-TT);
-
-    return(GB);
+    print(s);
+  }
 }
-*/
+
+
+
+
+// test gspc_buchberger implementation: check correctness and compare with std(..)
+
+proc testStd(def I) // test Singular's implementation of Buchberger's algorithm (std)
+"USAGE: testStd(I)
+RETURN: std(I) and prints runtime
+"
+{
+  system("--ticks-per-sec", 1000);
+  int time = rtimer;
+  print("std:");
+  def G = std(I);
+  printf("runtime: %sms", rtimer-time);
+  return(G);
+}
+
+proc testParallelBB(def I, gspcConfigToken gc, buchbergerConfigToken bc, list #) // test the parallel implementation of Buchberger's algorithm (gspc_buchberger)
+"USAGE: testParallelBB(I,gc,bc[,tag])
+RETURN: exports GB/L/S/indices/runtimes and optionally writes an SSI dump
+"
+{
+  int i,j;
+  def GB;
+  module L,S;
+  int r_all;
+  list indices;
+  list runtimes;
+
+  GB, L, S, r_all, indices, runtimes = gspc_buchberger_debug(I, gc, bc);
+
+  //if additional string was given, dump result into one ssi file:
+  if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/BUCHBERGER_RESULT_"+#[1]+"_"+string(gc.procspernode)+"_procsPerNode_"+string(bc.nworkers)+"_NFworkers.ssi",list(I, GB, L, S, r_all, indices, runtimes));}
+
+  printf("%nI : %s elements",size(I));
+  printf("%nGB: %s elements",size(GB));
+  printf("%nmax number of elements during the BB algorithm: %s%n",r_all,0);
+
+  if(bc.syzComp<=-1) {
+    if(size(module((matrix(I)*matrix(S))))==0)       {print("syzygy module CORRECT !!!");}
+    else                                             {print("syzygy module WRONG !!!");}
+    if(comp(module(GB),module(matrix(I)*matrix(L)))) {print("         lift CORRECT !!!");}
+    else                                             {print("         lift WRONG !!!");}
+  }
+
+  export(GB,L,S,indices,runtimes);
+}
+
+proc testBB(def I, gspcConfigToken gc, buchbergerConfigToken bc, list #) // compare both implementations
+"USAGE: testBB(I,gc,bc[,tag])
+RETURN: compares parallel result against std(I), exports G, and optionally writes SSI dumps
+"
+{
+
+  print("parallelStd:");
+  testParallelBB(I, gc, bc, #);
+
+  def G = testStd(I);
+
+  int equ;
+  if(bc.syzComp==0)             {equ = comp(       G ,           GB );}
+  else { if(typeof(G)=="ideal") {equ = comp(module(G), normalize(GB));}
+  else                          {equ = comp(       G , normalize(GB));} }
+  if(equ) {printf("%nEQUAL to std(I) !!!",0);}
+  else    {printf("%nNOT equal to std(I) !!!",0);}
+
+  //if additional string was given, save result of std(..) into one ssi file:
+  if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/STD_RESULT_"+#[1]+"_"+string(gc.procspernode)+"_procsPerNode_"+string(bc.nworkers)+"_NFworkers_SINGULAR_std.ssi",list(G, comp(G, GB)));}
+
+  export(G);
+}

@@ -47,6 +47,7 @@
 		<place name="place_current_time" type="moving_avg"/>
 		<place name="place_syz_comp" type="long"/>
 		<place name="place_red_syz" type="long"/>
+		<place name="place_measure_timings" type="long"/>
 		<place name="place_rank" type="int"/>
 		<place name="place_enable_get_NF_list" type="control">
 			<token>
@@ -87,6 +88,7 @@
 				<out name="BB_finished" type="list"/>
 				<out name="syz_comp" type="long"/>
 				<out name="red_syz" type="long"/>
+				<out name="measure_timings" type="long"/>
 				<out name="rank" type="int"/>
 				<out name="max_batch_size" type="long"/>
 				<out name="head_size_factor" type="double"/>
@@ -96,7 +98,7 @@
 				<out name="syzygy_indices" type="set"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(NF_list, started_indices, installdir, degBounds, nworkers, runtime, base_filename, input, r, M, singular_options, balNF, blacklist, BB_finished, syz_comp, red_syz, job_queue, job_queue_running, max_batch_size, head_size_factor, target_time, current_time, mv_avg_base, rank, syzygy_indices)">
+							  function="function_init(NF_list, started_indices, installdir, degBounds, nworkers, runtime, base_filename, input, r, M, singular_options, balNF, blacklist, BB_finished, syz_comp, red_syz, measure_timings, job_queue, job_queue_running, max_batch_size, head_size_factor, target_time, current_time, mv_avg_base, rank, syzygy_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -154,7 +156,7 @@
 						int prev_r=0; // value of r from a previous computation that is being continued
 						GpiList si_opt;
 						std::vector<std::vector<std::vector<int> > > Mvec; // lead monomials as a vector of exponent vectors (last entry = component)
-						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &nworkers_long, &degBounds, &target_time, &max_batch_size, &head_size_factor, &si_opt, &prev_r, &syz_comp, &red_syz, &rank, &runtime);
+						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &nworkers_long, &degBounds, &target_time, &max_batch_size, &head_size_factor, &si_opt, &prev_r, &syz_comp, &red_syz, &measure_timings, &rank, &runtime);
 						nworkers = (unsigned long) nworkers_long;
 						singular_options = uint2bitset(boost::get<long>(si_opt.front()), boost::get<long>(si_opt.back()));
 						current_time.avg = static_cast<double>(target_time); // thus in the initial iteration(s) of NF_of_spoly the batch size will be 1
@@ -374,10 +376,12 @@
 
 						// init LOG file
 						std::ofstream logFile(base_filename+"LOG.txt");
-						logFile << r        << " (GB)\n";  // number of GB elements
-						logFile << 0        << " (syz)\n"; // number of syzygy elements
-						logFile << Q.size() << " (GB) \n"; // queue size (GB)
-						logFile << 0        << " (syz)";   // queue size (syzygy)
+						logFile << "Gröbner Basis:\n";
+						logFile << " GB: " << r << "\n";
+						logFile << "syz: " << 0 << "\n";
+						logFile << "Queue of s-pairs:\n";
+						logFile << " GB: " << Q.size() << "\n";
+						logFile << "syz: " << 0;
 						logFile.close();
 
 						#ifdef DEBUGFILE_BBA
@@ -420,11 +424,13 @@
 						serialize_queue(Q, base_filename+"queue/Q", nvars);
 
 						double runtime_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1.0, -1.0, -1.0, prodcrit_counter});
-						runtime[(std::string) "DIFFERENT COMPONENT"] = GpiList({-1.0, -1.0, -1.0,  diff_comp_counter});
-						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1.0, -1.0, -1.0, chaincrit_counter});
-						runtime[(std::string) "DEGREE BOUND"] = GpiList({-1.0, -1.0, -1.0, degbound_counter});
-						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						if (measure_timings != 0) {
+							runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1.0, -1.0, -1.0, prodcrit_counter});
+							runtime[(std::string) "DIFFERENT COMPONENT"] = GpiList({-1.0, -1.0, -1.0,  diff_comp_counter});
+							runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1.0, -1.0, -1.0, chaincrit_counter});
+							runtime[(std::string) "DEGREE BOUND"] = GpiList({-1.0, -1.0, -1.0, degbound_counter});
+							runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						}
 
 						//std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
@@ -450,6 +456,7 @@
 			<connect-out port="current_time" place="place_current_time"/>
 			<connect-out port="syz_comp" place="place_syz_comp"/>
 			<connect-out port="red_syz" place="place_red_syz"/>
+			<connect-out port="measure_timings" place="place_measure_timings"/>
 			<connect-out port="rank" place="place_rank"/>
 			<connect-out port="syzygy_indices" place="place_syzygy_indices"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
@@ -515,6 +522,7 @@
 				<in name="syz_comp" type="long"/>
 				<in name="red_syz" type="long"/>
 				<in name="target_time" type="long"/>
+				<in name="measure_timings" type="long"/>
 				<in name="M" type="list"/>
 				<in name="started_indices" type="list"/>
 				<inout name="balNF" type="control"/>
@@ -524,7 +532,7 @@
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_NF_of_spoly(runtime, base_filename, singular_options, r, syz_comp, red_syz, target_time, started_indices, started_indices_out, NF, NF_runtime, blacklist, M)">
+							  function="function_NF_of_spoly(runtime, base_filename, singular_options, r, syz_comp, red_syz, target_time, measure_timings, started_indices, started_indices_out, NF, NF_runtime, blacklist, M)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -569,9 +577,11 @@
 							}
 
 							double read_poly_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-							runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1.0, read_poly_stop, read_poly_stop-read_poly_start, 1L});
+							if (measure_timings != 0) {
+								runtime[(std::string) "reading generators in NF_of_spoly (static)"] = GpiList({-1.0, read_poly_stop, read_poly_stop-read_poly_start, 1L});
+							}
 
-							RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, started_indices_i, started_indices_j, started_indices_old_r, started_indices_syzygy, syz_comp, red_syz, singular_options, &runtime, &NF); //## handle runtime better (maybe pass a temp. variable and then add to runtime?)
+							RESOLVE_INTERFACE_FUNCTION(singular_buchberger_compute_NF) (base_filename, generators, r, started_indices_i, started_indices_j, started_indices_old_r, started_indices_syzygy, syz_comp, red_syz, singular_options, measure_timings, &runtime, &NF); //## handle runtime better (maybe pass a temp. variable and then add to runtime?)
 
 							#ifdef DEBUG_BBA
 							if(NF.size()>NF_size)
@@ -597,7 +607,9 @@
 								break;
 							}
 						}
-						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_tmp, runtime_tmp-runtime_start, 1L});
+						if (measure_timings != 0) {
+							runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_tmp, runtime_tmp-runtime_start, 1L});
+						}
 						//std::cout << runtime_start << ": EXITING " << singular_function_name << std::endl;
 					]]></code>
 				</module>
@@ -609,6 +621,7 @@
 			<connect-read port="syz_comp" place="place_syz_comp"/>
 			<connect-read port="red_syz" place="place_red_syz"/>
 			<connect-read port="target_time" place="place_target_time"/>
+			<connect-read port="measure_timings" place="place_measure_timings"/>
 			<connect-read port="M" place="place_M"/>
 			<connect-in port="started_indices" place="place_started_indices"/>
 			<connect-inout port="balNF" place="place_balNF"/>
@@ -661,6 +674,7 @@
 				<in name="syz_comp" type="long"/>
 				<in name="red_syz" type="long"/>
 				<in name="rank" type="int"/>
+				<in name="measure_timings" type="long"/>
 				<inout name="syzygy_indices" type="set"/>
 				<inout name="n_syzygies" type="int"/>
 				<inout name="M" type="list"/>
@@ -673,7 +687,7 @@
 				<out name="BB_finished" type="list"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_update_Q(paused_indices, NF_list_input, enable_get_NF_list, installdir, degBounds, runtime, base_filename, r_in, n_syzygies, syzygy_indices, update_r, enable_update_Q_2_out, M, BB_finished, blacklist, nT_started_indices, nworkers, update_job_queue, target_time, current_time, max_batch_size, head_size_factor, singular_options, syz_comp, red_syz, rank)">
+							  function="function_update_Q(paused_indices, NF_list_input, enable_get_NF_list, installdir, degBounds, runtime, base_filename, r_in, n_syzygies, syzygy_indices, update_r, enable_update_Q_2_out, M, BB_finished, blacklist, nT_started_indices, nworkers, update_job_queue, target_time, current_time, max_batch_size, head_size_factor, singular_options, syz_comp, red_syz, rank, measure_timings)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -1204,10 +1218,12 @@
 					// (F) update LOG.txt:
 					//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (F) update LOG.txt" << std::endl;
 					std::ofstream logFile(base_filename+"LOG.txt");
-					logFile << r-syzygy_indices.size() << " (GB)\n";
-					logFile <<   syzygy_indices.size() << " (syz)\n";
-					logFile << Q.size()-nsyzpairs      << " (GB)\n";
-					logFile <<   		nsyzpairs      << " (syz)";
+					logFile << "Gröbner Basis:\n";
+					logFile << " GB: " << r-syzygy_indices.size() << "\n";
+					logFile << "syz: " <<   syzygy_indices.size() << "\n";
+					logFile << "Queue of s-pairs:\n";
+					logFile << " GB: " << Q.size()-nsyzpairs << "\n";
+					logFile << "syz: " <<   		nsyzpairs;
 					logFile.close();
 
 					if (singular_options.is_element(PROT)) {
@@ -1298,14 +1314,16 @@
 
 					// (I) runtime (and other) measurements
 					//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (I) runtime" << std::endl;
-					runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1.0, -1.0, -1.0,  prodcrit_counter});
-					runtime[(std::string) "DIFFERENT COMPONENT"] = GpiList({-1.0, -1.0, -1.0,  diff_comp_counter});
-					runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1.0, -1.0, -1.0, chaincrit_counter});
-					runtime[(std::string) "DEGREE BOUND"] = GpiList({-1.0, -1.0, -1.0, degbound_counter});
-					runtime[(std::string) "CANCELLED ELEMENTS"] = GpiList({-1.0, -1.0, -1.0,  cancelled_element_counter});
-					runtime[(std::string) "CANCELLED S-PAIRS"] = GpiList({-1.0, -1.0, -1.0,  cancelled_s_pair_counter});
 					double runtime_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-					runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+					if (measure_timings != 0) {
+						runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1.0, -1.0, -1.0,  prodcrit_counter});
+						runtime[(std::string) "DIFFERENT COMPONENT"] = GpiList({-1.0, -1.0, -1.0,  diff_comp_counter});
+						runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1.0, -1.0, -1.0, chaincrit_counter});
+						runtime[(std::string) "DEGREE BOUND"] = GpiList({-1.0, -1.0, -1.0, degbound_counter});
+						runtime[(std::string) "CANCELLED ELEMENTS"] = GpiList({-1.0, -1.0, -1.0,  cancelled_element_counter});
+						runtime[(std::string) "CANCELLED S-PAIRS"] = GpiList({-1.0, -1.0, -1.0,  cancelled_s_pair_counter});
+						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+					}
 
 					//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": STOP " << std::endl;
 					//std::cout << "EXITING " << singular_function_name << std::endl;
@@ -1327,6 +1345,7 @@
 			<connect-read port="syz_comp" place="place_syz_comp"/>
 			<connect-read port="red_syz" place="place_red_syz"/>
 			<connect-read port="rank" place="place_rank"/>
+			<connect-read port="measure_timings" place="place_measure_timings"/>
 			<connect-in port="NF_list_input" place="place_NF_list_input"/>
 			<connect-in port="enable_update_Q_1" place="place_enable_update_Q_1"/>
 			<connect-in port="enable_update_Q_2" place="place_enable_update_Q_2"/>
@@ -1630,6 +1649,7 @@
 				<in name="singular_options" type="bitset"/>
 				<in name="syz_comp" type="long"/>
 				<in name="red_syz" type="long"/>
+				<in name="measure_timings" type="long"/>
 				<in name="BB_finished" type="control"/>
 				<in name="M" type="list"/>
 				<in name="r" type="int"/>
@@ -1642,7 +1662,7 @@
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_minimize_GB(runtime, base_filename, installdir, singular_options, M, n_syzygies, generator_indices, needed_indices, output, syzygy_indices, syz_comp, red_syz)">
+							  function="function_minimize_GB(runtime, base_filename, installdir, singular_options, M, n_syzygies, generator_indices, needed_indices, output, syzygy_indices, syz_comp, red_syz, measure_timings)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -1754,7 +1774,9 @@
 						#endif
 						
 						double runtime_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						if (measure_timings != 0) {
+							runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						}
 
 						//std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
@@ -1765,6 +1787,7 @@
 			<connect-read port="singular_options" place="place_singular_options"/>
 			<connect-read port="syz_comp" place="place_syz_comp"/>
 			<connect-read port="red_syz" place="place_red_syz"/>
+			<connect-read port="measure_timings" place="place_measure_timings"/>
 			<connect-in port="BB_finished" place="place_BB_finished"/>
 			<connect-in port="M" place="place_M"/>
 			<connect-in port="r" place="place_r"/>
@@ -1804,12 +1827,13 @@
 				<in name="singular_options" type="bitset"/>
 				<in name="syz_comp" type="long"/>
 				<in name="red_syz" type="long"/>
+				<in name="measure_timings" type="long"/>
 				<in name="generator_indices" type="list"/>
 				<in name="needed_indices" type="needed_index"/>
 				<out name="runtime" type="map"/>
 				<module name="singular_buchberger"
 								require_function_unloads_without_rest="false"
-								function="function_reduce_GB(runtime, base_filename, singular_options, syz_comp, red_syz, generator_indices, needed_indices)">
+								function="function_reduce_GB(runtime, base_filename, singular_options, syz_comp, red_syz, generator_indices, needed_indices, measure_timings)">
 					<cinclude href="interface/buchberger_interface.hpp"/>
 					<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -1835,14 +1859,16 @@
 							}
 
 							double read_poly_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-							runtime[(std::string) "reading generators in reduce_GB (static)"] = GpiList({-1.0, read_poly_stop, read_poly_stop-read_poly_start, 1L});
+							if (measure_timings != 0) {
+								runtime[(std::string) "reading generators in reduce_GB (static)"] = GpiList({-1.0, read_poly_stop, read_poly_stop-read_poly_start, 1L});
+							}
 						}
 
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": reduce_GB: processing " << current_index+1 << "-th element of the Gröbner basis" << std::endl;
 						#endif
 						std::string singular_function_name = "reduce_GB";
-						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_reduce_GB) (base_filename, generators, needed_indices.generator, needed_indices.generator_index, needed_indices.save_index, needed_indices.is_syzygy, ngens, syz_comp, red_syz, singular_options, &runtime);
+						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_reduce_GB) (base_filename, generators, needed_indices.generator, needed_indices.generator_index, needed_indices.save_index, needed_indices.is_syzygy, ngens, syz_comp, red_syz, singular_options, measure_timings, &runtime);
 
 						if (singular_options.is_element(PROT) && singular_options.is_element(REDSB)) {
 							std::ofstream prot_file(base_filename + "prot.txt", std::ios::app | std::ios::binary);
@@ -1851,7 +1877,9 @@
 						}
 
 						double runtime_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						if (measure_timings != 0) {
+							runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
+						}
 
 						//std::cout << "EXITING " << singular_function_name << std::endl;
 					]]></code>
@@ -1861,6 +1889,7 @@
 			<connect-read port="singular_options" place="place_singular_options"/>
 			<connect-read port="syz_comp" place="place_syz_comp"/>
 			<connect-read port="red_syz" place="place_red_syz"/>
+			<connect-read port="measure_timings" place="place_measure_timings"/>
 			<connect-read port="generator_indices" place="place_generator_indices"/>
 			<connect-in port="needed_indices" place="place_needed_indices"/>
 			<connect-out port="runtime" place="place_runtime"/>
