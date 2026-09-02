@@ -11,7 +11,7 @@
 
 
 // Singular defines this in ssiLink.cc
-#define SSI_VERSION 13
+#define SSI_VERSION 15
 
 #define pSubtractComp(p,c) p_SubtractComp(p,c,currRing)
 

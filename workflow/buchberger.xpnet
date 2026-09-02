@@ -185,7 +185,7 @@
 						long chaincrit_counter = 0L;
 						long degbound_counter  = 0L;
 
-						if (prev_r>0 && prev_queue_had_started) // use previous state to initialize Q(ueue)
+						if (prev_r>0 && prev_queue_had_started) // use previous state to initialize Q(ueue) (BROKEN)
 						{
 							r=prev_r;
 							if(TRACE>0)
@@ -1865,7 +1865,7 @@
 						}
 
 						#ifdef DEBUG_BBA
-						std::cout << runtime_start << ": reduce_GB: processing " << current_index+1 << "-th element of the Gröbner basis" << std::endl;
+						//std::cout << runtime_start << ": reduce_GB: processing " << current_index+1 << "-th element of the Gröbner basis" << std::endl;
 						#endif
 						std::string singular_function_name = "reduce_GB";
 						RESOLVE_INTERFACE_FUNCTION(singular_buchberger_reduce_GB) (base_filename, generators, needed_indices.generator, needed_indices.generator_index, needed_indices.save_index, needed_indices.is_syzygy, ngens, syz_comp, red_syz, singular_options, measure_timings, &runtime);

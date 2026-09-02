@@ -409,6 +409,58 @@ RETURN: Buchberger result (GB, and optionally lift/syzygies depending on config)
 }
 
 
+proc save_ideal_for_oscar(def I, string filename)
+"USAGE: save_ideal_for_oscar(I,filename)
+RETURN: filename after writing a plain-text export of the ideal and its basering
+
+The export format is intended for consumption by Oscar/Julia. It stores
+the coefficient specification, variables, ordering, and for each generator
+its list of terms as coefficient/exponent-vector pairs.
+"
+{
+  if (typeof(I)!="ideal") {
+    ERROR("save_ideal_for_oscar expects an ideal as first argument");
+  }
+
+  list ring_data = ringlist(basering);
+  string content = "format=singular_oscar_ideal_v1" + newline;
+  content = content + "coefficients=" + string(ring_data[1]) + newline;
+  content = content + "variables=" + string(ring_data[2]) + newline;
+  content = content + "ordering=" + string(ring_data[3]) + newline;
+  content = content + "ngens=" + string(size(I)) + newline;
+
+  int generator_index;
+  poly current;
+  int n_terms;
+  int term_index;
+  int variable_index;
+  intvec exponents;
+  string exponent_data;
+  for (generator_index=1; generator_index<=size(I); generator_index++) {
+    current = I[generator_index];
+    n_terms = size(current);
+    content = content + "nterms=" + string(n_terms) + newline;
+
+    for (term_index=1; term_index<=n_terms; term_index++) {
+      exponents = leadexp(current);
+      exponent_data = "";
+      for (variable_index=1; variable_index<=nvars(basering); variable_index++) {
+        if (variable_index>1) {
+          exponent_data = exponent_data + ",";
+        }
+        exponent_data = exponent_data + string(exponents[variable_index]);
+      }
+
+      content = content + "term=" + string(leadcoef(current)) + "|" + exponent_data + newline;
+      current = current - lead(current);
+    }
+  }
+
+  write(":w "+filename, content);
+  return(filename);
+}
+
+
 
 // util (maybe move to different file)
 
@@ -465,8 +517,9 @@ RETURN:  ideal/module having k generators which are random linear combinations
 
   int r = ncols(id);
   matrix random_coefficients[r][k];
-  for (int i=1; i<=r; i++) {
-    for (int j=1; j<=k; j++) {
+  int i,j;
+  for (i=1; i<=r; i++) {
+    for (j=1; j<=k; j++) {
       random_coefficients[i,j] = randomBigintSymmetric(b);
     }
   }
@@ -674,7 +727,7 @@ RETURN: exports GB/L/S/indices/runtimes and optionally writes an SSI dump
     else                                             {print("         lift WRONG !!!");}
   }
 
-  export(GB,L,S,indices,runtimes);
+  return(GB,L,S,indices,runtimes);
 }
 
 proc testBB(def I, gspcConfigToken gc, buchbergerConfigToken bc, list #) // compare both implementations
@@ -684,7 +737,7 @@ RETURN: compares parallel result against std(I), exports G, and optionally write
 {
 
   print("parallelStd:");
-  testParallelBB(I, gc, bc, #);
+  def GB,L,S,indices,runtimes = testParallelBB(I, gc, bc, #);
 
   def G = testStd(I);
 
@@ -698,5 +751,5 @@ RETURN: compares parallel result against std(I), exports G, and optionally write
   //if additional string was given, save result of std(..) into one ssi file:
   if (size(#)>0) {write("ssi:w "+gc.tmpdir+"/STD_RESULT_"+#[1]+"_"+string(gc.procspernode)+"_procsPerNode_"+string(bc.nworkers)+"_NFworkers_SINGULAR_std.ssi",list(G, comp(G, GB)));}
 
-  export(G);
+  return(G,GB,L,S,indices,runtimes);
 }

@@ -310,6 +310,7 @@ void singular_init(std::string const& base_filename,
   std::string ids = worker();
   init_singular (config::singularLibrary().string());
 
+
   double start_time,stop_time;
   start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   long force_continue;
@@ -359,8 +360,6 @@ void singular_init(std::string const& base_filename,
   if(*syz_comp>0) {
     //k=si_max(id_RankFreeModule(mod,currRing),id_RankFreeModule(submod,currRing));
     //k=si_max(k,(int)mod->rank);
-
-
 
     ring orig_ring=currRing;
     writeRingSSI(orig_ring, base_filename + "basering");

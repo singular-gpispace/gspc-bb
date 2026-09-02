@@ -31,10 +31,23 @@ proc monitorOFF()
 
 buchbergerConfigToken bc = configure_buchberger();
 
-bc.nworkers=8; // number of reduction steps that can run in parallel, should not be larger than to gc.procspernode * [number of nodes in the nodefile] 
-bc.syzComp=0;
+bc.nworkers=8; 
+// number of reduction steps that can run in parallel, should not be larger than gc.procspernode * [number of nodes in the nodefile] 
+
+bc.syzComp=0;  
+// if syzComp=0: normal Buchberger, do not compute syzygies
+// if syzComp>0: compute the "syzygy" module and the "lift" of the input ideal/module, 
+//               but do not add the unit matrix to the input ideal/module, the user has to add it manually if desired
+//               This way you can also compute N*Syz(ideal generators) directly where N can be any matrix, used for example in the M1+M2 example below
+// if syzComp<0: automatically add the unit matrix to compute the syzygy module and the lift of the input ideal/module
+
 bc.redSyz=1;
+// if redSyz=0: just "save and forget" generators for the syzygy module
+// if redSyz=1: use syzygies for reducing s-polynomials, but do not build s-polynomials of syzygies, i.e. no GB of the syzygy module is computed 
+// if redSyz=2: compute a GB of the syzygy module
+
 bc.measureTimings=0;
+// if !=0: display timings and other stats, may be slightly slower.
 
 option(redSB); // if option redSB is set: gspc_buchberger will calculate a unique reduced basis, else just a minimal basis
 // Note that other options like redTail and intStrategy also influence the algorithm just like they would with Singular's std(..)
@@ -97,10 +110,11 @@ ideal II234 = minor(MM234,2);
 */
 
 
-proc testHankelMinors(int ncores, int do_std, int range, list #)
+//proc testHankelMinors(int ncores, int do_std, bigint range, list #)
+proc testHankelMinors(bigint range, list #)
 {
-  ring H = 0,(x0,x1,x2,x3,x4,x5,x6,x7,x8,x9),dp;
-  system("--random", 42); ideal V = randomid(maxideal(1),10,range);
+  //ring H = 0,(x0,x1,x2,x3,x4,x5,x6,x7,x8,x9),dp;
+  system("--random", 42); ideal V = randomidBigint(maxideal(1),10,range);
   list random_polys;
   string filename = "minors__coef_range_"+string(range)+"__degrees";
   int n = size(#);
@@ -112,7 +126,7 @@ proc testHankelMinors(int ncores, int do_std, int range, list #)
     {
       if (typeof(random_polys[ii])=="none")
       {
-        system("--random", 42); random_polys[ii] = randomid(maxideal(ii),10,range);
+        system("--random", 42); random_polys[ii] = randomidBigint(maxideal(ii),10,range);
       }
       V[10-n+i] = V[10-n+i] + random_polys[ii][10-n+i];
     }
@@ -120,6 +134,7 @@ proc testHankelMinors(int ncores, int do_std, int range, list #)
   matrix M[2][9] = x0,x1,x2,x3,x4,x5,x6,x7,x8, x1,x2,x3,x4,x5,x6,x7,x8,x9;
   matrix MM = substitute(M,maxideal(1),V);
   ideal I = minor(MM,2);
+  return(I,MM);
 
   print(filename);
   print("  writing files");
@@ -158,10 +173,11 @@ proc testHankelMinors(int ncores, int do_std, int range, list #)
   }
 }
 
-proc testHankelMinors9(int ncores, int do_std, int range, list #)
+//proc testHankelMinors9(int ncores, int do_std, bigint range, list #)
+proc testHankelMinors9(bigint range, list #)
 {
-  ring H = 0,(x1,x2,x3,x4,x5,x6,x7,x8,x9),dp;
-  system("--random", 42); ideal V = randomid(maxideal(1),10,range);
+  //ring H = 0,(x1,x2,x3,x4,x5,x6,x7,x8,x9),dp;
+  system("--random", 42); ideal V = randomidBigint(maxideal(1),10,range);
   list random_polys;
   string filename = "minors_9_vars__coef_range_"+string(range)+"__degrees";
   int n = size(#);
@@ -173,7 +189,7 @@ proc testHankelMinors9(int ncores, int do_std, int range, list #)
     {
       if (typeof(random_polys[ii])=="none")
       {
-        system("--random", 42); random_polys[ii] = randomid(maxideal(ii),9,range);
+        system("--random", 42); random_polys[ii] = randomidBigint(maxideal(ii),9,range);
       }
       V[9-n+i] = V[9-n+i] + random_polys[ii][9-n+i];
     }
@@ -181,6 +197,7 @@ proc testHankelMinors9(int ncores, int do_std, int range, list #)
   matrix M[2][8] = x1,x2,x3,x4,x5,x6,x7,x8, x2,x3,x4,x5,x6,x7,x8,x9;
   matrix MM = substitute(M,maxideal(1),V);
   ideal I = minor(MM,2);
+  return(I,MM);
 
   print(filename);
   print("  writing files");
@@ -217,29 +234,46 @@ proc testHankelMinors9(int ncores, int do_std, int range, list #)
   }
 }
 
-proc testHankelMinors8(int ncores, int do_std, int range, list #)
+//proc testHankelMinors8(int ncores, int do_std, bigint range, list #)
+proc testHankelMinors8(bigint range, int N, list #)
 {
-  ring H = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
-  system("--random", 42); ideal V = randomid(maxideal(1),10,range);
+  //ring H = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
+  system("--random", 42); ideal V = randomidBigint(maxideal(1),10,range);
   list random_polys;
   string filename = "minors_8_vars__coef_range_"+string(range)+"__degrees";
   int n = size(#);
-  int ii;
+  int ii,iii;
+  ideal maxideal_ii,tmp;
   for(int i=1; i<=n; i++)
   {
     filename = filename + "_" + string(#[i]);
     for (ii=2; ii<=#[i]; ii++)
     {
+      maxideal_ii = ideal();
+      tmp = maxideal(ii);
+      for(iii=1; iii<=size(tmp); iii++)
+      {
+        if(random(1,N)==1 || (size(maxideal_ii)==0 && iii==size(tmp)))
+        {
+          maxideal_ii[size(maxideal_ii)+1] = tmp[iii];
+        }
+      }
+      
       if (typeof(random_polys[ii])=="none")
       {
-        system("--random", 42); random_polys[ii] = randomid(maxideal(ii),8,range);
+        system("--random", 42); random_polys[ii] = randomidBigint(maxideal_ii,8,range);
       }
-      V[8-n+i] = V[8-n+i] + random_polys[ii][8-n+i];
+      //if(ii==2) {
+        V[8-n+i] = V[8-n+i] + random_polys[ii][8-n+i];
+      //  }
+      //else      {V[8-n+i] = V[8-n+i] + random_polys[ii][8-n+i]*x1^ii;}
     }
   }
   matrix M[2][7] = x1,x2,x3,x4,x5,x6,x7, x2,x3,x4,x5,x6,x7,x8;
   matrix MM = substitute(M,maxideal(1),V);
   ideal I = minor(MM,2);
+  return(I,MM);
+
 
   print(filename);
   print("  writing files");
@@ -324,12 +358,12 @@ proc timestd(def I, list #)
 // M1+M2 example
 
 //ring rM1M2 = 0,(z(1..15),s,t),(dp(15),dp(2)); // block ordering
-ring rM1M2 = 0,(z(1..15),s,t,e(1..15)),dp; // flat dp
+//ring rM1M2 = 0,(z(1..15),s,t,e(1..15)),dp; // flat dp
 
 //int p = prime(100000);
 //ring rM1M2simple = p,z(1..15),dp; number s=prime(10000); number t = prime(15000);
 
-//ring rM1M2 = (0,s,t),z(1..15),dp;             // rational function field
+ring rM1M2 = (0,s,t),z(1..15),dp;             // rational function field
 
 matrix M1_mat_T[18][15] = (-z(1) + z(2), -z(1) + z(2), -z(1) + z(2) - z(8) + z(11), -z(1) + z(2) - z(6) + z(14), 0, 0, 0, 0, 0, 0, 0, -s - z(1) + z(2), -t - z(1) + z(2), 0, 0), (0, 0, z(1) - z(2) + z(8) - z(11), 0, -z(6) + z(8) - z(11) + z(14), 0, 0, z(8) - z(11), s + z(8) - z(11), s + t + z(8) - z(11), z(8) - z(11), 0, 0, 0, 0), (0, 0, 0, z(1) - z(2) + z(6) - z(14), z(6) - z(8) + z(11) - z(14), z(6) - z(14), s + t + z(6) - z(14), 0, 0, 0, 0, 0, 0, z(6) - z(14), -s + z(6) - z(14)), (z(1) - z(12), s + z(1) - z(12), s + z(1) + z(8) - z(9) - z(12), z(1) - z(6) - z(12) + z(15), 0, 0, 0, 0, 0, 0, 0, z(1) - z(12), s + t + z(1) - z(12), 0, 0), (0, 0, -s - z(1) - z(8) + z(9) + z(12), 0, -s - z(6) - z(8) + z(9) + z(15), 0, 0, -z(8) + z(9), -z(8) + z(9), -s - t - z(8) + z(9), -s - z(8) + z(9), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(6) + z(12) - z(15), s + z(6) + z(8) - z(9) - z(15), z(6) - z(15), -t + z(6) - z(15), 0, 0, 0, 0, 0, 0, -s + z(6) - z(15), z(6) - z(15)), (z(1) - z(13), t + z(1) - z(13), -s + z(1) + z(9) - z(10) - z(13), z(1) + 3*z(6) - z(7) - z(13) - z(14) - z(15), 0, 0, 0, 0, 0, 0, 0, s + t + z(1) - z(13), z(1) - z(13), 0, 0), (0, 0, s - z(1) - z(9) + z(10) + z(13), 0, s + 3*z(6) - z(7) - z(9) + z(10) - z(14) - z(15), 0, 0, s + t - z(9) + z(10), -z(9) + z(10), -z(9) + z(10), s - z(9) + z(10), 0, 0, 0, 0), (0, 0, 0, -z(1) - 3*z(6) + z(7) + z(13) + z(14) + z(15), -s - 3*z(6) + z(7) + z(9) - z(10) + z(14) + z(15), -3*z(6) + z(7) + z(14) + z(15), -s - 3*z(6) + z(7) + z(14) + z(15), 0, 0, 0, 0, 0, 0, -t - 3*z(6) + z(7) + z(14) + z(15), s + t - 3*z(6) + z(7) + z(14) + z(15)), (2*z(1), z(1) + z(2), z(1) + z(3) - z(11), z(1) + z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) + z(12), z(1) + z(13), 0, 0), (0, 0, -z(1) - z(3) + z(11), 0, -z(3) + z(4) - z(6) + z(11), 0, 0, z(2) - z(3) + z(11), z(1) + z(2) - z(3) + z(11) - z(12), 2*z(1) + z(2) - z(3) + z(11) - z(12) - z(13), z(1) - z(3) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) - z(4) + z(6), z(3) - z(4) + z(6) - z(11), z(1) - z(4) + z(6), 2*z(1) + z(2) - z(4) + z(6) - z(12) - z(13), 0, 0, 0, 0, 0, 0, 2*z(1) - z(2) - z(4) + z(6), -z(4) + z(6) + z(12)), (z(1) - z(3) + z(11), z(1) - z(3) + z(8), z(1) - z(3) - z(11), z(1) - z(3) + z(5) - z(6), 0, 0, 0, 0, 0, 0, 0, s + z(1) - z(3) + z(8) - z(9) + z(11), -s + z(1) - z(3) + z(9) - z(10) + z(11), 0, 0), (0, 0, -z(1) + z(3) + z(11), 0, z(5) - z(6) + z(11), 0, 0, z(8) + z(11), -s + z(9) + z(11), z(10) + z(11), 2*z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(3) - z(5) + z(6), -z(5) + z(6) - z(11), -z(5) + z(6) + z(11), -z(5) + z(6) + z(10), 0, 0, 0, 0, 0, 0, -z(5) + z(6) - z(8) + 2*z(11), s - z(5) + z(6) + z(8) - z(9) + z(11)), (z(1) - z(4) + z(6), z(1) - z(4) + 2*z(6) - z(14), z(1) - z(4) + z(5) - z(11), z(1) - z(4) - z(6), 0, 0, 0, 0, 0, 0, 0, z(1) - z(4) + z(15), z(1) - z(4) + 4*z(6) - z(7) - z(14) - z(15), 0, 0), (0, 0, -z(1) + z(4) - z(5) + z(11), 0, -z(5) - z(6) + z(11), 0, 0, -z(5) + 2*z(6) + z(11) - z(14), -z(5) + 3*z(6) + z(11) - z(14) - z(15), -z(5) + z(7) + z(11), -z(5) + z(6) + z(11), 0, 0, 0, 0), (0, 0, 0, -z(1) + z(4) + z(6), z(5) + z(6) - z(11), 2*z(6), z(6) + z(7), 0, 0, 0, 0, 0, 0, z(6) + z(14), z(6) + z(15));
 matrix M2_mat_T[15][15] = (z(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, z(2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, z(3), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, z(4), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, z(5), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, z(6), 0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, z(7), 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, z(8), 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, z(9), 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, z(10), 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
@@ -615,8 +649,11 @@ option(redSB); option(redTail); option(prot); option(noreturnSB);
 //testBB(I, 16, 16, 2, "testideal", list(list(degBound,nvars(basering))), 50, 20, 150, -1, 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 
 
-//setring(rM1M2BIG); def I = m; degBound=0; option(redTail); option(redSB); option(intStrategy);
-//option();
+/*
+setring(rM1M2); def I = M; degBound=0; option(redTail); option(redSB); option(intStrategy);
+print(basering);
+option();
+*/
 
 //ring rKAT = 0,x(1..12),dp;
 //ideal I = katsura(11);
@@ -624,15 +661,21 @@ option(redSB); option(redTail); option(prot); option(noreturnSB);
 
 ring rQUAD = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
 system("--random", 42);
-ideal I = randomid(maxideal(2),7);
-write("ssi:w QUAD_"+string(size(I))+"_"+string(nvars(basering))+".ssi",I);
-write(":w QUAD_"+string(size(I))+"_"+string(nvars(basering))+".txt",string(I));
+ideal I = randomid(maxideal(2),6);
+//ideal I = randomidBigint(maxideal(2),6,bigint(10)^10);
+
+
+//write("ssi:w QUAD_"+string(size(I))+"_"+string(nvars(basering))+".ssi",I);
+//write(":w QUAD_"+string(size(I))+"_"+string(nvars(basering))+".txt",string(I));
 
 
 /*
 ring rKAT11 = 0,x(0..11),dp;
 ideal I = katsura(11);
 */
+
+//ring rKAT12HOM=0,x(0..12),dp; ideal I = homog(katsura(12),x(12));
+//ring rKAT11HOM=0,x(0..10),dp; ideal I = katsura(11);
 
 /*
 string spinchainring = read(":r XXX_Input/ring_10.txt");
@@ -646,12 +689,20 @@ execute("ideal I = "+spinchainideal+";");
 setring(rM1M2NEW);
 */
 
+/*
+ring H = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
+print("building Hankel minors example");
+def I,M = testHankelMinors8(20, 10, 2,10);
+print("saving Hankel minors example");
+save_ideal_for_oscar(I,"/scratch/wittmann/Singular_GPI_Space_buchberger/test_I");
+*/
+
 option(redSB); option(redTail); option(prot); //option(noreturnSB);
 
 
 int nodes=1;
-//list cores_per_node = 32,16,8,4,2,1;
-list cores_per_node = 24;
+//list cores_per_node = 48,32,16,8,4,2,1;
+list cores_per_node = 12;
 
 //testParallelBB(G_intersect, cores_per_node[1], cores_per_node[1]*nodes, 2, "testideal_"+string(cores_per_node[1]*nodes)+"_CORES", list(list(degBound,nvars(basering))), 100, 10, 150, nrows(M1), 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 gc.procspernode=cores_per_node[1]; 
@@ -659,14 +710,15 @@ bc.nworkers=cores_per_node[1]*nodes;
 bc.measureTimings=1;
 bc.syzComp=0;
 bc.redSyz=0;
+bc.maxBatchSize=1;
 printf("%n |||||||||-->  %s CORES  <--||||||||||%n",bc.nworkers,0);
-testBB(I, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES"); 
+def G, GB,L,S,indices,runtimes = testBB(I, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES"); 
 for(int ind=2; ind<=size(cores_per_node); ind++)
 {
   gc.procspernode=cores_per_node[ind]; 
   bc.nworkers=cores_per_node[ind]*nodes; 
   printf("%n |||||||||-->  %s CORES  <--||||||||||%n",bc.nworkers,0);
-  testParallelBB(I, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES");
+  GB,L,S,indices,runtimes = testParallelBB(I, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES");
 }
 
 
