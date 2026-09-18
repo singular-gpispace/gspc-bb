@@ -300,6 +300,7 @@ void singular_init(std::string const& base_filename,
                    long* max_batch_size,
                    double* head_size_factor,
                    GpiList* si_opt,
+                   GpiList* queue_lead_data,
                    int* prev_r,
                    long* syz_comp,
                    long* red_syz,
@@ -561,9 +562,11 @@ void singular_init(std::string const& base_filename,
 
   start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   ideal F_sorted = idInit(IDELEMS(F),F->rank);
-  ideal FF = idInit(1,1);
-  if ((*prev_r)>0 && prev_queue_had_started) // read in from files f1,f2,...
+  if ((*prev_r)>0 && prev_queue_had_started) // read in from files f1,f2,... (BROKEN)
   {
+    //QQ 
+    ideal FF = idInit(1,1);
+    
     idInsertPolyOnPos(FF,readPolySSI(base_filename+"intermediate_files/f1",false),0); // insert first polynomial of F
 
     for(int i=1; i<(*prev_r); i++)
@@ -575,6 +578,7 @@ void singular_init(std::string const& base_filename,
       poly new_f = readPolySSI(base_filename+"intermediate_files/f"+std::to_string(i+1),false);
 
       idInsertPolyOnPos(FF,new_f,i);
+      id_Delete(&FF, currRing);
     }
   }
   else // build f1,f2,... from input ideal
@@ -585,30 +589,26 @@ void singular_init(std::string const& base_filename,
       //{F_sorted->m[i] = F->m[i];}
     delete sort;
 
-    idInsertPolyOnPos(FF,p_Copy(F_sorted->m[0], currRing),0); // insert first polynomial of F
+    //QQ idInsertPolyOnPos(FF,p_Copy(F_sorted->m[0], currRing),0); // insert first polynomial of F
     writePolySSI(F_sorted->m[0], base_filename+"intermediate_files/f1");
 
-    int ind=1;
+    int ind=2;
     for(int i=1; i<F->ncols; i++)
     {
+      /*
       FF->rank = id_RankFreeModule(FF, currRing, currRing);
       if (FF->rank==0) {FF->rank=1;}
 
       // take next polynomial...
       poly new_f = F_sorted->m[i];
-      //std::cout<<"-----> 1 <-----"<<std::endl;
-      //std::cout<<"-----> 2 <-----"<<std::endl;
 
       //new_f = kNF(FF, currRing->qideal, new_f, 0, 4); //WHY JUST WHY ???
       //std::cout << "intstrat + redtail: " << (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1) << ", red_syz: " << *red_syz << ", syz_comp: " << *syz_comp << std::endl;
       new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1));
-
-      //std::cout<<"-----> 3 <-----"<<std::endl;
-
+      */
 
       if(new_f!=NULL) // if the new polynomial is not zero, insert it into FF and write it to file
       {
-          
         if (singular_options.is_element(INTSTRATEGY)) {
           //FF->m[i] = p_Cleardenom(FF->m[i], currRing);
           number c;
@@ -622,8 +622,18 @@ void singular_init(std::string const& base_filename,
 
         //std::cout << i << "-th POLYNOMIAL: "<< p_String(new_f, currRing, currRing) << std::endl;
 
-        writePolySSI(new_f, base_filename+"intermediate_files/f"+std::to_string(ind+1));
-        idInsertPolyOnPos(FF,new_f,ind);
+        int length_1 = 0;
+        int degree_1 = currRing->pLDeg(new_f, &length_1, currRing);
+        GpiList lead_1 = {};
+        for (int j=1; j<=currRing->N; j++)
+        {
+          lead_1.emplace_back((int) p_GetExp(new_f, j, currRing));
+        }
+        lead_1.emplace_back((int) p_GetComp(new_f, currRing)); // last entry = component
+
+        writePolySSI(new_f, base_filename+"temporary_files/intermediate_result_"+std::to_string(ind)+"_"+std::to_string(ind));
+        queue_lead_data->emplace_back(GpiList({degree_1, length_1, lead_1, lead_1}));
+        //idInsertPolyOnPos(FF,new_f,ind);
         ind++;
       }
     }  
@@ -653,14 +663,20 @@ void singular_init(std::string const& base_filename,
   //building Mvec
   //std::vector<std::vector<int>> Mvec;
   //std::cout<<"-----> 4 <-----"<<std::endl;
-  for (int i=0; i<FF->ncols; i++)
-  {
+
+  //QQ for (int i=0; i<FF->ncols; i++)
+  //QQ {
+
+
     std::vector<int> Mjvec;
     std::vector<int> Mjvec2;
     std::vector<int> Mjvec_extra;
 
     //std::cout<<"-----> 5 <-----"<<std::endl;
-    poly first  = FF->m[i];     // first term
+    
+    //QQpoly first  = FF->m[i];     // first term
+    poly first  = F_sorted->m[0];     // first term
+    
     //while (p_GetComp(first, currRing) > *syz_comp)
     //  pIter(first);
 
@@ -692,13 +708,14 @@ void singular_init(std::string const& base_filename,
     //std::cout<<"-----> 8 <-----"<<std::endl;
 
     int len=0;
-    Mjvec_extra.emplace_back((int) currRing->pLDeg(first, &len, currRing)); // degree     // degree will only be correct for a degree ordering !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Mjvec_extra.emplace_back((int) currRing->pLDeg(first, &len, currRing)); // degree     
     Mjvec_extra.emplace_back((int) len);                                    // length
     //Mjvec_extra.emplace_back(...);                                        // ...
     //...
     std::vector<std::vector<int>> Mjvec_entry = {Mjvec, Mjvec2, Mjvec_extra};
     (*Mvec).emplace_back(Mjvec_entry);
-  }
+  //QQ }
+
   //std::cout<<"-----> 9 <-----"<<std::endl;
 
   id_Delete(&F, currRing);
@@ -708,7 +725,7 @@ void singular_init(std::string const& base_filename,
   if (elems>0) {omFreeSize((ADDRESS) (F_sorted->m),sizeof(poly)*elems);}
   omFreeBin((ADDRESS) F_sorted, sip_sideal_bin);
 
-  id_Delete(&FF, currRing);
+  //QQ id_Delete(&FF, currRing);
 
   omUpdateInfo();
   long max_mem = om_Info.MaxBytesSystem / 1024;
@@ -897,7 +914,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
       (*runtime)[(std::string) "applying NF in NF_of_spoly"] = GpiList({-1.0, stop_time, stop_time-start_time, 1L});
     }
   }
-  else // continue a previous reduction (now with more reducers)
+  else // continue a previous reduction (now with more reducers)    OR: initial generators! (old_r==-1)
   {
     //std::cout<<"----- re-reduction -----> 1 <-----"<<std::endl;
     start_time = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -1041,7 +1058,7 @@ void singular_buchberger_compute_NF(std::string const& base_filename,
     }
 
     int len;
-    m_extra.emplace_back((int) currRing->pLDeg(NF_spoly_lead, &len, currRing)); // degree will only be correct for a degree ordering !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    m_extra.emplace_back((int) currRing->pLDeg(NF_spoly_lead, &len, currRing));
     m_extra.emplace_back((int) len);
     //m_extra.emplace_back(is_syzygy);
 

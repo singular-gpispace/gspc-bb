@@ -17,8 +17,8 @@
 
 #define NO_NAME_MANGLING extern "C"
 
-#define sel_strat_larger_equal dp_larger_equal
-#define Q_larger_equal         dp_larger_equal
+#define sel_strat_larger_equal dp_length_larger_equal
+#define Q_larger_equal         dp_length_larger_equal
 //#define sel_strat_larger_equal posInL110_larger_equal
 //#define Q_larger_equal         posInL110_larger_equal
 
@@ -117,10 +117,10 @@
 
 // types needed from SINGULAR ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-typedef struct spolyrec   *      poly;
-typedef struct sip_sideal *     ideal;
-typedef struct skStrategy * kStrategy;
-
+typedef struct spolyrec         *       poly;
+typedef struct sip_sideal       *      ideal;
+typedef struct skStrategy       *  kStrategy;
+//typedef struct sPairQueue_class * sPairQueue;
 
 // types used by GPI-Space ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 using bitset     = gspc::pnet::type::bitsetofint::type;
@@ -523,12 +523,14 @@ struct Qdata {
   mutable bool PC;
 };
 
-inline bool dp_larger_equal(std::pair<std::pair<int,int>,Qdata> const& Qentry1, std::pair<std::pair<int,int>,Qdata> const& Qentry2, [[maybe_unused]] long syz_comp)
+inline bool dp_length_larger_equal(std::pair<std::pair<int,int>,Qdata> const& Qentry1, std::pair<std::pair<int,int>,Qdata> const& Qentry2, [[maybe_unused]] long syz_comp)
 {
   GpiList T1 = Qentry1.second.lcm;
   GpiList T2 = Qentry2.second.lcm;
   int d1 = Qentry1.second.deg_lcm;
   int d2 = Qentry2.second.deg_lcm;
+  int l1 = Qentry1.second.length;
+  int l2 = Qentry2.second.length;
   //std::cout << " comparing T1 " << std::endl;
   //print_variant(T1);
   //std::cout << " ... and T2 " << std::endl;
@@ -549,10 +551,14 @@ inline bool dp_larger_equal(std::pair<std::pair<int,int>,Qdata> const& Qentry1, 
       if(T1_comp>syz_comp && syz_comp>=T2_comp) {return true;}
     }
   */
-    
-  if(T1.size()!=T2.size()) {throw std::runtime_error ("exponent vectors have different lengths ("+std::to_string(T1.size())+" and "+std::to_string(T2.size())+") in dp_larger_equal");}
+   
+  if(T1.size()!=T2.size()) {throw std::runtime_error ("exponent vectors have different lengths ("+std::to_string(T1.size())+" and "+std::to_string(T2.size())+") in dp_length_larger_equal");}
   if(d1>d2) {return true;}
   if(d1<d2) {return false;}
+
+  // add in length for input generators only (else length will be 0):
+  if(l1>l2) {return true;}
+  if(l1<l2) {return false;}
 
   for(; it1 != T1.rend(); ++it1, ++it2)
   {
@@ -628,11 +634,13 @@ inline bool Q_larger(std::pair<std::pair<int,int>,Qdata> & Qentry1, std::pair<st
 
 struct QueueOrdering {
   long syz_comp;
+  //ring test;
 
-  QueueOrdering(long syz_comp) : syz_comp(syz_comp) {}
+  QueueOrdering(long syz_comp) : syz_comp(syz_comp) {} //std::ofstream("/scratch/wittmann/Singular_GPI_Space_buchberger/queue_ordering.txt", std::ios::app) << "QueueOrdering created, TESTRING:" << (test==NULL ? "NULL" : "NOT NULL") << std::endl;}
 
   bool operator()(std::pair<std::pair<int,int>,Qdata> a, std::pair<std::pair<int,int>,Qdata> b) const {
-      return !sel_strat_larger_equal(a, b, syz_comp); // "<", i.e. a comes first w.r.t. Singulars s-pair selection strategy
+    //std::ofstream("/scratch/wittmann/Singular_GPI_Space_buchberger/queue_ordering.txt", std::ios::app) << "comparing s-pairs (" << a.first.first << "," << a.first.second << ") and (" << b.first.first << "," << b.first.second << "), TESTRING:" << (test==NULL ? "NULL" : "NOT NULL") << std::endl;
+    return !sel_strat_larger_equal(a, b, syz_comp); // "<", i.e. a comes first w.r.t. Singulars s-pair selection strategy
   }
 };
 
@@ -838,6 +846,35 @@ inline GpiList lead_of_spoly(std::vector<std::vector<int>> const&  Mi, std::vect
 
 // Queue operations //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+inline sPairQueue queue_init(const GpiList& lead_data, long syz_comp)
+{
+  sPairQueue Q(syz_comp);
+
+  // default dummy values:
+  int old_r = -1;
+  bool PC = false;
+  GpiList new_lead = {};
+
+  // insert initial generators into Queue, except the first one which is already considered an element of the basis
+  for(GpiList::const_iterator Li = lead_data.begin(), int i = 2; Li != lead_data.end(); ++Li,i++)
+  {
+    GpiList::const_iterator it = get_list(*Li).begin();
+
+    int deg_lcm = boost::get<int>(*it); ++it;
+    int length = boost::get<int>(*it); ++it;
+    GpiList l_spoly = get_list(*it); ++it;
+    GpiList lcm = get_list(*it); ++it;
+
+    unsigned long tie_break = Q.inserts();
+  
+    Qdata data = {i, i, old_r, deg_lcm, length, l_spoly, lcm, tie_break, new_lead, PC};
+    Q.push(std::make_pair(i,i),data);
+  }
+
+  return Q;
+}
+
+
 inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std::vector<int>> const&  Mi, std::vector<std::vector<int>> const&  Mj, std::vector<int> const& lcm_vec, bool PC=false)
 {
   //FIX: std::ofstream ijFile(base_filename+"queue/started/"+std::to_string(i)+"_"+std::to_string(j));
@@ -861,7 +898,7 @@ inline void queue_insert(sPairQueue& Q, int i, int j, int old_r, std::vector<std
   //QUEUE std::cout << "  queue_insert after:  test_key=" << Q.test_key(std::make_pair(i,j)) << ", test_key_value=" << Q.test_key_value(std::make_pair(std::make_pair(i,j),data)) << std::endl;
 }
 
-inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiVariant NF) // remove index (i,j) from Q
+inline sPairQueue::iterator queue_mark_paused_i_j(sPairQueue& Q, int i, int j, GpiVariant NF) // mark index (i,j) in Q as paused
 {
   GpiList new_lead = get_list(peek("lead_data",NF)->get());
 	int old_r = boost::get<int>(peek("old_r",NF)->get());
@@ -1162,6 +1199,7 @@ void singular_init(std::string const& base_filename,
                    long* max_batch_size,
                    double* head_size_factor,
                    GpiList* si_opt,
+                   GpiList* queue_lead_data,
                    int* prev_r,
                    long* syz_comp,
                    long* red_syz,

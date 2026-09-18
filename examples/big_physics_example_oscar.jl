@@ -90,7 +90,7 @@ function module_to_ideal(M; flatten_coefficients=:auto)
     if should_flatten
         K = coefficient_ring(R)
         coefficient_symbols = symbols(K)
-        extended_symbols = vcat(coefficient_symbols, symbols(R), [Symbol("e$i") for i in 1:module_rank])
+        extended_symbols = vcat(coefficient_symbols, symbols(R), [Symbol("e_$i") for i in 1:module_rank])
         S, _ = polynomial_ring(base_ring(K), extended_symbols; internal_ordering=:degrevlex)
         S_gens = gens(S)
         coefficient_vars = S_gens[1:length(coefficient_symbols)]
@@ -129,7 +129,7 @@ function module_to_ideal(M; flatten_coefficients=:auto)
         return ideal(S, ideal_generators)
     end
 
-    extended_symbols = vcat(symbols(R), [Symbol("e$i") for i in 1:module_rank])
+    extended_symbols = vcat(symbols(R), [Symbol("e_$i") for i in 1:module_rank])
     S, _ = polynomial_ring(coefficient_ring(R), extended_symbols; internal_ordering=:degrevlex)
     S_gens = gens(S)
     R_to_S = hom(R, S, S_gens[1:ngens(R)], check=false)
@@ -142,6 +142,192 @@ function module_to_ideal(M; flatten_coefficients=:auto)
     append!(ideal_generators, [e[i] * e[j] for i in 1:module_rank for j in i:module_rank])
 
     return ideal(S, ideal_generators)
+end
+
+function parse_singular_export_list(specification)
+    stripped = strip(specification)
+    if isempty(stripped)
+        return String[]
+    end
+
+    content = stripped
+    if startswith(stripped, "(") && endswith(stripped, ")")
+        content = strip(stripped[2:(end - 1)])
+    end
+
+    return isempty(content) ? String[] : strip.(split(content, ","))
+end
+
+function expand_singular_variable_token(token)
+    stripped = strip(token)
+
+    range_match = match(r"^([A-Za-z_][A-Za-z0-9_]*)\((-?\d+)\.\.(-?\d+)\)$", stripped)
+    if range_match !== nothing
+        base_name = range_match.captures[1]
+        start_index = parse(Int, range_match.captures[2])
+        end_index = parse(Int, range_match.captures[3])
+        step = start_index <= end_index ? 1 : -1
+        return [Symbol("$(base_name)$(index)") for index in start_index:step:end_index]
+    end
+
+    indexed_match = match(r"^([A-Za-z_][A-Za-z0-9_]*)\((-?\d+)\)$", stripped)
+    if indexed_match !== nothing
+        base_name = indexed_match.captures[1]
+        index = parse(Int, indexed_match.captures[2])
+        return [Symbol("$(base_name)$(index)")]
+    end
+
+    return [Symbol(stripped)]
+end
+
+function parse_singular_variable_specification(specification)
+    raw_entries = parse_singular_export_list(specification)
+    expanded = Symbol[]
+    for entry in raw_entries
+        append!(expanded, expand_singular_variable_token(entry))
+    end
+    return expanded
+end
+
+function singular_ordering_to_oscar(ordering_specification)
+    stripped = strip(ordering_specification)
+    token = strip(first(split(stripped, ","; limit=2)))
+    if occursin("(", token)
+        token = strip(first(split(token, "("; limit=2)))
+    end
+    canonical_token = join((character for character in token if isletter(character)))
+
+    ordering_map = Dict(
+        "dp" => :degrevlex,
+        "Dp" => :deglex,
+        "lp" => :lex,
+        "rp" => :invlex,
+    )
+
+    haskey(ordering_map, canonical_token) || throw(ArgumentError("unsupported Singular ordering: $ordering_specification"))
+    return ordering_map[canonical_token]
+end
+
+function evaluate_singular_exported_expression(expression, environment)
+    if expression isa Integer
+        return expression
+    elseif expression isa BigInt
+        return expression
+    elseif expression isa Rational
+        return expression
+    elseif expression isa AbstractString
+        return parse(BigInt, expression)
+    elseif expression isa Symbol
+        haskey(environment, expression) || throw(ArgumentError("unknown symbol in exported coefficient: $expression"))
+        return environment[expression]
+    elseif expression isa Expr && expression.head == :integer
+        return parse(BigInt, string(expression.args[1]))
+    elseif expression isa Expr && expression.head == :macrocall
+        macro_name = expression.args[1]
+        macro_name_string = macro_name isa GlobalRef ? String(macro_name.name) : string(macro_name)
+        if endswith(macro_name_string, "int128_str") || endswith(macro_name_string, "int256_str") || endswith(macro_name_string, "big_str")
+            return parse(BigInt, String(expression.args[end]))
+        end
+    elseif expression isa Expr && expression.head == :call
+        operator = expression.args[1]
+        arguments = expression.args[2:end]
+
+        if operator == :+
+            return foldl(+, (evaluate_singular_exported_expression(argument, environment) for argument in arguments))
+        elseif operator == :-
+            if length(arguments) == 1
+                return -evaluate_singular_exported_expression(arguments[1], environment)
+            end
+            first_argument = evaluate_singular_exported_expression(arguments[1], environment)
+            return foldl(-, (evaluate_singular_exported_expression(argument, environment) for argument in arguments[2:end]); init=first_argument)
+        elseif operator == :*
+            return foldl(*, (evaluate_singular_exported_expression(argument, environment) for argument in arguments); init=1)
+        elseif operator == :^
+            length(arguments) == 2 || throw(ArgumentError("unsupported exponent expression: $expression"))
+            base = evaluate_singular_exported_expression(arguments[1], environment)
+            exponent = evaluate_singular_exported_expression(arguments[2], environment)
+            exponent isa Integer || throw(ArgumentError("non-integral exponent in exported coefficient: $expression"))
+            return base^exponent
+        elseif operator == ://
+            length(arguments) == 2 || throw(ArgumentError("unsupported rational expression: $expression"))
+            numerator = evaluate_singular_exported_expression(arguments[1], environment)
+            denominator = evaluate_singular_exported_expression(arguments[2], environment)
+            return numerator // denominator
+        end
+    end
+
+    throw(ArgumentError("unsupported exported coefficient expression: $expression"))
+end
+
+function parse_singular_coefficient_specification(specification)
+    stripped = strip(specification)
+    stripped == "0" && return Symbol[]
+
+    entries = parse_singular_export_list(stripped)
+    !isempty(entries) || throw(ArgumentError("invalid coefficient specification: $specification"))
+    first(entries) == "0" || throw(ArgumentError("only characteristic-zero coefficient rings are supported: $specification"))
+    return Symbol.(entries[2:end])
+end
+
+function load_singular_ideal(path)
+    raw_lines = readlines(path)
+    lines = [strip(line) for line in raw_lines if !isempty(strip(line))]
+    length(lines) >= 5 || throw(ArgumentError("incomplete Singular ideal export: $path"))
+    lines[1] == "format=singular_oscar_ideal_v1" || throw(ArgumentError("unsupported export format in $path"))
+
+    metadata = Dict{String, String}()
+    line_index = 2
+    while line_index <= length(lines)
+        key, value = split(lines[line_index], "="; limit=2)
+        if key == "nterms"
+            break
+        end
+        metadata[key] = value
+        line_index += 1
+    end
+
+    haskey(metadata, "coefficients") || throw(ArgumentError("missing coefficient specification in $path"))
+    haskey(metadata, "variables") || throw(ArgumentError("missing variable specification in $path"))
+    haskey(metadata, "ordering") || throw(ArgumentError("missing ordering specification in $path"))
+    haskey(metadata, "ngens") || throw(ArgumentError("missing generator count in $path"))
+
+    parameter_symbols = parse_singular_coefficient_specification(metadata["coefficients"])
+    variable_symbols = parse_singular_variable_specification(metadata["variables"])
+    ordering = singular_ordering_to_oscar(metadata["ordering"])
+    expected_generators = parse(Int, metadata["ngens"])
+
+    coefficient_ring, parameter_generators = isempty(parameter_symbols) ? (QQ, Any[]) : rational_function_field(QQ, parameter_symbols)
+    polynomial_ring_object, polynomial_generators = polynomial_ring(coefficient_ring, variable_symbols; internal_ordering=ordering)
+
+    coefficient_environment = Dict{Symbol, Any}(parameter_symbol => parameter_generators[index] for (index, parameter_symbol) in enumerate(parameter_symbols))
+    generators = Vector{elem_type(polynomial_ring_object)}()
+
+    while line_index <= length(lines)
+        key, value = split(lines[line_index], "="; limit=2)
+        key == "nterms" || throw(ArgumentError("expected nterms entry in $path, found $(lines[line_index])"))
+        n_terms = parse(Int, value)
+        line_index += 1
+
+        generator = zero(polynomial_ring_object)
+        for _ in 1:n_terms
+            line_index <= length(lines) || throw(ArgumentError("unexpected end of file while reading generator terms from $path"))
+            term_key, term_value = split(lines[line_index], "="; limit=2)
+            term_key == "term" || throw(ArgumentError("expected term entry in $path, found $(lines[line_index])"))
+            coefficient_string, exponent_string = split(term_value, "|"; limit=2)
+            coefficient_expression = Meta.parse(coefficient_string)
+            coefficient = evaluate_singular_exported_expression(coefficient_expression, coefficient_environment)
+            exponents = parse.(Int, split(exponent_string, ","))
+            length(exponents) == length(polynomial_generators) || throw(ArgumentError("wrong exponent vector length in $path"))
+            monomial = prod((polynomial_generators[index]^exponents[index] for index in eachindex(polynomial_generators)); init=one(polynomial_ring_object))
+            generator += coefficient * monomial
+            line_index += 1
+        end
+
+        push!(generators, generator)
+    end
+
+    length(generators) == expected_generators || throw(ArgumentError("expected $expected_generators generators in $path, found $(length(generators))"))
+    return ideal(polynomial_ring_object, generators)
 end
 
 function small_physics_example()

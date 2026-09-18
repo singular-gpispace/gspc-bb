@@ -85,6 +85,7 @@
 				<out name="NF_list" type="list"/>
 				<out name="runtime" type="map"/>
 				<out name="balNF" type="list"/>
+				<out name="NF" type="list"/>
 				<out name="BB_finished" type="list"/>
 				<out name="syz_comp" type="long"/>
 				<out name="red_syz" type="long"/>
@@ -98,7 +99,7 @@
 				<out name="syzygy_indices" type="set"/>
 				<module name="singular_buchberger"
 							  require_function_unloads_without_rest="false"
-							  function="function_init(NF_list, started_indices, installdir, degBounds, nworkers, runtime, base_filename, input, r, M, singular_options, balNF, blacklist, BB_finished, syz_comp, red_syz, measure_timings, job_queue, job_queue_running, max_batch_size, head_size_factor, target_time, current_time, mv_avg_base, rank, syzygy_indices)">
+							  function="function_init(NF_list, started_indices, installdir, degBounds, nworkers, runtime, base_filename, input, r, M, singular_options, balNF, blacklist, BB_finished, NF, syz_comp, red_syz, measure_timings, job_queue, job_queue_running, max_batch_size, head_size_factor, target_time, current_time, mv_avg_base, rank, syzygy_indices)">
 				  <cinclude href="interface/buchberger_interface.hpp"/>
 						<cinclude href="gspc/util/dynamic_linking.hpp"/>
 					<cinclude href="boost/variant.hpp"/>
@@ -151,12 +152,13 @@
 						queueFile.close();
 						std::remove((base_filename+"prot.txt").c_str());
 
-
+    
 						long nworkers_long=0; // max number of workers given to NF_of_spoly transition
 						int prev_r=0; // value of r from a previous computation that is being continued
 						GpiList si_opt;
+						GpiList queue_lead_data;
 						std::vector<std::vector<std::vector<int> > > Mvec; // lead monomials as a vector of exponent vectors (last entry = component)
-						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &nworkers_long, &degBounds, &target_time, &max_batch_size, &head_size_factor, &si_opt, &prev_r, &syz_comp, &red_syz, &measure_timings, &rank, &runtime);
+						RESOLVE_INTERFACE_FUNCTION(singular_init) (base_filename, input, prev_queue_had_started, &Mvec, &nworkers_long, &degBounds, &target_time, &max_batch_size, &head_size_factor, &si_opt, &queue_lead_data, &prev_r, &syz_comp, &red_syz, &measure_timings, &rank, &runtime);
 						nworkers = (unsigned long) nworkers_long;
 						singular_options = uint2bitset(boost::get<long>(si_opt.front()), boost::get<long>(si_opt.back()));
 						current_time.avg = static_cast<double>(target_time); // thus in the initial iteration(s) of NF_of_spoly the batch size will be 1
@@ -171,19 +173,20 @@
 						if (singular_options.is_element(PROT) && syz_comp>0) { prot_file << "{"<<syz_comp<<"}"; }
 						prot_file.close();
 
-						sPairQueue Q(syz_comp);
+						//QQ sPairQueue Q(syz_comp);
 
-						r = Mvec.size();
+						r = Mvec.size(); // =1
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": r=" << r << ", prev_r=" << prev_r << ", prev_queue_had_started=" << prev_queue_had_started << ", degBounds="<< std::endl;
 						print_variant(degBounds);
 						#endif
 
-
+						/*
 						long prodcrit_counter  = 0L;
 						long diff_comp_counter = 0L;
 						long chaincrit_counter = 0L;
 						long degbound_counter  = 0L;
+						*/
 
 						if (prev_r>0 && prev_queue_had_started) // use previous state to initialize Q(ueue) (BROKEN)
 						{
@@ -249,6 +252,7 @@
 								}
 							}
 						}
+						/*
 						else
 						{
 							int j=1;
@@ -279,7 +283,7 @@
 											diff_comp_counter++;
 											//FIX: std::ofstream ijFile(base_filename+"queue/different_component/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 										}
-
+										
 										if(syz_comp>0 && PC_res==1) {
 											add_to_Q = true;
 											PC = true;
@@ -339,12 +343,14 @@
 								}
 							}
 						}
+						*/
 
 						// build M
-						M = vec2list(Mvec);
+						M = vec2list(Mvec); // will have just one element
 
 						// start jobs:
 						job_queue = GpiList({});
+						/*
 						int insert_counter=0;
 						long batch_size = static_cast<long>(std::llround(static_cast<double>(target_time)/current_time.avg));
 						batch_size = std::min(batch_size, max_batch_size);
@@ -357,12 +363,28 @@
 							job_queue.emplace_back(GpiList({indices.first,indices.second,(int) 0, (int) (PC ? 2 : 0)}));
 							insert_counter++;
 						}
+						*/
 
-
+						/*
 						if(Q.size()==0)
 						{
 							BB_finished.emplace_back(CONTROL_TOKEN);
 						}
+						*/
+						if(queue_lead_data.size()==0) // just one generator ==> done
+						{
+							BB_finished.emplace_back(CONTROL_TOKEN);
+						}
+						else
+						{
+							GpiVariant queue_init;
+							poke("i", queue_init, (int) 0);
+							poke("j", queue_init, (int) 0);
+							poke("old_r", queue_init, (int) -2);
+							poke("lead_data", queue_init, queue_lead_data);
+							NF.emplace_back(queue_init);
+						}
+
 						#ifdef DEBUG_BBA
 						std::cout << runtime_start << ": ----------------------------- Q.size() after init: " << Q.size() << std::endl;
 						std::cout << runtime_start << ": --------------- started_indices.size() after init: " << started_indices.size() << std::endl;
@@ -421,14 +443,16 @@
 						std::cout << runtime_start << ": exiting " << singular_function_name << std::endl;
 						#endif
 
-						serialize_queue(Q, base_filename+"queue/Q", nvars);
+						//QQ serialize_queue(Q, base_filename+"queue/Q", nvars);
 
 						double runtime_stop = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						if (measure_timings != 0) {
+							/*
 							runtime[(std::string) "PRODUCT CRITERION"] = GpiList({-1.0, -1.0, -1.0, prodcrit_counter});
 							runtime[(std::string) "DIFFERENT COMPONENT"] = GpiList({-1.0, -1.0, -1.0,  diff_comp_counter});
 							runtime[(std::string) "CHAIN CRITERION"] = GpiList({-1.0, -1.0, -1.0, chaincrit_counter});
 							runtime[(std::string) "DEGREE BOUND"] = GpiList({-1.0, -1.0, -1.0, degbound_counter});
+							*/
 							runtime["TRANSITION "+singular_function_name+" TOTAL"] = GpiList({runtime_start, runtime_stop, runtime_stop-runtime_start, 1L});
 						}
 
@@ -461,6 +485,7 @@
 			<connect-out port="syzygy_indices" place="place_syzygy_indices"/>
 			<connect-out-many port="started_indices" place="place_started_indices"/>
 			<connect-out-many port="balNF" place="place_balNF"/>
+			<connect-out-many port="NF" place="place_NF"/>
 			<connect-out-many port="BB_finished" place="place_BB_finished"/>
 		</transition>
 
@@ -562,7 +587,7 @@
 							bool j_cancelled  = (blacklist.find(started_indices_j)                             !=blacklist.end());
 							bool ij_excepted  = (blacklist.find(GpiSet ({started_indices_i,started_indices_j}))!=blacklist.end());
 							bool ij_cancelled = (blacklist.find(GpiList({started_indices_i,started_indices_j}))!=blacklist.end());
-							if (((i_cancelled || j_cancelled) && !ij_excepted) || (i_cancelled && j_cancelled) || ij_cancelled) {
+							if (started_indices_i!=started_indices_j && ((i_cancelled || j_cancelled) && !ij_excepted) || (i_cancelled && j_cancelled) || ij_cancelled) {
 								continue;
 							}
 
@@ -715,7 +740,27 @@
 					
 					//static GpiList Q = Q_in; 
 					//static std::pair<sPairQueue,sPairQueue_by_indices> Q_Qind = deserialize_queue(base_filename+"queue/Q");
-					static sPairQueue Q = deserialize_queue(base_filename+"queue/Q");
+					
+					// initialization: unpack data transferred from init transition (only relevant the first time update_Q is called)
+					GpiList init_lead_data = GpiList({});
+					bool initializing = false;
+					if (NF_list_input.size()==1) 
+					{
+						GpiList::const_iterator NF = NF_list_input.begin();
+						int i = boost::get<int>(peek("i",*NF)->get());
+						if (i==0)
+						{
+							int j = boost::get<int>(peek("j",*NF)->get());
+							assert(j==0);
+							int old_r = boost::get<int>(peek("old_r",*NF)->get());
+							assert(old_r==-2);
+							init_lead_data = get_list(peek("lead_data",*NF)->get());
+							initializing = true;
+						}
+					}
+
+
+					static sPairQueue Q = queue_init(init_lead_data, syz_comp); //deserialize_queue(base_filename+"queue/Q");
 					static int lead_deg = -1;
 					static int nsyzpairs = 0;
 					//static std::set<int> syzygy_indices = {}; // only needed if red_syz is set
@@ -745,17 +790,20 @@
 
 					std::set<std::pair<int,int> > zero_reductions = {};  //get_set(NF_list_input.at((int) 0));
 					std::map<std::pair<int,int>,GpiVariant> NF_map = {};
-					for(GpiList::const_iterator NF = NF_list_input.begin(); NF!=NF_list_input.end(); ++NF)
+					if(!initializing)
 					{
-						int i = boost::get<int>(peek("i",*NF)->get());
-						int j = boost::get<int>(peek("j",*NF)->get());
-						if (get_list(peek("lead_data",*NF)->get()).size()==0) // 0-reduction
+						for(GpiList::const_iterator NF = NF_list_input.begin(); NF!=NF_list_input.end(); ++NF)
 						{
-							zero_reductions.insert(std::make_pair(i,j));
-						}
-						else // non-0-reduction
-						{
-							NF_map[std::make_pair(i,j)] = *NF;
+							int i = boost::get<int>(peek("i",*NF)->get());
+							int j = boost::get<int>(peek("j",*NF)->get());
+							if (get_list(peek("lead_data",*NF)->get()).size()==0) // 0-reduction
+							{
+								zero_reductions.insert(std::make_pair(i,j));
+							}
+							else // non-0-reduction
+							{
+								NF_map[std::make_pair(i,j)] = *NF;
+							}
 						}
 					}
 
@@ -783,363 +831,373 @@
 					// (C) remove from back of queue as long as possible
 					//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (C) remove from back of queue as long as possible" << std::endl;
 					int Qcounter=0;
-					for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); Qcounter++)
+					if(!initializing)
 					{
-						//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (0) init" << std::endl;
-						GpiList new_lead;
-						int old_r;
-						
-						int index_i = (itQ->first).first;
-						int index_j = (itQ->first).second;
-						std::map<std::pair<int,int>,GpiVariant>::const_iterator itNF = NF_map.find(itQ->first);
-						if (itNF == NF_map.end())
+						for (sPairQueue::const_iterator itQ = Q.begin(); itQ!=Q.end(); Qcounter++)
 						{
-							if (zero_reductions.find(std::make_pair(index_i,index_j)) != zero_reductions.end())
-				  // CASE 1: (i,j) reduced to 0: have to remove it from Q (will be done later, together with all the other 0-reductions)
+							//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (0) init" << std::endl;
+							GpiList new_lead;
+							int old_r;
+							
+							int index_i = (itQ->first).first;
+							int index_j = (itQ->first).second;
+							std::map<std::pair<int,int>,GpiVariant>::const_iterator itNF = NF_map.find(itQ->first);
+							if (itNF == NF_map.end())
 							{
-								//QUEUE std::cout << " (0) CASE 1" << std::endl;
-								++itQ;
-								--Qcounter;
-								continue;
+								if (zero_reductions.find(std::make_pair(index_i,index_j)) != zero_reductions.end())
+					// CASE 1: (i,j) reduced to 0: have to remove it from Q (will be done later, together with all the other 0-reductions)
+								{
+									//QUEUE std::cout << " (0) CASE 1" << std::endl;
+									++itQ;
+									--Qcounter;
+									continue;
+								}
+								else
+								{
+									if ((itQ->second).old_r==r)
+					// CASE 2: element has reduced to non-0, was paused in earlier instance of this transition, but the reduction result is valid as it was carried out with the current number of generators
+									{
+										//QUEUE std::cout << " (0) CASE 2" << std::endl;
+										old_r = (itQ->second).old_r;
+										new_lead = (itQ->second).new_lead;
+									}
+									else 
+					// CASE 3: next element (i,j) in Q has not yet finished: break
+									{
+										//QUEUE std::cout << " (0) CASE 3" << std::endl;
+										break;
+									}
+								}
+
 							}
 							else
+					// CASE 4: (i,j) reduced to non-0
 							{
-								if ((itQ->second).old_r==r)
-				  // CASE 2: element has reduced to non-0, was paused in earlier instance of the transition, but the reduction result is valid as it was carried out with the current number of generators
-								{
-									//QUEUE std::cout << " (0) CASE 2" << std::endl;
-									old_r = (itQ->second).old_r;
-									new_lead = (itQ->second).new_lead;
-								}
-								else {
-				  // CASE 3: next element (i,j) in Q has not yet finished: break
-									//QUEUE std::cout << " (0) CASE 3" << std::endl;
-									break;
-								}
+								//QUEUE std::cout << " (0) CASE 4" << std::endl;
+								new_lead = get_list(peek("lead_data",itNF->second)->get());
+								old_r = boost::get<int>(peek("old_r",itNF->second)->get());
 							}
 
-						}
-						else
-				  // CASE 4: (i,j) reduced to non-0
-						{
-							//QUEUE std::cout << " (0) CASE 4" << std::endl;
-							new_lead = get_list(peek("lead_data",itNF->second)->get());
-							old_r = boost::get<int>(peek("old_r",itNF->second)->get());
-						}
-
-				  // CASE 2 and 4: add new GB element (and remove (i,j) from Q)
-						bool i_cancelled  = (blacklist.find(index_i)                   !=blacklist.end());
-						bool j_cancelled  = (blacklist.find(index_j)                   !=blacklist.end());
-						bool ij_excepted  = (blacklist.find(GpiSet ({index_i,index_j}))!=blacklist.end());
-						bool ij_cancelled = (blacklist.find(GpiList({index_i,index_j}))!=blacklist.end());
-						if (!(((i_cancelled || j_cancelled) && !ij_excepted) || (i_cancelled && j_cancelled) || ij_cancelled)) // test if s-pair (i,j) was excluded via chain criterion or a cancelled GB element (only needed in CASE 4)
-						{
-							// (1) test if the new element could be reduced further (only needed in CASE 4)
-							//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (1) test if the new element could be reduced further" << std::endl;
-							std::vector<int> new_lead_vec = list2vec(new_lead.front());
-							bool abort = false;
-							for(int ind=old_r; ind<r; ind++)
+					// CASE 2 and 4: add new GB element (and remove (i,j) from Q)
+							bool i_cancelled  = (blacklist.find(index_i)                   !=blacklist.end());
+							bool j_cancelled  = (blacklist.find(index_j)                   !=blacklist.end());
+							bool ij_excepted  = (blacklist.find(GpiSet ({index_i,index_j}))!=blacklist.end());
+							bool ij_cancelled = (blacklist.find(GpiList({index_i,index_j}))!=blacklist.end());
+							if (index_i==index_j || !(((i_cancelled || j_cancelled) && !ij_excepted) || (i_cancelled && j_cancelled) || ij_cancelled)) // test if s-pair (i,j) was excluded via chain criterion or a cancelled GB element (only needed in CASE 4)
 							{
-								if(divides_monom(Mvec[ind][0],new_lead_vec))
+								// (1) test if the new element could be reduced further (only needed in CASE 4)
+								//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (1) test if the new element could be reduced further" << std::endl;
+								std::vector<int> new_lead_vec = list2vec(new_lead.front());
+								bool abort = false;
+								for(int ind=old_r; ind<r; ind++)
 								{
-									#ifdef DEBUG_BBA
-									std::cout << "M["<<ind<<"] divides lead, aborting" << std::endl;
-									#endif
-									abort = true;
-									break;
+									if(divides_monom(Mvec[ind][0],new_lead_vec))
+									{
+										#ifdef DEBUG_BBA
+										std::cout << "M["<<ind<<"] divides lead, aborting" << std::endl;
+										#endif
+										abort = true;
+										break;
+									}
 								}
-							}
-							if (abort) {break;}
-
-							#ifdef DEBUGFILE_BBA
-							debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<"), old_r="<<old_r<<" with new lead ";
-							//debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") (old_r="<<old_r<<") with new lead ";
-							//std::cout << " NEW ELEMENT DUE TO S-PAIR ("<<index_i<<","<<index_j<<") ---------------------------------------------------------------------------------------" << std::endl;
-							#endif
-
-							// (2) add new element to M and increase r
-							//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (2) add new element to M and increase r" << std::endl;
-							std::vector<std::vector<int>> Mvec_new;
-							bool _first = true;
-							for(GpiList::iterator Mi=new_lead.begin(); Mi!=new_lead.end(); ++Mi)
-							{
-								std::vector<int> new_entry = list2vec(*Mi);
-								Mvec_new.emplace_back(new_entry);
+								if (abort) {break;}
 
 								#ifdef DEBUGFILE_BBA
-								if (_first)	{debugfile << "( ";
-								for (int x : new_entry) {
-									debugfile << x << " ";
-								}
-								debugfile << ")\n"; _first=false;}
-								//debugfile << ") ";
+								debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<"), old_r="<<old_r<<" with new lead ";
+								//debugfile << "r:"<<r<<"->"<<r+1<<": adding new element due to s-pair ("<< index_i<<","<<index_j<<") (old_r="<<old_r<<") with new lead ";
+								//std::cout << " NEW ELEMENT DUE TO S-PAIR ("<<index_i<<","<<index_j<<") ---------------------------------------------------------------------------------------" << std::endl;
 								#endif
-							}
-							//debugfile << "]\n";
 
-							Mvec.emplace_back(Mvec_new);
-							M.push_back(new_lead);
-							r++;
-
-							#ifdef DEBUG_BBA
-							std::cout << transition_count << ": added new element due to s-pair ("<<index_i<<","<<index_j<<"), new r=" << r << std::endl;
-							#endif
-
-							/* QUEUE
-							auto Qentries = Q.get_entries();
-							int count1 = 0;
-							int count2 = 0;
-							int max1 = 0;
-							int max2 = 0;
-							for (const auto& entry : Qentries) {
-								if (entry.first.first == r) {
-									count1++;
-								}
-								max1 = std::max(max1, entry.first.first);
-								if (entry.first.second == r) {
-									count2++;
-								}
-								max2 = std::max(max2, entry.first.second);
-							}
-							*/
-							//QUEUE std::cout << "  (2)   r=" << r << ", count1=" << count1 << ", count2=" << count2 << ", max1=" << max1 << ", max2=" << max2 << std::endl;
-
-
-							#ifdef DEBUG_BBA
-							std::cout << runtime_start << ": M.size()="<<M.size()<<", increasing r from " << r-1 << " to " << r << " due to spoly (" << index_i << "," << index_j << "),  new lead:           -------------------------"<< std::endl;
-							print_variant(new_lead);
-							#endif
-
-							// (3) save file containing the new GB element
-							//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (3) save file containing the new GB element" << std::endl;
-							std::string save_filename = base_filename+"temporary_files/intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
-
-							//QUEUE std::cout << runtime_start << ": reading new generator from " << save_filename << ", red_tail=" << (singular_options.is_element(REDTAIL) ? "true" : "false") << std::endl;
-							if (singular_options.is_element(REDTAIL) && false)
-								RESOLVE_INTERFACE_FUNCTION(tail_reduce) (&generators, singular_options, save_filename, base_filename + "intermediate_files/f"+std::to_string(r)); // NF_spoly can't be reduced further, so just rename its file to the new generator
-							else 
-								std::rename(save_filename.c_str(), (base_filename + "intermediate_files/f"+std::to_string(r)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator
-							//QUEUE std::cout << runtime_start << ": done! " << std::endl;
-							
-							int r_is_syzygy = 0;
-							if (red_syz>0 && syz_comp>0 && Mvec_new[0].back()>syz_comp) {
-								syzygy_indices.insert(r); //mark indices that refer to syzygies
-								r_is_syzygy = 1;
-							}
-							
-							
-							// (4) add to Q or exclude (PC/CC) new s-pairs involving the new element
-							//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (4) add to Q or exclude (PC/CC) new s-pairs involving the new element" << std::endl;
-							bool skip_syzygy_spairs = red_syz==1 && syz_comp>0;
-							std::vector<std::vector<int>> Mr = Mvec.back();
-							int i=1;
-							bool first=true;
-							if (skip_syzygy_spairs && r_is_syzygy)
-							{
-								for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
+								// (2) add new element to M and increase r
+								//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (2) add new element to M and increase r" << std::endl;
+								std::vector<std::vector<int>> Mvec_new;
+								bool _first = true;
+								for(GpiList::iterator Mi=new_lead.begin(); Mi!=new_lead.end(); ++Mi)
 								{
-									if (syzygy_indices.find(i)!=syzygy_indices.end() && divides_monom(Mr[0],(*Mi)[0])) 
-									{
-										// new lead (a syzygy) divides i-th lead (also a syzygy) ==> reduce i-th element further 
-										std::cout << "found syzygy with dividing lead ("<<r<<" divides "<<i<<")" << std::endl;
-										std::vector<int> lcm_i_r = lcm((*Mi)[0], Mr[0]);
-										//QUEUE std::cout << " (4) queue_insert (syz) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-										queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, false);
-										nsyzpairs++;
-										//QUEUE std::cout << " (4) queue_insert (syz) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
+									std::vector<int> new_entry = list2vec(*Mi);
+									Mvec_new.emplace_back(new_entry);
+
+									#ifdef DEBUGFILE_BBA
+									if (_first)	{debugfile << "( ";
+									for (int x : new_entry) {
+										debugfile << x << " ";
 									}
+									debugfile << ")\n"; _first=false;}
+									//debugfile << ") ";
+									#endif
 								}
-							}
-							else
-							{
-								for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
+								//debugfile << "]\n";
+
+								Mvec.emplace_back(Mvec_new);
+								M.push_back(new_lead);
+								r++;
+
+								#ifdef DEBUG_BBA
+								std::cout << transition_count << ": added new element due to s-pair ("<<index_i<<","<<index_j<<"), new r=" << r << std::endl;
+								#endif
+
+								/* QUEUE
+								auto Qentries = Q.get_entries();
+								int count1 = 0;
+								int count2 = 0;
+								int max1 = 0;
+								int max2 = 0;
+								for (const auto& entry : Qentries) {
+									if (entry.first.first == r) {
+										count1++;
+									}
+									max1 = std::max(max1, entry.first.first);
+									if (entry.first.second == r) {
+										count2++;
+									}
+									max2 = std::max(max2, entry.first.second);
+								}
+								*/
+								//QUEUE std::cout << "  (2)   r=" << r << ", count1=" << count1 << ", count2=" << count2 << ", max1=" << max1 << ", max2=" << max2 << std::endl;
+
+
+								#ifdef DEBUG_BBA
+								std::cout << runtime_start << ": M.size()="<<M.size()<<", increasing r from " << r-1 << " to " << r << " due to spoly (" << index_i << "," << index_j << "),  new lead:           -------------------------"<< std::endl;
+								print_variant(new_lead);
+								#endif
+
+								// (3) save file containing the new GB element
+								//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (3) save file containing the new GB element" << std::endl;
+								std::string save_filename = base_filename+"temporary_files/intermediate_result_"+std::to_string(index_i)+"_"+std::to_string(index_j);
+
+								//QUEUE std::cout << runtime_start << ": reading new generator from " << save_filename << ", red_tail=" << (singular_options.is_element(REDTAIL) ? "true" : "false") << std::endl;
+								if (singular_options.is_element(REDTAIL) && false)
+									RESOLVE_INTERFACE_FUNCTION(tail_reduce) (&generators, singular_options, save_filename, base_filename + "intermediate_files/f"+std::to_string(r)); // NF_spoly can't be reduced further, so just rename its file to the new generator
+								else 
+									std::rename(save_filename.c_str(), (base_filename + "intermediate_files/f"+std::to_string(r)).c_str()); // NF_spoly can't be reduced further, so just rename its file to the new generator
+								//QUEUE std::cout << runtime_start << ": done! " << std::endl;
+								
+								int r_is_syzygy = 0;
+								if (red_syz>0 && syz_comp>0 && Mvec_new[0].back()>syz_comp) {
+									syzygy_indices.insert(r); //mark indices that refer to syzygies
+									r_is_syzygy = 1;
+								}
+								
+								
+								// (4) add to Q or exclude (PC/CC) new s-pairs involving the new element
+								//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (4) add to Q or exclude (PC/CC) new s-pairs involving the new element" << std::endl;
+								bool skip_syzygy_spairs = red_syz==1 && syz_comp>0;
+								std::vector<std::vector<int>> Mr = Mvec.back();
+								int i=1;
+								bool first=true;
+								if (skip_syzygy_spairs && r_is_syzygy)
 								{
-									int i_is_syzygy = syzygy_indices.find(i)!=syzygy_indices.end() ? 1 : 0;
-									if (skip_syzygy_spairs && i_is_syzygy) 
+									for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
 									{
-										continue;
-									}
-
-									bool add_to_Q = true;
-									bool PC = false;
-									std::vector<int> lcm_i_r;
-
-									if (blacklist.find((GpiVariant) i) != blacklist.end())
-									{
-										add_to_Q = false;
-									}
-									else
-									{
-										lcm_i_r = lcm((*Mi)[0], Mr[0]);
-										if (over_deg_bound(lcm_i_r, degBounds)) // apply degree bound
+										if (syzygy_indices.find(i)!=syzygy_indices.end() && divides_monom(Mr[0],(*Mi)[0])) 
 										{
-											add_to_Q=false;
-											degbound_counter++;
-											//FIX: std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+											// new lead (a syzygy) divides i-th lead (also a syzygy) ==> reduce i-th element further 
+											std::cout << "found syzygy with dividing lead ("<<r<<" divides "<<i<<")" << std::endl;
+											std::vector<int> lcm_i_r = lcm((*Mi)[0], Mr[0]);
+											//QUEUE std::cout << " (4) queue_insert (syz) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
+											queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, false);
+											nsyzpairs++;
+											//QUEUE std::cout << " (4) queue_insert (syz) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
 										}
-										int PC_res = test_PC((*Mi)[0],Mr[0],rank); // 1: PC positive,  2: different lead components,  0: else
-										if (PC_res!=0) // apply PC
+									}
+								}
+								else
+								{
+									for (std::vector<std::vector<std::vector<int> > >::iterator Mi=Mvec.begin(); i<r; ++Mi, i++)
+									{
+										int i_is_syzygy = syzygy_indices.find(i)!=syzygy_indices.end() ? 1 : 0;
+										if (skip_syzygy_spairs && i_is_syzygy) 
+										{
+											continue;
+										}
+
+										bool add_to_Q = true;
+										bool PC = false;
+										std::vector<int> lcm_i_r;
+
+										if (blacklist.find((GpiVariant) i) != blacklist.end())
 										{
 											add_to_Q = false;
-											if (PC_res==1) {
-												prodcrit_counter++;
-												//FIX: std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
-											}
-											else {
-												diff_comp_counter++;
-												//FIX: std::ofstream ijFile(base_filename+"queue/different_component/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
-											}
-
-											if(syz_comp>0 && PC_res==1) {
-												add_to_Q = true;
-												PC = true;
-												// make NF_of_spoly construct the syzygy instead
-											}
 										}
-										else // apply CC
+										else
 										{
-											int k=1;
-											for (std::vector<std::vector<std::vector<int> > >::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
+											lcm_i_r = lcm((*Mi)[0], Mr[0]);
+											if (over_deg_bound(lcm_i_r, degBounds)) // apply degree bound
 											{
-												if(k!=i && k!=r)
+												add_to_Q=false;
+												degbound_counter++;
+												//FIX: std::ofstream ijFile(base_filename+"queue/degree_bound/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+											}
+											int PC_res = test_PC((*Mi)[0],Mr[0],rank); // 1: PC positive,  2: different lead components,  0: else
+											if (PC_res!=0) // apply PC
+											{
+												add_to_Q = false;
+												if (PC_res==1) {
+													prodcrit_counter++;
+													//FIX: std::ofstream ijFile(base_filename+"queue/product_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+												}
+												else {
+													diff_comp_counter++;
+													//FIX: std::ofstream ijFile(base_filename+"queue/different_component/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+												}
+
+												if(syz_comp>0 && PC_res==1) {
+													add_to_Q = true;
+													PC = true;
+													// make NF_of_spoly construct the syzygy instead
+												}
+											}
+											else // apply CC
+											{
+												int k=1;
+												for (std::vector<std::vector<std::vector<int> > >::iterator Mk=Mvec.begin(); k<=r; ++Mk, k++)
 												{
-													if (test_CC(lcm_i_r, (*Mi)[0], Mr[0], (*Mk)[0]))
+													if(k!=i && k!=r)
 													{
-														if(k<i)
+														if (test_CC(lcm_i_r, (*Mi)[0], Mr[0], (*Mk)[0]))
 														{
-															add_to_Q = false;
-															chaincrit_counter++;
-															//FIX: std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
-															break;
-														}
-														else // thus i<k<r  (k>r is not possible)
-														{
-															std::vector<int> lcm_k_r = lcm((*Mk)[0], Mr[0]);
-															if(!equal(lcm_k_r,lcm_i_r))
+															if(k<i)
 															{
 																add_to_Q = false;
 																chaincrit_counter++;
 																//FIX: std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
 																break;
 															}
+															else // thus i<k<r  (k>r is not possible)
+															{
+																std::vector<int> lcm_k_r = lcm((*Mk)[0], Mr[0]);
+																if(!equal(lcm_k_r,lcm_i_r))
+																{
+																	add_to_Q = false;
+																	chaincrit_counter++;
+																	//FIX: std::ofstream ijFile(base_filename+"queue/chain_criterion/"+std::to_string(i)+"_"+std::to_string(r)); ijFile.close();
+																	break;
+																}
+															}
 														}
 													}
 												}
 											}
 										}
-									}
 
-									if (divides_monom(Mr[0],(*Mi)[0]) &&  (blacklist.find((GpiVariant) i)==blacklist.end()))
-									{
-										// new found lead monomial divides i-th lead monomial ==> put i in blacklist
-										// (and Set(i,r) as the (i,r)-th spoly has to be reduced, it is not eliminated through CC!)
-										new_blacklist.emplace(i);
-										new_blacklist.emplace(GpiSet({i,r}));
-										// remove (i,j) for all j from Q:
-										//QUEUE std::cout << " (4) queue_delete_i (cancelled_element) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-										queue_delete_i(Q, i, r, "cancelled_element", &nsyzpairs, i_is_syzygy);
-										//QUEUE std::cout << " (4) queue_delete_i (cancelled_element) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-										cancelled_element_counter++;
-									}
-
-									if(add_to_Q)
-									{
-										//QUEUE std::cout << " (4) queue_insert (end) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-										queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, PC);
-										if (i_is_syzygy)
-											nsyzpairs++;
-										//QUEUE std::cout << " (4) queue_insert (end) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-									}
-								}
-
-								// (5) remove old s-pairs due to chain condition
-								//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (5) remove old s-pairs due to chain condition" << std::endl;
-								for (sPairQueue::iterator Qk=Q.begin(); Qk!=Q.end(); )
-								{
-									//int ii = boost::get<int>(get_list(*Qk).front());
-									//int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
-									int ii = (Qk->first).first;
-									int jj = (Qk->first).second;
-
-									std::vector<int> lcm_i_j = lcm(Mvec[ii-1][0],Mvec[jj-1][0]);
-
-									if(test_CC(lcm_i_j, Mvec[ii-1][0], Mvec[jj-1][0], Mvec[r-1][0]))
-									{
-										std::vector<int> lcm_i_r = lcm(Mvec[ii-1][0], Mvec[r-1][0]);
-										std::vector<int> lcm_j_r = lcm(Mvec[jj-1][0], Mvec[r-1][0]);
-										if(!equal(lcm_i_r,lcm_i_j) && !equal(lcm_j_r,lcm_i_j))
+										if (divides_monom(Mr[0],(*Mi)[0]) &&  (blacklist.find((GpiVariant) i)==blacklist.end()))
 										{
-											#ifdef DEBUGFILE_BBA
-											if (first)  {
-												debugfile << "CC: removing indices ";
-												first = false;
-											}
-											#endif
-											new_blacklist.emplace(GpiList({ii,jj}));
-											Qk = Q.erase(Qk);
-											nsyzpairs -= (syzygy_indices.find(ii)!=syzygy_indices.end() ? 1 : 0);
-											//Qind.erase(std::make_pair(ii,jj));
-											chaincrit_counter++;
-											cancelled_s_pair_counter++;
-											//FIX: std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
-											//FIX: std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
-											#ifdef DEBUGFILE_BBA
-											debugfile << "("<<ii<<","<<jj<<","<<(Qk->second).old_r<<") ";
-											#endif
+											// new found lead monomial divides i-th lead monomial ==> put i in blacklist
+											// (and Set(i,r) as the (i,r)-th spoly has to be reduced, it is not eliminated through CC!)
+											new_blacklist.emplace(i);
+											new_blacklist.emplace(GpiSet({i,r}));
+											// remove (i,j) for all j from Q:
+											//QUEUE std::cout << " (4) queue_delete_i (cancelled_element) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
+											queue_delete_i(Q, i, r, "cancelled_element", &nsyzpairs, i_is_syzygy);
+											//QUEUE std::cout << " (4) queue_delete_i (cancelled_element) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
+											cancelled_element_counter++;
 										}
-										else {++Qk;}
+
+										if(add_to_Q)
+										{
+											//QUEUE std::cout << " (4) queue_insert (end) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
+											queue_insert(Q, i, r, (int) 0, *Mi, Mr, lcm_i_r, PC);
+											if (i_is_syzygy)
+												nsyzpairs++;
+											//QUEUE std::cout << " (4) queue_insert (end) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
+										}
 									}
-									else {++Qk;}
+
+									// (5) remove old s-pairs due to chain condition
+									//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (5) remove old s-pairs due to chain condition" << std::endl;
+									for (sPairQueue::iterator Qk=Q.begin(); Qk!=Q.end(); )
+									{
+										//int ii = boost::get<int>(get_list(*Qk).front());
+										//int jj = boost::get<int>(*std::next(get_list(*Qk).begin()));
+										int ii = (Qk->first).first;
+										int jj = (Qk->first).second;
+
+										if(ii=jj) // skip pairs (i,i) where both indices are the same as they represent the i-th input generator instead of an s-pair!
+										{
+											++Qk;
+										}
+										else
+										{
+											std::vector<int> lcm_i_j = lcm(Mvec[ii-1][0],Mvec[jj-1][0]);
+											
+											if(test_CC(lcm_i_j, Mvec[ii-1][0], Mvec[jj-1][0], Mvec[r-1][0]))
+											{         
+												std::vector<int> lcm_i_r = lcm(Mvec[ii-1][0], Mvec[r-1][0]);
+												std::vector<int> lcm_j_r = lcm(Mvec[jj-1][0], Mvec[r-1][0]);
+												if(!equal(lcm_i_r,lcm_i_j) && !equal(lcm_j_r,lcm_i_j))
+												{
+													#ifdef DEBUGFILE_BBA
+													if (first)  {
+														debugfile << "CC: removing indices ";
+														first = false;
+													}
+													#endif
+													new_blacklist.emplace(GpiList({ii,jj}));
+													Qk = Q.erase(Qk);
+													nsyzpairs -= (syzygy_indices.find(ii)!=syzygy_indices.end() ? 1 : 0);
+													//Qind.erase(std::make_pair(ii,jj));
+													chaincrit_counter++;
+													cancelled_s_pair_counter++;
+													//FIX: std::remove((base_filename+"queue/started/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))).c_str());
+													//FIX: std::ofstream ijFile(base_filename+"queue/cancelled_s_pair/"+std::to_string(std::min(ii,jj))+"_"+std::to_string(std::max(ii,jj))); ijFile.close();
+													#ifdef DEBUGFILE_BBA
+													debugfile << "("<<ii<<","<<jj<<","<<(Qk->second).old_r<<") ";
+													#endif
+												}
+												else {++Qk;}
+											}
+											else {++Qk;}
+										}
+									}
 								}
+
+
+								#ifdef DEBUGFILE_BBA
+								if (!first) debugfile << "\n";
+								#endif
 							}
 
 
-							#ifdef DEBUGFILE_BBA
-							if (!first) debugfile << "\n";
+							// (6) remove from front of Q and advance to next element
+							//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (6) remove from front of Q and advance to next element" << std::endl;
+							remove_from_running.insert(GpiList({index_i,index_j}));
+							//QUEUE std::cout << " (6) 1" << std::endl;
+							//QUEUE std::cout << " (6) 2 queue_delete_i_j (new_element) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
+							itQ = queue_delete_i_j(Q, index_i, index_j, "new_element", &nsyzpairs, syzygy_indices.find(index_i)!=syzygy_indices.end() ? 1 : 0);
+							//QUEUE std::cout << " (6) 2 queue_delete_i_j (new_element) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
+							//QUEUE std::cout << "     itQ==Q.end()" << (itQ==Q.end() ? "true" : "false") << std::endl;
+							//QUEUE std::cout << " (6) 3" << std::endl;
+							if (singular_options.is_element(PROT)) {
+								//QUEUE std::cout << " (6) 4" << std::endl;
+								//QUEUE std::size_t Q_size1 = Q.entries_size();
+								//QUEUE std::cout << " (6) 5  entries:" << Q_size1 << std::endl;
+								//QUEUE std::size_t Q_size2 = Q.references_size();
+								//QUEUE std::cout << " (6) 6  entries:" << Q_size1 << ", references:" << Q_size2 << std::endl;
+								std::size_t Q_size = Q.size();
+								//QUEUE std::cout << " (6) 7  Q_size=" << Q_size << std::endl;
+								prot_str = prot_str + "s(" + std::to_string(Q_size) + ")";
+								//QUEUE std::cout << " (6) 8" << std::endl;
+								if (Q_size>0 && lead_deg != Q.front_value().deg_lcm) {
+									//QUEUE std::cout << " (6) 9" << std::endl;
+									lead_deg = Q.front_value().deg_lcm;
+									//QUEUE std::cout << " (6) 10" << std::endl;
+									prot_str = prot_str + std::to_string(lead_deg);
+									//QUEUE std::cout << " (6) 11" << std::endl;
+								}
+							}
+							//QUEUE std::cout << " (6) 12" << std::endl;
+
+							#ifdef DEBUG_BBA
+							std::cout << runtime_start << ": increment: set size of Q(ueue) to " << Q.size() <<std::endl;
 							#endif
 						}
-
-
-						// (6) remove from front of Q and advance to next element
-						//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (6) remove from front of Q and advance to next element" << std::endl;
-						remove_from_running.insert(GpiList({index_i,index_j}));
-						//QUEUE std::cout << " (6) 1" << std::endl;
-						//QUEUE std::cout << " (6) 2 queue_delete_i_j (new_element) before: entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-						itQ = queue_delete_i_j(Q, index_i, index_j, "new_element", &nsyzpairs, syzygy_indices.find(index_i)!=syzygy_indices.end() ? 1 : 0);
-						//QUEUE std::cout << " (6) 2 queue_delete_i_j (new_element) after:  entries:" << Q.entries_size() << ", references:" << Q.references_size() << ", EQUAL:" << (Q.entries_size()==Q.references_size() ? "TRUE" : "FALSE") << std::endl;
-						//QUEUE std::cout << "     itQ==Q.end()" << (itQ==Q.end() ? "true" : "false") << std::endl;
-						//QUEUE std::cout << " (6) 3" << std::endl;
-						if (singular_options.is_element(PROT)) {
-							//QUEUE std::cout << " (6) 4" << std::endl;
-							//QUEUE std::size_t Q_size1 = Q.entries_size();
-							//QUEUE std::cout << " (6) 5  entries:" << Q_size1 << std::endl;
-							//QUEUE std::size_t Q_size2 = Q.references_size();
-							//QUEUE std::cout << " (6) 6  entries:" << Q_size1 << ", references:" << Q_size2 << std::endl;
-							std::size_t Q_size = Q.size();
-							//QUEUE std::cout << " (6) 7  Q_size=" << Q_size << std::endl;
-							prot_str = prot_str + "s(" + std::to_string(Q_size) + ")";
-							//QUEUE std::cout << " (6) 8" << std::endl;
-							if (Q_size>0 && lead_deg != Q.front_value().deg_lcm) {
-								//QUEUE std::cout << " (6) 9" << std::endl;
-								lead_deg = Q.front_value().deg_lcm;
-								//QUEUE std::cout << " (6) 10" << std::endl;
-								prot_str = prot_str + std::to_string(lead_deg);
-								//QUEUE std::cout << " (6) 11" << std::endl;
-							}
-						}
-						//QUEUE std::cout << " (6) 12" << std::endl;
-
-						#ifdef DEBUG_BBA
-						std::cout << runtime_start << ": increment: set size of Q(ueue) to " << Q.size() <<std::endl;
-						#endif
 					}
-
 					#ifdef DEBUG_BBA
 					std::cout << "added "<<Qcounter<<" elements from the back of the Q(ueue)" << std::endl;
 					#endif
 
 
-					// (D) update old_r in the Queue for other non-0-reductions (to be started again later via start_jobs):
+					// (D) update old_r (i.e. mark as "paused") in the Queue for other non-0-reductions (to be started again later via start_jobs):
 					//QUEUE std::cout << runtime_start << ": " << singular_function_name << ": (D) update old_r in the Queue for other non-0-reductions" << std::endl;
 					bool first=true;
 					for (std::map<std::pair<int,int>,GpiVariant>::const_iterator itNF=NF_map.begin(); itNF!=NF_map.end(); ++itNF)

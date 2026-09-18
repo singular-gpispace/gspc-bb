@@ -10,6 +10,52 @@ Note that all of this is work in progress.
 This application builds on the Singular dynamical module implemented by Lukas Ristau from the repository
 [framework](https://github.com/singular-gpispace/framework).
 
+# Rootless Nix Workflow (no admin help)
+
+This repository now includes a `flake.nix`.
+
+The original scripts still work unchanged:
+
+- `/.../init.sh`
+- `/.../fresh_compile_and_run.sh`
+
+The flake adds wrappers around that workflow and checks for:
+
+- GPI-Space `26.3`
+- Singular `4.3.0`
+
+Since `gpi-space` is not currently wired from `nixpkgs` in this project, the flake expects your existing GPI-Space installation path to be provided via `GPI_SPACE_ROOT` and your Singular 4.3.0 prefix via `SINGULAR_ROOT` for `nix build`.
+
+Example with the rootless installation from:
+`/.../nix`
+
+```bash
+export PATH=/.../nix/bin:$PATH
+export NP_GIT="$(command -v git)"
+export NP_RUNTIME=proot
+export NIX_CONFIG='experimental-features = nix-command flakes'
+
+cd /.../Singular_GPI_Space_buchberger/gspc-bb
+
+# use your current cluster install
+export GPI_SPACE_ROOT=/p/hpc/soft/gspc/26.3
+export SINGULAR_ROOT=/m/scratch/hive/wittmann/singular-gpispace/spack/opt/spack/linux-cascadelake/singular-4.3.0-eyahf553lwmko2andx6zy4ffs3djqffh
+
+# enter a shell with cmake, ninja, boost (use external Singular 4.3.0)
+nix develop --impure .
+
+# build package output to ./result
+nix build --impure .
+
+# run wrappers for your existing scripts
+nix run .#init
+nix run .#fresh-compile-and-run
+```
+
+If `nix develop` reports `setting up a private mount namespace: Operation not permitted`, keep `NP_RUNTIME=proot` set. That selects nix-portable's namespace-free runtime on systems that block `bwrap`/mount namespaces.
+
+The flake intentionally mirrors your current compile setup while you transition away from scripts like `init.sh` and `fresh_compile_and_run.sh`.
+
 # Installation using Spack
 Spack is a package manager specifically aimed at handling software installations in supercomputing environments, but
 usable on anything from a personal computer to an HPC cluster. It supports Linux and macOS (note that the Singular/GPI-Space

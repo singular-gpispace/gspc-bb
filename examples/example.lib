@@ -454,7 +454,7 @@ number c4=prime(400)*t;
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), (dp(9),dp(4)); // block ord
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
-ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), (dp); // flat dp
+ring rM1M2BIG = (0), (c1, c2, c3, c4, z8, z9, z1, z2, z3, z4, z5, z6, z7), (dp); // flat dp --> DEG BOUND 5
 
 //ring rM1M2BIG = (0), (z8, z9, z1, z2, z3, z4, z5, z6, z7, c1, c2, c3, c4), dp;
 
@@ -661,7 +661,7 @@ option();
 
 ring rQUAD = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
 system("--random", 42);
-ideal I = randomid(maxideal(2),6);
+ideal I = randomid(maxideal(2),1);
 //ideal I = randomidBigint(maxideal(2),6,bigint(10)^10);
 
 
