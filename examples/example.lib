@@ -661,7 +661,7 @@ option();
 
 ring rQUAD = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
 system("--random", 42);
-ideal I = randomid(maxideal(2),1);
+ideal I = randomid(maxideal(2),6);
 //ideal I = randomidBigint(maxideal(2),6,bigint(10)^10);
 
 
@@ -689,6 +689,8 @@ execute("ideal I = "+spinchainideal+";");
 setring(rM1M2NEW);
 */
 
+setring(rM1M2BIG);
+
 /*
 ring H = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
 print("building Hankel minors example");
@@ -702,23 +704,28 @@ option(redSB); option(redTail); option(prot); //option(noreturnSB);
 
 int nodes=1;
 //list cores_per_node = 48,32,16,8,4,2,1;
-list cores_per_node = 12;
+list cores_per_node = 48;
 
 //testParallelBB(G_intersect, cores_per_node[1], cores_per_node[1]*nodes, 2, "testideal_"+string(cores_per_node[1]*nodes)+"_CORES", list(list(degBound,nvars(basering))), 100, 10, 150, nrows(M1), 0); // last 5 arguments: target_time, max_batch_size, head_size_factor, syz_comp, red_syz//!!
 gc.procspernode=cores_per_node[1]; 
 bc.nworkers=cores_per_node[1]*nodes; 
 bc.measureTimings=1;
-bc.syzComp=0;
+bc.syzComp=nrows(m1);
 bc.redSyz=0;
 bc.maxBatchSize=1;
+
+degBound = 6; // maximum degree bound for the parallel Buchberger algorithm applied to all variables
+bc.degBounds = list(list(degBound,nvars(basering)));
+
 printf("%n |||||||||-->  %s CORES  <--||||||||||%n",bc.nworkers,0);
-def G, GB,L,S,indices,runtimes = testBB(I, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES"); 
+//def G, GB,L,S,indices,runtimes = testBB(I, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES");
+def GB,L,S,indices,runtimes = testParallelBB(m_intersect, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES");
 for(int ind=2; ind<=size(cores_per_node); ind++)
 {
   gc.procspernode=cores_per_node[ind]; 
   bc.nworkers=cores_per_node[ind]*nodes; 
   printf("%n |||||||||-->  %s CORES  <--||||||||||%n",bc.nworkers,0);
-  GB,L,S,indices,runtimes = testParallelBB(I, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES");
+  GB,L,S,indices,runtimes = testParallelBB(m_intersect, gc, bc, "testideal_"+string(bc.nworkers)+"_CORES");
 }
 
 
