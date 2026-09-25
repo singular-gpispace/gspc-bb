@@ -595,13 +595,13 @@ void singular_init(std::string const& base_filename,
     int ind=2;
     for(int i=1; i<F->ncols; i++)
     {
+      // take next polynomial...
+      poly new_f = F_sorted->m[i];
+      
       /*
       FF->rank = id_RankFreeModule(FF, currRing, currRing);
       if (FF->rank==0) {FF->rank=1;}
-
-      // take next polynomial...
-      poly new_f = F_sorted->m[i];
-
+      
       //new_f = kNF(FF, currRing->qideal, new_f, 0, 4); //WHY JUST WHY ???
       //std::cout << "intstrat + redtail: " << (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1) << ", red_syz: " << *red_syz << ", syz_comp: " << *syz_comp << std::endl;
       new_f = kNF(FF, currRing->qideal, new_f, *red_syz==0 ? *syz_comp : 0, (singular_options.is_element(INTSTRATEGY) ? 4 : 0)+(singular_options.is_element(REDTAIL) ? 0 : 1));

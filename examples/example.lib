@@ -661,7 +661,7 @@ option();
 
 ring rQUAD = 0,(x1,x2,x3,x4,x5,x6,x7,x8),dp;
 system("--random", 42);
-ideal I = randomid(maxideal(2),1);
+ideal I = randomid(maxideal(2),6);
 //ideal I = randomidBigint(maxideal(2),6,bigint(10)^10);
 
 

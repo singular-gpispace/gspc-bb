@@ -188,7 +188,7 @@
 						long degbound_counter  = 0L;
 						*/
 
-						if (prev_r>0 && prev_queue_had_started) // use previous state to initialize Q(ueue) (BROKEN)
+						if (prev_r>0 && prev_queue_had_started) // use previous state to initialize Q(ueue) (BROKEN!)
 						{
 							r=prev_r;
 							if(TRACE>0)
@@ -245,7 +245,7 @@
 											}
 
 											// add (i,j) and information about lcm(fi,fj) to the queue:
-											queue_insert(Q, i, j, old_r, *Mi, *Mj, lcm_i_j);
+											//QQ queue_insert(Q, i, j, old_r, *Mi, *Mj, lcm_i_j);
 											nvars = lcm_i_j.size()-1;
 										}
 									}
@@ -402,7 +402,7 @@
 						logFile << " GB: " << r << "\n";
 						logFile << "syz: " << 0 << "\n";
 						logFile << "Queue of s-pairs:\n";
-						logFile << " GB: " << Q.size() << "\n";
+						logFile << " GB: " << 0 << "\n";
 						logFile << "syz: " << 0;
 						logFile.close();
 
@@ -871,7 +871,7 @@
 
 							}
 							else
-					// CASE 4: (i,j) reduced to non-0
+					// CASE 4: (i,j) reduced to non-0   (including reductions of initial generators, represented by setting i=j=index of the generator)
 							{
 								//QUEUE std::cout << " (0) CASE 4" << std::endl;
 								new_lead = get_list(peek("lead_data",itNF->second)->get());

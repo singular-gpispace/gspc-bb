@@ -93,7 +93,7 @@ RETURN: internal token output of the GPI-Space Buchberger workflow
         degree_bounds = list(list(degBound,nvars(basering)));
     }
     else {
-        degree_bounds = bc.degBounds
+        degree_bounds = bc.degBounds;
     }
     int i;
     int n_vars = 0;

@@ -856,7 +856,8 @@ inline sPairQueue queue_init(const GpiList& lead_data, long syz_comp)
   GpiList new_lead = {};
 
   // insert initial generators into Queue, except the first one which is already considered an element of the basis
-  for(GpiList::const_iterator Li = lead_data.begin(), int i = 2; Li != lead_data.end(); ++Li,i++)
+  int i = 2;
+  for(GpiList::const_iterator Li = lead_data.begin(); Li != lead_data.end(); ++Li,i++)
   {
     GpiList::const_iterator it = get_list(*Li).begin();
 
